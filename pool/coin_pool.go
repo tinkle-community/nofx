@@ -24,6 +24,18 @@ var coinPoolConfig = CoinPoolConfig{
 	CacheDir: "coin_pool_cache",
 }
 
+// defaultMainstreamCoins 默认主流币种池（当AI500和OI Top都失败时使用）
+var defaultMainstreamCoins = []string{
+	"BTCUSDT",
+	"ETHUSDT",
+	"SOLUSDT",
+	"BNBUSDT",
+	"XRPUSDT",
+	"DOGEUSDT",
+	"ADAUSDT",
+	"HYPEUSDT",
+}
+
 // CoinPoolCache 币种池缓存
 type CoinPoolCache struct {
 	Coins      []CoinInfo `json:"coins"`
@@ -61,6 +73,36 @@ func SetCoinPoolAPI(apiURL string) {
 // SetOITopAPI 设置OI Top API
 func SetOITopAPI(apiURL string) {
 	oiTopConfig.APIURL = apiURL
+}
+
+// SetEnableAI500 设置是否启用AI500
+func SetEnableAI500(enable bool) {
+	enableAI500Switch = enable
+	if enable {
+		log.Printf("✓ AI500币种池已启用")
+	} else {
+		log.Printf("⚠️  AI500币种池已禁用")
+	}
+}
+
+// SetEnableOITop 设置是否启用OI Top
+func SetEnableOITop(enable bool) {
+	enableOITopSwitch = enable
+	if enable {
+		log.Printf("✓ OI Top已启用")
+	} else {
+		log.Printf("⚠️  OI Top已禁用")
+	}
+}
+
+// IsAI500Enabled 检查AI500是否启用
+func IsAI500Enabled() bool {
+	return enableAI500Switch && coinPoolConfig.APIURL != ""
+}
+
+// IsOITopEnabled 检查OI Top是否启用
+func IsOITopEnabled() bool {
+	return enableOITopSwitch && oiTopConfig.APIURL != ""
 }
 
 // GetCoinPool 获取币种池列表（带重试和缓存机制）
@@ -364,6 +406,12 @@ var oiTopConfig = struct {
 	CacheDir: "coin_pool_cache",
 }
 
+// 全局开关：控制是否启用AI500和OI Top
+var (
+	enableAI500Switch bool = true  // 默认启用
+	enableOITopSwitch bool = true  // 默认启用
+)
+
 // GetOITopPositions 获取持仓量增长Top20数据（带重试和缓存）
 func GetOITopPositions() ([]OIPosition, error) {
 	maxRetries := 3
@@ -528,21 +576,74 @@ type MergedCoinPool struct {
 
 // GetMergedCoinPool 获取合并后的币种池（AI500 + OI Top，去重）
 func GetMergedCoinPool(ai500Limit int) (*MergedCoinPool, error) {
-	// 1. 获取AI500数据
-	ai500TopSymbols, err := GetTopRatedCoins(ai500Limit)
-	if err != nil {
-		log.Printf("⚠️  获取AI500数据失败: %v", err)
-		ai500TopSymbols = []string{} // 失败时用空列表
+	// 0. 先检查是否启用并配置了API URL，如果都没有，直接使用默认币种
+	ai500Enabled := enableAI500Switch && coinPoolConfig.APIURL != ""
+	oiTopEnabled := enableOITopSwitch && oiTopConfig.APIURL != ""
+
+	if !ai500Enabled && !oiTopEnabled {
+		log.Printf("💡 AI500和OI Top都未启用或未配置，使用默认主流币种池（共%d个）", len(defaultMainstreamCoins))
+		
+		// 构建symbolSources
+		symbolSources := make(map[string][]string)
+		for _, symbol := range defaultMainstreamCoins {
+			symbolSources[symbol] = []string{"default"}
+		}
+		
+		merged := &MergedCoinPool{
+			AI500Coins:    []CoinInfo{},
+			OITopCoins:    []OIPosition{},
+			AllSymbols:    defaultMainstreamCoins,
+			SymbolSources: symbolSources,
+		}
+		
+		return merged, nil
 	}
 
-	// 2. 获取OI Top数据
-	oiTopSymbols, err := GetOITopSymbols()
-	if err != nil {
-		log.Printf("⚠️  获取OI Top数据失败: %v", err)
-		oiTopSymbols = []string{} // 失败时用空列表
+	// 1. 获取AI500数据（仅在启用且配置了API时）
+	var ai500TopSymbols []string
+	if ai500Enabled {
+		symbols, err := GetTopRatedCoins(ai500Limit)
+		if err != nil {
+			log.Printf("⚠️  获取AI500数据失败: %v", err)
+			ai500TopSymbols = []string{} // 失败时用空列表
+		} else {
+			ai500TopSymbols = symbols
+		}
+	} else {
+		if !enableAI500Switch {
+			log.Printf("💡 AI500已禁用，跳过获取")
+		} else {
+			log.Printf("💡 未配置AI500 API，跳过获取")
+		}
+		ai500TopSymbols = []string{}
 	}
 
-	// 3. 合并并去重
+	// 2. 获取OI Top数据（仅在启用且配置了API时）
+	var oiTopSymbols []string
+	if oiTopEnabled {
+		symbols, err := GetOITopSymbols()
+		if err != nil {
+			log.Printf("⚠️  获取OI Top数据失败: %v", err)
+			oiTopSymbols = []string{} // 失败时用空列表
+		} else {
+			oiTopSymbols = symbols
+		}
+	} else {
+		if !enableOITopSwitch {
+			log.Printf("💡 OI Top已禁用，跳过获取")
+		} else {
+			log.Printf("💡 未配置OI Top API，跳过获取")
+		}
+		oiTopSymbols = []string{}
+	}
+
+	// 3. 如果两个数据源都失败（配置了但获取失败），使用默认主流币种
+	if len(ai500TopSymbols) == 0 && len(oiTopSymbols) == 0 {
+		log.Printf("⚠️  AI500和OI Top都获取失败，使用默认主流币种池（共%d个）", len(defaultMainstreamCoins))
+		ai500TopSymbols = defaultMainstreamCoins
+	}
+
+	// 4. 合并并去重
 	symbolSet := make(map[string]bool)
 	symbolSources := make(map[string][]string)
 
@@ -566,9 +667,17 @@ func GetMergedCoinPool(ai500Limit int) (*MergedCoinPool, error) {
 		allSymbols = append(allSymbols, symbol)
 	}
 
-	// 获取完整数据
-	ai500Coins, _ := GetCoinPool()
-	oiTopPositions, _ := GetOITopPositions()
+	// 获取完整数据（仅在启用时获取）
+	var ai500Coins []CoinInfo
+	var oiTopPositions []OIPosition
+	
+	if ai500Enabled {
+		ai500Coins, _ = GetCoinPool()
+	}
+	
+	if oiTopEnabled {
+		oiTopPositions, _ = GetOITopPositions()
+	}
 
 	merged := &MergedCoinPool{
 		AI500Coins:    ai500Coins,

@@ -34,7 +34,7 @@ func main() {
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))
 	fmt.Println()
 
-	// 设置币种池API URL
+	// 设置币种池API URL和启用开关
 	if cfg.CoinPoolAPIURL != "" {
 		pool.SetCoinPoolAPI(cfg.CoinPoolAPIURL)
 		log.Printf("✓ 已配置AI500币种池API")
@@ -43,6 +43,10 @@ func main() {
 		pool.SetOITopAPI(cfg.OITopAPIURL)
 		log.Printf("✓ 已配置OI Top API")
 	}
+	
+	// 设置启用开关
+	pool.SetEnableAI500(cfg.EnableAI500)
+	pool.SetEnableOITop(cfg.EnableOITop)
 
 	// 创建TraderManager
 	traderManager := manager.NewTraderManager()

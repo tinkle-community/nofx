@@ -164,19 +164,21 @@ func fetchMarketDataForContext(ctx *TradingContext) error {
 		ctx.MarketDataMap[symbol] = data
 	}
 
-	// 加载OI Top数据（不影响主流程）
-	oiPositions, err := pool.GetOITopPositions()
-	if err == nil {
-		for _, pos := range oiPositions {
-			// 标准化符号匹配
-			symbol := pos.Symbol
-			ctx.OITopDataMap[symbol] = &OITopData{
-				Rank:              pos.Rank,
-				OIDeltaPercent:    pos.OIDeltaPercent,
-				OIDeltaValue:      pos.OIDeltaValue,
-				PriceDeltaPercent: pos.PriceDeltaPercent,
-				NetLong:           pos.NetLong,
-				NetShort:          pos.NetShort,
+	// 加载OI Top数据（仅在启用时加载，不影响主流程）
+	if pool.IsOITopEnabled() {
+		oiPositions, err := pool.GetOITopPositions()
+		if err == nil {
+			for _, pos := range oiPositions {
+				// 标准化符号匹配
+				symbol := pos.Symbol
+				ctx.OITopDataMap[symbol] = &OITopData{
+					Rank:              pos.Rank,
+					OIDeltaPercent:    pos.OIDeltaPercent,
+					OIDeltaValue:      pos.OIDeltaValue,
+					PriceDeltaPercent: pos.PriceDeltaPercent,
+					NetLong:           pos.NetLong,
+					NetShort:          pos.NetShort,
+				}
 			}
 		}
 	}

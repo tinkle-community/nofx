@@ -25,6 +25,8 @@ type Config struct {
 	Traders            []TraderConfig `json:"traders"`
 	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
 	OITopAPIURL        string         `json:"oi_top_api_url"`
+	EnableAI500        bool           `json:"enable_ai500"`         // 是否启用AI500币种池
+	EnableOITop        bool           `json:"enable_oi_top"`        // 是否启用OI Top
 	APIServerPort      int            `json:"api_server_port"`
 	MaxDailyLoss       float64        `json:"max_daily_loss"`
 	MaxDrawdown        float64        `json:"max_drawdown"`
