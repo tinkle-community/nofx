@@ -1,0 +1,30 @@
+{
+  "traders": [
+    {
+      "id": "qwen_trader",
+      "name": "Qwen AI Trader",
+      "ai_model": "qwen",
+      "binance_api_key": "YOUR_BINANCE_API_KEY_1",
+      "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_1",
+      "qwen_key": "YOUR_QWEN_API_KEY",
+      "initial_balance": 1000.0,
+      "scan_interval_minutes": 3
+    },
+    {
+      "id": "deepseek_trader",
+      "name": "DeepSeek AI Trader",
+      "ai_model": "deepseek",
+      "binance_api_key": "YOUR_BINANCE_API_KEY_2",
+      "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_2",
+      "deepseek_key": "YOUR_DEEPSEEK_API_KEY",
+      "initial_balance": 1000.0,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "coin_pool_api_url": "http://x.x.x.x:x/api/ai500/list?auth=",
+  "oi_top_api_url": "http://x.x.x.x:x/api/oi/top?auth=",
+  "api_server_port": 8080,
+  "max_daily_loss": 5.0,
+  "max_drawdown": 10.0,
+  "stop_trading_minutes": 30
+}

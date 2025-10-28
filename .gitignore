@@ -1,0 +1,29 @@
+# IDE 配置文件
+.idea/
+*.iml
+*.xml
+
+# 编译产物
+nofx-auto
+*.exe
+
+# Go 相关
+*.test
+*.out
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+*.tmp
+*.bak
+
+# 环境变量
+.env
+config.json
+
+# 决策日志
+decision_logs/
+coin_pool_cache/
