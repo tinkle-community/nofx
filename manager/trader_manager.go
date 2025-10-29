@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 	"nofx/config"
+	"nofx/featureflag"
 	"nofx/risk"
-	"nofx/runtimeflags"
 	"nofx/trader"
 	"sync"
 	"time"
@@ -15,16 +15,20 @@ import (
 type TraderManager struct {
 	traders      map[string]*trader.AutoTrader // key: trader ID
 	riskStore    *risk.Store
-	runtimeFlags *runtimeflags.Flags
+	featureFlags *featureflag.RuntimeFlags
 	mu           sync.RWMutex
 }
 
 // NewTraderManager 创建trader管理器
-func NewTraderManager() *TraderManager {
+func NewTraderManager(flags *featureflag.RuntimeFlags) *TraderManager {
+	if flags == nil {
+		flags = featureflag.NewRuntimeFlags(featureflag.State{})
+	}
+
 	return &TraderManager{
 		traders:      make(map[string]*trader.AutoTrader),
 		riskStore:    risk.NewStore(),
-		runtimeFlags: runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true}),
+		featureFlags: flags,
 	}
 }
 
@@ -64,10 +68,11 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
+		FeatureFlags:          tm.featureFlags,
 	}
 
 	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig, tm.riskStore, tm.runtimeFlags)
+	at, err := trader.NewAutoTrader(traderConfig, tm.riskStore, tm.featureFlags)
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
@@ -113,9 +118,9 @@ func (tm *TraderManager) GetTraderIDs() []string {
 	return ids
 }
 
-// RuntimeFlags 暴露运行时开关，供API动态修改。
-func (tm *TraderManager) RuntimeFlags() *runtimeflags.Flags {
-	return tm.runtimeFlags
+// FeatureFlags 暴露运行时特性开关，供API动态修改。
+func (tm *TraderManager) FeatureFlags() *featureflag.RuntimeFlags {
+	return tm.featureFlags
 }
 
 // StartAll 启动所有trader

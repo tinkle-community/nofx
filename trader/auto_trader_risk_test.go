@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"nofx/featureflag"
 	"nofx/risk"
-	"nofx/runtimeflags"
 )
 
 type fakeTrader struct{}
@@ -53,10 +53,13 @@ func (f *fakeTrader) FormatQuantity(_ string, quantity float64) (string, error) 
 	return fmt.Sprintf("%.4f", quantity), nil
 }
 
-func newTestAutoTrader(t *testing.T, flags *runtimeflags.Flags) *AutoTrader {
+func newTestAutoTrader(t *testing.T, flags *featureflag.RuntimeFlags) *AutoTrader {
 	t.Helper()
 	if flags == nil {
-		flags = runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true})
+		flags = featureflag.NewRuntimeFlags(featureflag.State{
+			EnableRiskEnforcement: true,
+			EnableMutexProtection: true,
+		})
 	}
 
 	cfg := AutoTraderConfig{
@@ -88,7 +91,7 @@ func newTestAutoTrader(t *testing.T, flags *runtimeflags.Flags) *AutoTrader {
 }
 
 func TestAutoTraderRiskEnforcement(t *testing.T) {
-	flags := runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true})
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true})
 	at := newTestAutoTrader(t, flags)
 
 	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
@@ -110,7 +113,7 @@ func TestAutoTraderRiskEnforcement(t *testing.T) {
 }
 
 func TestUpdateDailyPnLConcurrent(t *testing.T) {
-	flags := runtimeflags.New(runtimeflags.State{EnforceRiskLimits: false, UsePnLMutex: true, TradingEnabled: true})
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: false, EnableMutexProtection: true})
 	at := newTestAutoTrader(t, flags)
 
 	var wg sync.WaitGroup
@@ -137,7 +140,7 @@ func TestUpdateDailyPnLConcurrent(t *testing.T) {
 
 func TestRiskParameterAdjustments(t *testing.T) {
 	t.Run("tolerance increases", func(t *testing.T) {
-		at := newTestAutoTrader(t, runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true}))
+		at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true}))
 		params := at.riskEngine.Parameters()
 		params.MaxDailyLossPct *= 1.10
 		at.riskEngine.UpdateParameters(params)
@@ -153,7 +156,7 @@ func TestRiskParameterAdjustments(t *testing.T) {
 	})
 
 	t.Run("tolerance tightens", func(t *testing.T) {
-		at := newTestAutoTrader(t, runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true}))
+		at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true}))
 		params := at.riskEngine.Parameters()
 		params.MaxDailyLossPct *= 0.90
 		at.riskEngine.UpdateParameters(params)

@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"nofx/featureflag"
 	"nofx/metrics"
-	"nofx/runtimeflags"
 )
 
 // Engine evaluates risk state for a trader and coordinates pause/resume logic.
@@ -14,22 +14,18 @@ type Engine struct {
 	traderID       string
 	initialBalance float64
 	store          *Store
-	flags          *runtimeflags.Flags
+	flags          *featureflag.RuntimeFlags
 	params         atomic.Value // Parameters
 	nowFn          atomic.Pointer[func() time.Time]
 }
 
 // NewEngine wires a risk engine for a trader.
-func NewEngine(traderID string, initialBalance float64, params Parameters, store *Store, flags *runtimeflags.Flags) *Engine {
+func NewEngine(traderID string, initialBalance float64, params Parameters, store *Store, flags *featureflag.RuntimeFlags) *Engine {
 	if store == nil {
 		store = NewStore()
 	}
 	if flags == nil {
-		flags = runtimeflags.New(runtimeflags.State{
-			EnforceRiskLimits: true,
-			UsePnLMutex:       true,
-			TradingEnabled:    true,
-		})
+		flags = featureflag.NewRuntimeFlags(featureflag.State{})
 	}
 
 	e := &Engine{
@@ -153,7 +149,7 @@ func (e *Engine) Assess(equity float64) Decision {
 		decision.Reason += fmt.Sprintf("drawdown %.2f >= limit %.2f", drawdown, params.MaxDrawdownPct)
 	}
 
-	if decision.Breached && e.flags.EnforceRiskLimits() {
+	if decision.Breached && e.flags.RiskEnforcementEnabled() {
 		pausedUntil = start.Add(params.StopTradingFor)
 		snap := e.store.SetTradingPaused(e.traderID, true, pausedUntil, e.flags)
 		decision.TradingPaused = snap.TradingPaused

@@ -65,5 +65,11 @@
   "api_server_port": 8080,
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
-  "stop_trading_minutes": 60
+  "stop_trading_minutes": 60,
+  "feature_flags": {
+    "enable_guard_clauses": false,
+    "enable_mutex_protection": true,
+    "enable_persistence": false,
+    "enable_risk_enforcement": true
+  }
 }

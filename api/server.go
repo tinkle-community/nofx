@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"nofx/featureflag"
 	"nofx/manager"
-	"nofx/runtimeflags"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -130,13 +130,13 @@ func (s *Server) getTraderFromQuery(c *gin.Context) (*manager.TraderManager, str
 }
 
 func (s *Server) handleFeatureFlagsUpdate(c *gin.Context) {
-	var payload runtimeflags.Update
+	var payload featureflag.Update
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
-	state := s.traderManager.RuntimeFlags().Apply(payload)
+	state := s.traderManager.FeatureFlags().Apply(payload)
 	c.JSON(http.StatusOK, gin.H{"flags": state})
 }
 
