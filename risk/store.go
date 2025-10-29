@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"nofx/featureflag"
 	"nofx/metrics"
-	"nofx/runtimeflags"
 )
 
 type state struct {
@@ -88,15 +88,15 @@ func (s *Store) ensureState(traderID string, now time.Time) *state {
 	return st
 }
 
-func useMutex(flags *runtimeflags.Flags) bool {
+func useMutex(flags *featureflag.RuntimeFlags) bool {
 	if flags == nil {
 		return true
 	}
-	return flags.UsePnLMutex()
+	return flags.MutexProtectionEnabled()
 }
 
 // UpdateDailyPnL adjusts the tracked daily PnL and returns the latest value.
-func (s *Store) UpdateDailyPnL(traderID string, delta float64, flags *runtimeflags.Flags, now time.Time) float64 {
+func (s *Store) UpdateDailyPnL(traderID string, delta float64, flags *featureflag.RuntimeFlags, now time.Time) float64 {
 	st := s.ensureState(traderID, now)
 	use := useMutex(flags)
 	snapshot := st.mutate(use, func() {
@@ -115,13 +115,13 @@ func (s *Store) UpdateDailyPnL(traderID string, delta float64, flags *runtimefla
 	if !use {
 		metrics.IncRiskDataRaces(traderID)
 	}
-	s.persistSnapshot(traderID, snapshot)
+	s.persistSnapshot(traderID, snapshot, flags)
 	return snapshot.DailyPnL
 }
 
 // ResetDailyPnLIfNeeded resets the daily PnL when more than 24 hours elapsed
 // since the last reset. It returns true when a reset occurred.
-func (s *Store) ResetDailyPnLIfNeeded(traderID string, now time.Time, flags *runtimeflags.Flags) bool {
+func (s *Store) ResetDailyPnLIfNeeded(traderID string, now time.Time, flags *featureflag.RuntimeFlags) bool {
 	st := s.ensureState(traderID, now)
 	use := useMutex(flags)
 	reset := false
@@ -139,13 +139,13 @@ func (s *Store) ResetDailyPnLIfNeeded(traderID string, now time.Time, flags *run
 
 	if reset {
 		metrics.ObserveRiskDailyPnL(traderID, snapshot.DailyPnL)
-		s.persistSnapshot(traderID, snapshot)
+		s.persistSnapshot(traderID, snapshot, flags)
 	}
 	return reset
 }
 
 // RecordEquity updates the equity snapshot and returns the latest drawdown.
-func (s *Store) RecordEquity(traderID string, equity float64, flags *runtimeflags.Flags, now time.Time) float64 {
+func (s *Store) RecordEquity(traderID string, equity float64, flags *featureflag.RuntimeFlags, now time.Time) float64 {
 	st := s.ensureState(traderID, now)
 	use := useMutex(flags)
 	snapshot := st.mutate(use, func() {
@@ -165,12 +165,12 @@ func (s *Store) RecordEquity(traderID string, equity float64, flags *runtimeflag
 	})
 
 	metrics.ObserveRiskDrawdown(traderID, snapshot.DrawdownPct)
-	s.persistSnapshot(traderID, snapshot)
+	s.persistSnapshot(traderID, snapshot, flags)
 	return snapshot.DrawdownPct
 }
 
 // SetTradingPaused toggles the paused state and records metrics.
-func (s *Store) SetTradingPaused(traderID string, paused bool, until time.Time, flags *runtimeflags.Flags) Snapshot {
+func (s *Store) SetTradingPaused(traderID string, paused bool, until time.Time, flags *featureflag.RuntimeFlags) Snapshot {
 	st := s.ensureState(traderID, time.Now())
 	use := useMutex(flags)
 	snapshot := st.mutate(use, func() {
@@ -179,13 +179,13 @@ func (s *Store) SetTradingPaused(traderID string, paused bool, until time.Time, 
 	})
 
 	metrics.SetRiskTradingPaused(traderID, snapshot.TradingPaused)
-	s.persistSnapshot(traderID, snapshot)
+	s.persistSnapshot(traderID, snapshot, flags)
 	return snapshot
 }
 
 // TradingStatus returns whether trading is currently paused, and the deadline
 // if applicable. It also auto-resumes trading once the pause expires.
-func (s *Store) TradingStatus(traderID string, now time.Time, flags *runtimeflags.Flags) (bool, time.Time) {
+func (s *Store) TradingStatus(traderID string, now time.Time, flags *featureflag.RuntimeFlags) (bool, time.Time) {
 	st := s.ensureState(traderID, now)
 	use := useMutex(flags)
 	changed := false
@@ -199,7 +199,7 @@ func (s *Store) TradingStatus(traderID string, now time.Time, flags *runtimeflag
 
 	if changed {
 		metrics.SetRiskTradingPaused(traderID, false)
-		s.persistSnapshot(traderID, snapshot)
+		s.persistSnapshot(traderID, snapshot, flags)
 	}
 
 	paused := snapshot.TradingPaused && (snapshot.PausedUntil.IsZero() || now.Before(snapshot.PausedUntil))
@@ -207,13 +207,17 @@ func (s *Store) TradingStatus(traderID string, now time.Time, flags *runtimeflag
 }
 
 // Snapshot returns a copy of the current risk state.
-func (s *Store) Snapshot(traderID string, flags *runtimeflags.Flags) Snapshot {
+func (s *Store) Snapshot(traderID string, flags *featureflag.RuntimeFlags) Snapshot {
 	st := s.ensureState(traderID, time.Now())
 	use := useMutex(flags)
 	return st.view(use)
 }
 
-func (s *Store) persistSnapshot(traderID string, snapshot Snapshot) {
+func (s *Store) persistSnapshot(traderID string, snapshot Snapshot, flags *featureflag.RuntimeFlags) {
+	if flags != nil && !flags.PersistenceEnabled() {
+		return
+	}
+
 	start := time.Now()
 	if fn, ok := s.persist.Load().(PersistFunc); ok && fn != nil {
 		if err := fn(traderID, snapshot); err != nil {

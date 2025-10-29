@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"nofx/decision"
+	"nofx/featureflag"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/metrics"
 	"nofx/pool"
 	"nofx/risk"
-	"nofx/runtimeflags"
 )
 
 // TraderFactory allows tests to inject a deterministic trader implementation.
@@ -60,7 +60,8 @@ type AutoTraderConfig struct {
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
 	StopTradingTime time.Duration // 触发风控后暂停时长
 
-	TraderFactory TraderFactory `json:"-"`
+	FeatureFlags  *featureflag.RuntimeFlags `json:"-"`
+	TraderFactory TraderFactory             `json:"-"`
 }
 
 // AutoTrader 自动交易器
@@ -74,7 +75,7 @@ type AutoTrader struct {
 	decisionLogger        *logger.DecisionLogger // 决策日志记录器
 	riskEngine            *risk.Engine
 	riskStore             *risk.Store
-	runtimeFlags          *runtimeflags.Flags
+	featureFlags          *featureflag.RuntimeFlags
 	initialBalance        float64
 	dailyPnL              float64
 	lastResetTime         time.Time
@@ -86,7 +87,7 @@ type AutoTrader struct {
 }
 
 // NewAutoTrader 创建自动交易器
-func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *runtimeflags.Flags) (*AutoTrader, error) {
+func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featureflag.RuntimeFlags) (*AutoTrader, error) {
 	// 设置默认值
 	if config.ID == "" {
 		config.ID = "default_trader"
@@ -158,16 +159,16 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *runtimefla
 	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
+	if config.FeatureFlags != nil {
+		flags = config.FeatureFlags
+	}
 	if store == nil {
 		store = risk.NewStore()
 	}
 	if flags == nil {
-		flags = runtimeflags.New(runtimeflags.State{
-			EnforceRiskLimits: true,
-			UsePnLMutex:       true,
-			TradingEnabled:    true,
-		})
+		flags = featureflag.NewRuntimeFlags(featureflag.State{})
 	}
+	config.FeatureFlags = flags
 
 	riskParams := risk.Parameters{
 		MaxDailyLossPct: config.MaxDailyLoss,
@@ -192,7 +193,7 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *runtimefla
 		decisionLogger:        decisionLogger,
 		riskEngine:            riskEngine,
 		riskStore:             store,
-		runtimeFlags:          flags,
+		featureFlags:          flags,
 		initialBalance:        config.InitialBalance,
 		dailyPnL:              snapshot.DailyPnL,
 		lastResetTime:         lastReset,
@@ -250,14 +251,6 @@ func (at *AutoTrader) runCycle() error {
 	record := &logger.DecisionRecord{
 		ExecutionLog: []string{},
 		Success:      true,
-	}
-
-	if at.runtimeFlags != nil && !at.runtimeFlags.TradingEnabled() {
-		log.Printf("⏸ 运行时开关禁止交易")
-		record.Success = false
-		record.ErrorMessage = "运行时开关禁止交易"
-		at.decisionLogger.LogDecision(record)
-		return nil
 	}
 
 	now := time.Now()
@@ -626,6 +619,78 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 	}
 }
 
+func (at *AutoTrader) openPositionWithProtection(decision *decision.Decision, quantity float64) (map[string]interface{}, error) {
+	if decision == nil {
+		return nil, fmt.Errorf("decision cannot be nil")
+	}
+
+	var (
+		openFn func(string, float64, int) (map[string]interface{}, error)
+		side   string
+	)
+
+	switch decision.Action {
+	case "open_long":
+		openFn = at.trader.OpenLong
+		side = "LONG"
+	case "open_short":
+		openFn = at.trader.OpenShort
+		side = "SHORT"
+	default:
+		return nil, fmt.Errorf("unsupported action %s for openPositionWithProtection", decision.Action)
+	}
+
+	guardEnabled := at.featureFlags != nil && at.featureFlags.GuardClausesEnabled()
+
+	if !guardEnabled {
+		order, err := openFn(decision.Symbol, quantity, decision.Leverage)
+		if err != nil {
+			return nil, err
+		}
+		if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, decision.StopLoss); err != nil {
+			log.Printf("  ⚠ 设置止损失败: %v", err)
+			metrics.IncRiskStopLossFailures(at.id)
+		}
+		if decision.TakeProfit > 0 {
+			if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, decision.TakeProfit); err != nil {
+				log.Printf("  ⚠ 设置止盈失败: %v", err)
+			}
+		}
+		return order, nil
+	}
+
+	if decision.StopLoss <= 0 {
+		metrics.IncRiskStopLossFailures(at.id)
+		log.Printf("CRITICAL: Position opening blocked - missing stop-loss for %s", decision.Symbol)
+		return nil, fmt.Errorf("guard clauses require stop-loss for %s", decision.Symbol)
+	}
+
+	if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, decision.StopLoss); err != nil {
+		log.Printf("  ⚠ 设置止损失败: %v", err)
+		metrics.IncRiskStopLossFailures(at.id)
+		log.Printf("CRITICAL: Position opening blocked - stop-loss placement failed for %s: %v", decision.Symbol, err)
+		return nil, fmt.Errorf("stop-loss placement failed: %w", err)
+	}
+
+	if decision.TakeProfit > 0 {
+		if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, decision.TakeProfit); err != nil {
+			log.Printf("  ⚠ 设置止盈失败: %v", err)
+		}
+	}
+
+	order, err := openFn(decision.Symbol, quantity, decision.Leverage)
+	if err != nil {
+		log.Printf("  ⚠ 开仓失败，撤销预设保护: %v", err)
+		// Roll back the pre-set protective orders so we do not leave orphan stops on the exchange.
+		if cancelErr := at.trader.CancelAllOrders(decision.Symbol); cancelErr != nil {
+			log.Printf("  ⚠ 撤销预设订单失败: %v", cancelErr)
+		}
+		return nil, err
+	}
+
+	return order, nil
+}
+
 // executeOpenLongWithRecord 执行开多仓并记录详细信息
 func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📈 开多仓: %s", decision.Symbol)
@@ -651,8 +716,8 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
-	// 开仓
-	order, err := at.trader.OpenLong(decision.Symbol, quantity, decision.Leverage)
+	// 开仓并根据特性开关预设保护单
+	order, err := at.openPositionWithProtection(decision, quantity)
 	if err != nil {
 		return err
 	}
@@ -667,15 +732,6 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	// 记录开仓时间
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
-
-	// 设置止损止盈
-	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
-		log.Printf("  ⚠ 设置止损失败: %v", err)
-		metrics.IncRiskStopLossFailures(at.id)
-	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
-		log.Printf("  ⚠ 设置止盈失败: %v", err)
-	}
 
 	return nil
 }
@@ -705,8 +761,8 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
-	// 开仓
-	order, err := at.trader.OpenShort(decision.Symbol, quantity, decision.Leverage)
+	// 开仓并根据特性开关预设保护单
+	order, err := at.openPositionWithProtection(decision, quantity)
 	if err != nil {
 		return err
 	}
@@ -721,15 +777,6 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	// 记录开仓时间
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
-
-	// 设置止损止盈
-	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
-		log.Printf("  ⚠ 设置止损失败: %v", err)
-		metrics.IncRiskStopLossFailures(at.id)
-	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
-		log.Printf("  ⚠ 设置止盈失败: %v", err)
-	}
 
 	return nil
 }
