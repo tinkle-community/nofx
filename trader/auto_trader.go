@@ -58,6 +58,10 @@ type AutoTraderConfig struct {
 	BTCETHLeverage  int // BTC和ETH的杠杆倍数
 	AltcoinLeverage int // 山寨币的杠杆倍数
 
+	// 币种白名单配置
+	CoinWhitelistEnabled bool     // 是否启用币种白名单
+	CoinWhitelist        []string // 白名单币种列表
+
 	// 风险控制（仅作为提示，AI可自主决定）
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
@@ -532,6 +536,8 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		Positions:      positionInfos,
 		CandidateCoins: candidateCoins,
 		Performance:    performance, // 添加历史表现分析
+		CoinWhitelistEnabled: at.config.CoinWhitelistEnabled, // 币种白名单配置
+		CoinWhitelist:        at.config.CoinWhitelist,        // 币种白名单列表
 	}
 
 	return ctx, nil
@@ -755,6 +761,8 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
 		"stop_until":      at.stopUntil.Format(time.RFC3339),
 		"last_reset_time": at.lastResetTime.Format(time.RFC3339),
 		"ai_provider":     aiProvider,
+		"whitelist_enabled": at.config.CoinWhitelistEnabled,
+		"whitelist_coins":   at.config.CoinWhitelist,
 	}
 }
 

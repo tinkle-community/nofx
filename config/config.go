@@ -48,17 +48,24 @@ type LeverageConfig struct {
 	AltcoinLeverage int `json:"altcoin_leverage"`  // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
 }
 
+// CoinWhitelistConfig 币种白名单配置
+type CoinWhitelistConfig struct {
+	Enabled bool     `json:"enabled"` // 是否启用白名单
+	Coins   []string `json:"coins"`   // 白名单币种列表
+}
+
 // Config 总配置
 type Config struct {
-	Traders            []TraderConfig `json:"traders"`
-	UseDefaultCoins    bool           `json:"use_default_coins"`     // 是否使用默认主流币种列表
-	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
-	OITopAPIURL        string         `json:"oi_top_api_url"`
-	APIServerPort      int            `json:"api_server_port"`
-	MaxDailyLoss       float64        `json:"max_daily_loss"`
-	MaxDrawdown        float64        `json:"max_drawdown"`
-	StopTradingMinutes int            `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+	Traders            []TraderConfig      `json:"traders"`
+	UseDefaultCoins    bool                `json:"use_default_coins"`     // 是否使用默认主流币种列表
+	CoinPoolAPIURL     string              `json:"coin_pool_api_url"`
+	OITopAPIURL        string              `json:"oi_top_api_url"`
+	APIServerPort      int                 `json:"api_server_port"`
+	MaxDailyLoss       float64             `json:"max_daily_loss"`
+	MaxDrawdown        float64             `json:"max_drawdown"`
+	StopTradingMinutes int                 `json:"stop_trading_minutes"`
+	Leverage           LeverageConfig      `json:"leverage"`           // 杠杆配置
+	CoinWhitelist      CoinWhitelistConfig `json:"coin_whitelist"`     // 币种白名单配置
 }
 
 // LoadConfig 从文件加载配置
@@ -175,10 +182,29 @@ func (c *Config) Validate() error {
 		fmt.Printf("⚠️  警告: 山寨币杠杆设置为%dx，如果使用子账户可能会失败（子账户限制≤5x）\n", c.Leverage.AltcoinLeverage)
 	}
 
+	// 验证币种白名单配置
+	if c.CoinWhitelist.Enabled && len(c.CoinWhitelist.Coins) == 0 {
+		return fmt.Errorf("启用币种白名单时，必须配置至少一个币种")
+	}
+
 	return nil
 }
 
 // GetScanInterval 获取扫描间隔
 func (tc *TraderConfig) GetScanInterval() time.Duration {
 	return time.Duration(tc.ScanIntervalMinutes) * time.Minute
+}
+
+// IsCoinInWhitelist 检查币种是否在白名单中
+func (c *Config) IsCoinInWhitelist(coin string) bool {
+	if !c.CoinWhitelist.Enabled {
+		return true // 如果未启用白名单，则允许所有币种
+	}
+	
+	for _, whitelistCoin := range c.CoinWhitelist.Coins {
+		if whitelistCoin == coin {
+			return true
+		}
+	}
+	return false
 }

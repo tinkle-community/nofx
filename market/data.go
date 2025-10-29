@@ -23,6 +23,17 @@ type Data struct {
 	FundingRate       float64
 	IntradaySeries    *IntradayData
 	LongerTermContext *LongerTermData
+	OITopData         *OITopData // OI Top数据
+}
+
+// OITopData OI Top数据结构
+type OITopData struct {
+	Rank              int     `json:"rank"`
+	OIDeltaPercent    float64 `json:"oi_delta_percent"`
+	OIDeltaValue      float64 `json:"oi_delta_value"`
+	PriceDeltaPercent float64 `json:"price_delta_percent"`
+	NetLong           float64 `json:"net_long"`
+	NetShort          float64 `json:"net_short"`
 }
 
 // OIData Open Interest数据
@@ -468,6 +479,33 @@ func Format(data *Data) string {
 	}
 
 	sb.WriteString(fmt.Sprintf("Funding Rate: %.2e\n\n", data.FundingRate))
+
+	// 添加OI Top数据
+	if data.OITopData != nil {
+		sb.WriteString("OI Top Data (持仓量分析):\n\n")
+		
+		if data.OITopData.Rank > 0 {
+			sb.WriteString(fmt.Sprintf("Rank: #%d\n", data.OITopData.Rank))
+		}
+		
+		if data.OITopData.OIDeltaValue > 0 {
+			sb.WriteString(fmt.Sprintf("OI Value: %.2f\n", data.OITopData.OIDeltaValue))
+		}
+		
+		if data.OITopData.OIDeltaPercent != 0 {
+			sb.WriteString(fmt.Sprintf("OI Change: %.2f%%\n", data.OITopData.OIDeltaPercent))
+		}
+		
+		if data.OITopData.PriceDeltaPercent != 0 {
+			sb.WriteString(fmt.Sprintf("Price Change: %.2f%%\n", data.OITopData.PriceDeltaPercent))
+		}
+		
+		if data.OITopData.NetLong > 0 || data.OITopData.NetShort > 0 {
+			sb.WriteString(fmt.Sprintf("Net Long: %.2f | Net Short: %.2f\n", data.OITopData.NetLong, data.OITopData.NetShort))
+		}
+		
+		sb.WriteString("\n")
+	}
 
 	if data.IntradaySeries != nil {
 		sb.WriteString("Intraday series (3‑minute intervals, oldest → latest):\n\n")

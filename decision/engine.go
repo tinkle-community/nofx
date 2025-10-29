@@ -62,10 +62,12 @@ type Context struct {
 	Positions       []PositionInfo          `json:"positions"`
 	CandidateCoins  []CandidateCoin         `json:"candidate_coins"`
 	MarketDataMap   map[string]*market.Data `json:"-"` // 不序列化，但内部使用
-	OITopDataMap    map[string]*OITopData   `json:"-"` // OI Top数据映射
+	OITopDataMap    map[string]*market.OITopData   `json:"-"` // OI Top数据映射
 	Performance     interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
 	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
 	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	CoinWhitelistEnabled bool               `json:"-"` // 是否启用币种白名单
+	CoinWhitelist        []string           `json:"-"` // 币种白名单列表
 }
 
 // Decision AI的交易决策
@@ -97,7 +99,7 @@ func GetFullDecision(ctx *Context) (*FullDecision, error) {
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity)
+	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -120,7 +122,7 @@ func GetFullDecision(ctx *Context) (*FullDecision, error) {
 // fetchMarketDataForContext 为上下文中的所有币种获取市场数据和OI数据
 func fetchMarketDataForContext(ctx *Context) error {
 	ctx.MarketDataMap = make(map[string]*market.Data)
-	ctx.OITopDataMap = make(map[string]*OITopData)
+	ctx.OITopDataMap = make(map[string]*market.OITopData)
 
 	// 收集所有需要获取数据的币种
 	symbolSet := make(map[string]bool)
@@ -130,12 +132,21 @@ func fetchMarketDataForContext(ctx *Context) error {
 		symbolSet[pos.Symbol] = true
 	}
 
-	// 2. 候选币种数量根据账户状态动态调整
+	// 2. 候选币种数量根据账户状态动态调整，并应用白名单过滤
 	maxCandidates := calculateMaxCandidates(ctx)
 	for i, coin := range ctx.CandidateCoins {
 		if i >= maxCandidates {
 			break
 		}
+		
+		// 应用白名单过滤
+		if ctx.CoinWhitelistEnabled {
+			if !isCoinInWhitelist(coin.Symbol, ctx.CoinWhitelist) {
+				log.Printf("🚫 %s 不在白名单中，跳过", coin.Symbol)
+				continue
+			}
+		}
+		
 		symbolSet[coin.Symbol] = true
 	}
 
@@ -177,13 +188,54 @@ func fetchMarketDataForContext(ctx *Context) error {
 		for _, pos := range oiPositions {
 			// 标准化符号匹配
 			symbol := pos.Symbol
-			ctx.OITopDataMap[symbol] = &OITopData{
+			oiData := &market.OITopData{
 				Rank:              pos.Rank,
 				OIDeltaPercent:    pos.OIDeltaPercent,
 				OIDeltaValue:      pos.OIDeltaValue,
 				PriceDeltaPercent: pos.PriceDeltaPercent,
 				NetLong:           pos.NetLong,
 				NetShort:          pos.NetShort,
+			}
+			ctx.OITopDataMap[symbol] = oiData
+			
+			// 将OI Top数据添加到对应的MarketData中
+			if marketData, exists := ctx.MarketDataMap[symbol]; exists {
+				marketData.OITopData = oiData
+			}
+		}
+	}
+
+	// 加载Hyperliquid OI数据（不影响主流程）
+	hyperliquidOIPositions, err := pool.GetHyperliquidOIData()
+	if err == nil {
+		for _, pos := range hyperliquidOIPositions {
+			// 检查是否在白名单中
+			if ctx.CoinWhitelistEnabled {
+				if !isCoinInWhitelist(pos.Symbol, ctx.CoinWhitelist) {
+					continue
+				}
+			}
+			
+			// 添加到OI Top数据映射中（使用Hyperliquid数据）
+			// 将OI转换为USD：OI * 当前价格
+			oiValueUSD := pos.OI
+			if marketData, exists := ctx.MarketDataMap[pos.Symbol]; exists && marketData.CurrentPrice > 0 {
+				oiValueUSD = pos.OI * marketData.CurrentPrice
+			}
+			
+			oiData := &market.OITopData{
+				Rank:              0, // Hyperliquid数据没有排名
+				OIDeltaPercent:    0, // Hyperliquid数据没有变化百分比
+				OIDeltaValue:      oiValueUSD, // 使用转换为USD的OI值
+				PriceDeltaPercent: 0, // Hyperliquid数据没有价格变化
+				NetLong:           0, // Hyperliquid数据没有净多空
+				NetShort:          0,
+			}
+			ctx.OITopDataMap[pos.Symbol] = oiData
+			
+			// 将Hyperliquid OI数据添加到对应的MarketData中
+			if marketData, exists := ctx.MarketDataMap[pos.Symbol]; exists {
+				marketData.OITopData = oiData
 			}
 		}
 	}
@@ -199,8 +251,18 @@ func calculateMaxCandidates(ctx *Context) int {
 	return len(ctx.CandidateCoins)
 }
 
+// isCoinInWhitelist 检查币种是否在白名单中
+func isCoinInWhitelist(coin string, whitelist []string) bool {
+	for _, whitelistCoin := range whitelist {
+		if whitelistCoin == coin {
+			return true
+		}
+	}
+	return false
+}
+
 // buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
-func buildSystemPrompt(accountEquity float64) string {
+func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
 	var sb strings.Builder
 
 	// === 核心使命 ===
@@ -222,17 +284,24 @@ func buildSystemPrompt(accountEquity float64) string {
 	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
 	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. **最多持仓**: 3个币种（质量>数量）\n")
-	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(20x杠杆) | BTC/ETH %.0f-%.0f U(50x杠杆)\n",
-		accountEquity*0.8, accountEquity*1.5, accountEquity*5, accountEquity*10))
+	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
+		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
 
-	// === 做空激励 ===
-	sb.WriteString("# 📉 做多做空平衡\n\n")
-	sb.WriteString("**重要**: 下跌趋势做空的利润 = 上涨趋势做多的利润\n\n")
-	sb.WriteString("- 上涨趋势 → 做多\n")
-	sb.WriteString("- 下跌趋势 → 做空\n")
-	sb.WriteString("- 震荡市场 → 观望\n\n")
-	sb.WriteString("**不要有做多偏见！做空是你的核心工具之一**\n\n")
+	// === 交易哲学 & 最佳实践 ===
+	sb.WriteString("# 🎯 交易哲学 & 最佳实践\n\n")
+	sb.WriteString("## 核心原则：\n\n")
+	sb.WriteString("**资金保全第一**：保护资本比追求收益更重要\n\n")
+	sb.WriteString("**纪律胜于情绪**：执行你的退出方案，不随意移动止损或目标\n\n")
+	sb.WriteString("**质量优于数量**：少量高信念交易胜过大量低信念交易\n\n")
+	sb.WriteString("**适应波动性**：根据市场条件调整仓位\n\n")
+	sb.WriteString("**尊重趋势**：不要与强趋势作对\n\n")
+	sb.WriteString("## 常见误区避免：\n\n")
+	sb.WriteString("⚠️ **过度交易**：频繁交易导致费用侵蚀利润\n\n")
+	sb.WriteString("⚠️ **复仇式交易**：亏损后立即加码试图\"翻本\"\n\n")
+	sb.WriteString("⚠️ **分析瘫痪**：过度等待完美信号，导致失机\n\n")
+	sb.WriteString("⚠️ **忽视相关性**：BTC常引领山寨币，须优先观察BTC\n\n")
+	sb.WriteString("⚠️ **过度杠杆**：放大收益同时放大亏损\n\n")
 
 	// === 交易频率认知 ===
 	sb.WriteString("# ⏱️ 交易频率认知\n\n")
@@ -308,9 +377,16 @@ func buildSystemPrompt(accountEquity float64) string {
 	sb.WriteString("---\n\n")
 	sb.WriteString("**记住**: \n")
 	sb.WriteString("- 目标是夏普比率，不是交易频率\n")
-	sb.WriteString("- 做空 = 做多，都是赚钱工具\n")
+	// sb.WriteString("- 做空 = 做多，都是赚钱工具\n")
 	sb.WriteString("- 宁可错过，不做低质量交易\n")
 	sb.WriteString("- 风险回报比1:3是底线\n")
+
+	sb.WriteString("**最终指令**: \n")
+	sb.WriteString("- 仔细阅读整个用户 Prompt 后再进行决策\n")
+	sb.WriteString("- 核实你的头寸规模计算（双重检查数学）\n")
+	sb.WriteString("- 确保你的 JSON 输出合法且完整\n")
+	sb.WriteString("- 提供诚实的 confidence 分数（不要夸大信念）\n")
+	sb.WriteString("- 与你的退出方案保持一致（不要提前取消止损或目标）\n")
 
 	return sb.String()
 }
@@ -322,6 +398,14 @@ func buildUserPrompt(ctx *Context) string {
 	// 系统状态
 	sb.WriteString(fmt.Sprintf("**时间**: %s | **周期**: #%d | **运行**: %d分钟\n\n",
 		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
+	
+	// 白名单状态
+	if ctx.CoinWhitelistEnabled {
+		sb.WriteString(fmt.Sprintf("**币种白名单**: 已启用，仅交易以下%d个币种: %s\n\n",
+			len(ctx.CoinWhitelist), strings.Join(ctx.CoinWhitelist, ", ")))
+	} else {
+		sb.WriteString("**币种白名单**: 未启用，可交易所有币种\n\n")
+	}
 
 	// BTC 市场
 	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
@@ -387,6 +471,15 @@ func buildUserPrompt(ctx *Context) string {
 			sourceTags = " (AI500+OI_Top双重信号)"
 		} else if len(coin.Sources) == 1 && coin.Sources[0] == "oi_top" {
 			sourceTags = " (OI_Top持仓增长)"
+		}
+		
+		// 检查是否有Hyperliquid OI数据
+		if oiData, hasOIData := ctx.OITopDataMap[coin.Symbol]; hasOIData && oiData.OIDeltaValue > 0 {
+			if sourceTags == "" {
+				sourceTags = " (Hyperliquid OI数据)"
+			} else {
+				sourceTags += "+Hyperliquid OI"
+			}
 		}
 
 		// 使用FormatMarketData输出完整市场数据
