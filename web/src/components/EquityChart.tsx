@@ -80,8 +80,10 @@ export function EquityChart({ traderId }: EquityChartProps) {
     ? history.slice(-MAX_DISPLAY_POINTS)
     : history;
 
-  // 计算初始余额（使用第一个数据点）
-  const initialBalance = history[0]?.total_equity || 1000;
+  // 计算初始余额（使用第一个数据点，如果无数据则从account获取，最后才用默认值）
+  const initialBalance = history[0]?.total_equity
+    || account?.total_equity
+    || 100;  // 默认值改为100，与常见配置一致
 
   // 转换数据格式
   const chartData = displayHistory.map((point) => {
