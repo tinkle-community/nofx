@@ -13,6 +13,12 @@ An automated Binance futures trading system powered by **DeepSeek/Qwen AI**, sup
 
 > ⚠️ **Risk Warning**: This system is experimental. AI auto-trading carries significant risks. Strongly recommended for learning/research purposes or testing with small amounts only!
 
+## 👥 Developer Community
+
+Join our Telegram developer community to discuss, share ideas, and get support:
+
+**💬 [NOFX Developer Community](https://t.me/nofx_dev_community)**
+
 ---
 
 ## ✨ Core Features

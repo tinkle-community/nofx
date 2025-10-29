@@ -6,6 +6,8 @@
 # 编译产物
 nofx-auto
 *.exe
+nofx
+nofx_test
 
 # Go 相关
 *.test
@@ -28,3 +30,8 @@ config.json
 decision_logs/
 coin_pool_cache/
 nofx_test
+
+# Node.js
+node_modules/
+web/dist/
+web/.vite/
