@@ -3,32 +3,41 @@ package manager
 import (
 	"fmt"
 	"log"
-	"nofx/config"
-	"nofx/featureflag"
-	"nofx/risk"
-	"nofx/trader"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"nofx/config"
+	"nofx/featureflag"
+	"nofx/trader"
 )
 
 // TraderManager 管理多个trader实例
 type TraderManager struct {
 	traders      map[string]*trader.AutoTrader // key: trader ID
-	riskStore    *risk.Store
 	featureFlags *featureflag.RuntimeFlags
+	dataDir      string
 	mu           sync.RWMutex
 }
 
 // NewTraderManager 创建trader管理器
-func NewTraderManager(flags *featureflag.RuntimeFlags) *TraderManager {
+func NewTraderManager(dataDir string, flags *featureflag.RuntimeFlags) *TraderManager {
 	if flags == nil {
 		flags = featureflag.NewRuntimeFlags(featureflag.State{})
 	}
 
+	if dataDir != "" {
+		if err := os.MkdirAll(dataDir, 0o755); err != nil {
+			log.Printf("WARN: 创建持久化目录失败 %s: %v", dataDir, err)
+			dataDir = ""
+		}
+	}
+
 	return &TraderManager{
 		traders:      make(map[string]*trader.AutoTrader),
-		riskStore:    risk.NewStore(),
 		featureFlags: flags,
+		dataDir:      dataDir,
 	}
 }
 
@@ -66,7 +75,17 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 	}
 
 	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig, tm.riskStore, tm.featureFlags)
+	var (
+		at  *trader.AutoTrader
+		err error
+	)
+
+	if tm.dataDir != "" {
+		dbPath := filepath.Join(tm.dataDir, cfg.ID+".db")
+		at, err = trader.NewAutoTraderWithPersistence(traderConfig, dbPath, tm.featureFlags)
+	} else {
+		at, err = trader.NewAutoTrader(traderConfig, nil, tm.featureFlags)
+	}
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}

@@ -2,12 +2,12 @@ package trader
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"nofx/featureflag"
-	"nofx/risk"
 )
 
 type fakeTrader struct{}
@@ -82,8 +82,7 @@ func newTestAutoTrader(t *testing.T, flags *featureflag.RuntimeFlags) *AutoTrade
 		},
 	}
 
-	store := risk.NewStore()
-	at, err := NewAutoTrader(cfg, store, flags)
+	at, err := NewAutoTrader(cfg, nil, flags)
 	if err != nil {
 		t.Fatalf("failed to create auto trader: %v", err)
 	}
@@ -95,20 +94,38 @@ func TestAutoTraderRiskEnforcement(t *testing.T) {
 	at := newTestAutoTrader(t, flags)
 
 	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
-	loss := baselineLoss + 25
+	loss := baselineLoss + 50
 	at.UpdateDailyPnL(-loss)
 
-	riskDecision := at.riskEngine.Assess(at.initialBalance - loss)
-	if !riskDecision.TradingPaused {
-		t.Fatalf("expected trading to pause after breaching risk limits")
+	ok, reason := at.CanTrade()
+	if ok {
+		t.Fatalf("expected trading to be halted after breaching limits")
+	}
+	if reason == "" {
+		t.Fatalf("expected reason for trading pause")
 	}
 
-	paused, until := at.riskEngine.TradingStatus()
-	if !paused {
-		t.Fatalf("risk engine should report trading paused")
+	stopUntil := at.GetStopUntil()
+	if stopUntil.IsZero() || !stopUntil.After(time.Now()) {
+		t.Fatalf("expected future stop deadline")
 	}
-	if until.IsZero() {
-		t.Fatalf("expected non-zero pause deadline")
+
+	// Subsequent checks should remain paused until the deadline expires.
+	if ok, _ := at.CanTrade(); ok {
+		t.Fatalf("expected trading to remain paused while stopUntil is in the future")
+	}
+}
+
+func TestAutoTraderRiskEnforcementDisabled(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: false, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+
+	// Exceed the nominal loss limit but expect trading to remain allowed.
+	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
+	at.UpdateDailyPnL(-(baselineLoss * 2))
+
+	if ok, reason := at.CanTrade(); !ok {
+		t.Fatalf("expected trading to remain allowed when enforcement is disabled, reason: %s", reason)
 	}
 }
 
@@ -131,43 +148,110 @@ func TestUpdateDailyPnLConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	snapshot := at.riskEngine.Snapshot()
 	expected := float64(workers * iterations)
-	if snapshot.DailyPnL != expected {
-		t.Fatalf("expected daily pnl %.0f, got %.0f", expected, snapshot.DailyPnL)
+	if got := at.GetDailyPnL(); got != expected {
+		t.Fatalf("expected daily pnl %.0f, got %.0f", expected, got)
 	}
 }
 
 func TestRiskParameterAdjustments(t *testing.T) {
 	t.Run("tolerance increases", func(t *testing.T) {
 		at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true}))
-		params := at.riskEngine.Parameters()
-		params.MaxDailyLossPct *= 1.10
-		at.riskEngine.UpdateParameters(params)
+		limits := at.riskEngine.Limits()
+		limits.MaxDailyLoss *= 1.10
+		at.riskEngine.UpdateLimits(limits)
 
-		baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
-		loss := baselineLoss * 1.05
-		at.UpdateDailyPnL(-loss)
+		safeLoss := limits.MaxDailyLoss * 0.95
+		at.UpdateDailyPnL(-safeLoss)
 
-		decision := at.riskEngine.Assess(at.initialBalance - loss)
-		if decision.TradingPaused {
-			t.Fatalf("expected trading to remain active after loosening limits")
+		if ok, reason := at.CanTrade(); !ok {
+			t.Fatalf("expected trading to remain active after loosening limits, got reason: %s", reason)
 		}
 	})
 
 	t.Run("tolerance tightens", func(t *testing.T) {
 		at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true}))
-		params := at.riskEngine.Parameters()
-		params.MaxDailyLossPct *= 0.90
-		at.riskEngine.UpdateParameters(params)
+		limits := at.riskEngine.Limits()
+		limits.MaxDailyLoss *= 0.90
+		at.riskEngine.UpdateLimits(limits)
 
-		baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
-		loss := baselineLoss * 0.95
-		at.UpdateDailyPnL(-loss)
+		breachLoss := limits.MaxDailyLoss * 1.05
+		at.UpdateDailyPnL(-breachLoss)
 
-		decision := at.riskEngine.Assess(at.initialBalance - loss)
-		if !decision.TradingPaused {
-			t.Fatalf("expected trading pause after tightening limits")
+		if ok, reason := at.CanTrade(); ok {
+			t.Fatalf("expected trading pause after tightening limits, reason: %s", reason)
 		}
 	})
+}
+
+func TestAutoTraderStopUntilGuard(t *testing.T) {
+	at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: false, EnableMutexProtection: true}))
+
+	future := time.Now().Add(5 * time.Minute)
+	at.SetStopUntil(future)
+
+	if ok, _ := at.CanTrade(); ok {
+		t.Fatalf("expected trading to be paused when stopUntil is set in the future")
+	}
+
+	at.SetStopUntil(time.Now().Add(-time.Minute))
+
+	if ok, reason := at.CanTrade(); !ok {
+		t.Fatalf("expected trading to resume after stop elapsed, reason: %s", reason)
+	}
+}
+
+func TestAutoTraderPersistenceRecovery(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "risk.db")
+
+	flags := featureflag.NewRuntimeFlags(featureflag.State{
+		EnablePersistence:     true,
+		EnableRiskEnforcement: true,
+		EnableMutexProtection: true,
+	})
+
+	cfg := AutoTraderConfig{
+		ID:              "persist-test",
+		Name:            "Persist Test",
+		AIModel:         "deepseek",
+		Exchange:        "binance",
+		DeepSeekKey:     "test-key",
+		ScanInterval:    time.Second,
+		InitialBalance:  500.0,
+		MaxDailyLoss:    5.0,
+		MaxDrawdown:     10.0,
+		StopTradingTime: time.Minute,
+		TraderFactory: func(AutoTraderConfig) (Trader, error) {
+			return newFakeTrader(), nil
+		},
+	}
+
+	at, err := NewAutoTraderWithPersistence(cfg, dbPath, flags)
+	if err != nil {
+		t.Fatalf("failed to create persisted auto trader: %v", err)
+	}
+
+	at.UpdateDailyPnL(42)
+	pauseUntil := time.Now().Add(10 * time.Minute).UTC().Round(time.Second)
+	at.SetStopUntil(pauseUntil)
+	at.Stop()
+
+	restored, err := NewAutoTraderWithPersistence(cfg, dbPath, flags)
+	if err != nil {
+		t.Fatalf("failed to restore auto trader: %v", err)
+	}
+	defer restored.Stop()
+
+	if got := restored.GetDailyPnL(); got != 42 {
+		t.Fatalf("expected daily pnl 42, got %.2f", got)
+	}
+
+	restoredStop := restored.GetStopUntil()
+	if restoredStop.IsZero() {
+		t.Fatalf("expected non-zero stop until after recovery")
+	}
+	if !restoredStop.Equal(pauseUntil) {
+		t.Fatalf("expected stop until %s, got %s", pauseUntil, restoredStop)
+	}
 }

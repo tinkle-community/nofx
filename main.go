@@ -54,7 +54,8 @@ func main() {
 	}
 
 	// 创建TraderManager
-	traderManager := manager.NewTraderManager(runtimeFlags)
+	dataDir := "data"
+	traderManager := manager.NewTraderManager(dataDir, runtimeFlags)
 
 	// 添加所有trader
 	for i, traderCfg := range cfg.Traders {

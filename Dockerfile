@@ -8,6 +8,7 @@ RUN apk add --no-cache \
     gcc \
     g++ \
     musl-dev \
+    sqlite-dev \
     wget \
     tar
 
@@ -65,7 +66,9 @@ RUN apk add --no-cache \
     make \
     gcc \
     g++ \
-    musl-dev
+    musl-dev \
+    sqlite \
+    sqlite-libs
 
 # Install TA-Lib runtime
 RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
@@ -89,7 +92,7 @@ COPY --from=backend-builder /app/nofx .
 COPY --from=frontend-builder /app/web/dist ./web/dist
 
 # Create directories for logs and data
-RUN mkdir -p /app/decision_logs
+RUN mkdir -p /app/decision_logs /app/data
 
 # Expose ports
 # 8080 for backend API

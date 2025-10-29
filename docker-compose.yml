@@ -13,6 +13,7 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./decision_logs:/app/decision_logs
+      - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro  # 同步主机时间
     environment:
       - TZ=Asia/Shanghai  # 使用中国时区

@@ -34,6 +34,11 @@ var (
 		Help: "risk.stop_loss_failures – failed attempts to place/update stop loss orders",
 	}, []string{"trader_id"})
 
+	riskPersistenceAttemptsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "risk_persistence_attempts_total",
+		Help: "risk.persistence_attempts – attempts to persist risk state",
+	}, []string{"trader_id"})
+
 	riskPersistenceFailuresCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "risk_persistence_failures_total",
 		Help: "risk.persistence_failures – errors persisting risk state",
@@ -62,6 +67,7 @@ func init() {
 		riskTradingPausedGauge,
 		riskLimitBreachesCounter,
 		riskStopLossFailuresCounter,
+		riskPersistenceAttemptsCounter,
 		riskPersistenceFailuresCounter,
 		riskDataRacesCounter,
 		riskCheckLatencyGauge,
@@ -91,6 +97,10 @@ func IncRiskLimitBreaches(traderID string) {
 
 func IncRiskStopLossFailures(traderID string) {
 	riskStopLossFailuresCounter.WithLabelValues(traderID).Inc()
+}
+
+func IncRiskPersistenceAttempts(traderID string) {
+	riskPersistenceAttemptsCounter.WithLabelValues(traderID).Inc()
 }
 
 func IncRiskPersistenceFailures(traderID string) {

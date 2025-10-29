@@ -29,6 +29,7 @@ config.json
 # 决策日志
 decision_logs/
 coin_pool_cache/
+data/
 nofx_test
 
 # Node.js

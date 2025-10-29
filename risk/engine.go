@@ -2,6 +2,7 @@ package risk
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -9,38 +10,46 @@ import (
 	"nofx/metrics"
 )
 
-// Engine evaluates risk state for a trader and coordinates pause/resume logic.
-type Engine struct {
-	traderID       string
-	initialBalance float64
-	store          *Store
-	flags          *featureflag.RuntimeFlags
-	params         atomic.Value // Parameters
-	nowFn          atomic.Pointer[func() time.Time]
+// Limits defines the guard rails enforced by the risk engine.
+type Limits struct {
+	MaxDailyLoss       float64
+	MaxDrawdown        float64
+	StopTradingMinutes int
 }
 
-// NewEngine wires a risk engine for a trader.
-func NewEngine(traderID string, initialBalance float64, params Parameters, store *Store, flags *featureflag.RuntimeFlags) *Engine {
-	if store == nil {
-		store = NewStore()
-	}
+// State captures the input required to assess risk limits.
+type State struct {
+	DailyPnL       float64
+	PeakBalance    float64
+	CurrentBalance float64
+	LastResetTime  time.Time
+}
+
+// Engine evaluates risk state for a trader and returns breach decisions.
+type Engine struct {
+	traderID string
+	limits   atomic.Value // Limits
+	flags    *featureflag.RuntimeFlags
+	nowFn    atomic.Pointer[func() time.Time]
+}
+
+// NewEngine wires a risk engine for the provided trader identifier.
+func NewEngine(traderID string, limits Limits, flags *featureflag.RuntimeFlags) *Engine {
 	if flags == nil {
 		flags = featureflag.NewRuntimeFlags(featureflag.State{})
 	}
 
 	e := &Engine{
-		traderID:       traderID,
-		initialBalance: initialBalance,
-		store:          store,
-		flags:          flags,
+		traderID: traderID,
+		flags:    flags,
 	}
-	e.params.Store(normalizeParameters(params))
+	e.limits.Store(normalizeLimits(limits))
 	now := time.Now
 	e.nowFn.Store(&now)
 	return e
 }
 
-// SetNowFn overrides the time provider (useful for tests).
+// SetNowFn overrides the time provider (useful for deterministic tests).
 func (e *Engine) SetNowFn(fn func() time.Time) {
 	if fn == nil {
 		now := time.Now
@@ -57,106 +66,84 @@ func (e *Engine) now() time.Time {
 	return time.Now()
 }
 
-func normalizeParameters(p Parameters) Parameters {
-	if p.StopTradingFor <= 0 {
-		p.StopTradingFor = 30 * time.Minute
+// UpdateLimits swaps the enforced limits at runtime.
+func (e *Engine) UpdateLimits(l Limits) {
+	if e == nil {
+		return
 	}
-	if p.MaxDailyLossPct < 0 {
-		p.MaxDailyLossPct = 0
+	e.limits.Store(normalizeLimits(l))
+}
+
+// Limits exposes the currently enforced guard rails.
+func (e *Engine) Limits() Limits {
+	if e == nil {
+		return Limits{}
 	}
-	if p.MaxDrawdownPct < 0 {
-		p.MaxDrawdownPct = 0
+	if value := e.limits.Load(); value != nil {
+		return value.(Limits)
 	}
-	return p
+	return Limits{}
 }
 
-// Parameters returns the current guard rails.
-func (e *Engine) Parameters() Parameters {
-	return e.params.Load().(Parameters)
+// CheckLimits evaluates the supplied risk state against the configured limits.
+// It returns true when trading may continue alongside an optional explanatory
+// string when limits are breached.
+func (e *Engine) CheckLimits(state State) (bool, string) {
+	if e == nil {
+		return true, ""
+	}
+
+	start := e.now()
+	limits := e.Limits()
+	var reasons []string
+
+	if limits.MaxDailyLoss > 0 && state.DailyPnL <= -limits.MaxDailyLoss {
+		reasons = append(reasons, fmt.Sprintf("daily pnl %.2f below limit %.2f", state.DailyPnL, -limits.MaxDailyLoss))
+	}
+
+	if limits.MaxDrawdown > 0 && state.PeakBalance > 0 {
+		drawdown := (state.PeakBalance - state.CurrentBalance) / state.PeakBalance * 100
+		if drawdown < 0 {
+			drawdown = 0
+		}
+		if drawdown >= limits.MaxDrawdown {
+			reasons = append(reasons, fmt.Sprintf("drawdown %.2f%% exceeds limit %.2f%%", drawdown, limits.MaxDrawdown))
+		}
+		if e.traderID != "" {
+			metrics.ObserveRiskDrawdown(e.traderID, drawdown)
+		}
+	}
+
+	defer metrics.ObserveRiskCheckLatency(e.traderID, e.now().Sub(start))
+
+	if len(reasons) == 0 {
+		return true, ""
+	}
+
+	return false, strings.Join(reasons, "; ")
 }
 
-// UpdateParameters swaps the guard rails at runtime.
-func (e *Engine) UpdateParameters(p Parameters) {
-	e.params.Store(normalizeParameters(p))
-}
-
-// Snapshot exposes the latest risk state.
-func (e *Engine) Snapshot() Snapshot {
-	return e.store.Snapshot(e.traderID, e.flags)
-}
-
-// UpdateDailyPnL updates the tracked daily PnL and returns the new value.
-func (e *Engine) UpdateDailyPnL(delta float64) float64 {
-	return e.store.UpdateDailyPnL(e.traderID, delta, e.flags, e.now())
-}
-
-// ResetDailyPnLIfNeeded resets the daily PnL if a 24h window elapsed.
-func (e *Engine) ResetDailyPnLIfNeeded() bool {
-	return e.store.ResetDailyPnLIfNeeded(e.traderID, e.now(), e.flags)
-}
-
-// RecordEquity updates the stored equity snapshot.
-func (e *Engine) RecordEquity(equity float64) float64 {
-	return e.store.RecordEquity(e.traderID, equity, e.flags, e.now())
-}
-
-// TradingStatus reports whether trading is paused alongside the deadline.
-func (e *Engine) TradingStatus() (bool, time.Time) {
-	return e.store.TradingStatus(e.traderID, e.now(), e.flags)
-}
-
-func (e *Engine) allowedDailyLoss(p Parameters) float64 {
-	if p.MaxDailyLossPct <= 0 || e.initialBalance <= 0 {
+// CalculateStopDuration converts the configured stop minutes into a duration.
+func (e *Engine) CalculateStopDuration() time.Duration {
+	if e == nil {
 		return 0
 	}
-	return e.initialBalance * p.MaxDailyLossPct / 100
+	limits := e.Limits()
+	if limits.StopTradingMinutes <= 0 {
+		return 0
+	}
+	return time.Duration(limits.StopTradingMinutes) * time.Minute
 }
 
-// Assess evaluates the current risk state using the latest equity snapshot.
-func (e *Engine) Assess(equity float64) Decision {
-	start := e.now()
-	params := e.Parameters()
-
-	drawdown := e.store.RecordEquity(e.traderID, equity, e.flags, start)
-	snapshot := e.store.Snapshot(e.traderID, e.flags)
-
-	decision := Decision{
-		DrawdownPct: snapshot.DrawdownPct,
-		DailyPnL:    snapshot.DailyPnL,
+func normalizeLimits(l Limits) Limits {
+	if l.MaxDailyLoss < 0 {
+		l.MaxDailyLoss = 0
 	}
-
-	paused, pausedUntil := e.store.TradingStatus(e.traderID, start, e.flags)
-	decision.TradingPaused = paused
-	decision.PausedUntil = pausedUntil
-
-	// If we are already paused and the window has not elapsed, skip re-evaluation.
-	if paused && (pausedUntil.IsZero() || start.Before(pausedUntil)) {
-		metrics.ObserveRiskCheckLatency(e.traderID, time.Since(start))
-		return decision
+	if l.MaxDrawdown < 0 {
+		l.MaxDrawdown = 0
 	}
-
-	allowedLoss := e.allowedDailyLoss(params)
-	if allowedLoss > 0 && snapshot.DailyPnL <= -allowedLoss {
-		decision.Breached = true
-		decision.Reason = fmt.Sprintf("daily pnl %.2f <= limit -%.2f", snapshot.DailyPnL, allowedLoss)
+	if l.StopTradingMinutes <= 0 {
+		l.StopTradingMinutes = 30
 	}
-
-	if params.MaxDrawdownPct > 0 && drawdown >= params.MaxDrawdownPct {
-		decision.Breached = true
-		if decision.Reason != "" {
-			decision.Reason += "; "
-		}
-		decision.Reason += fmt.Sprintf("drawdown %.2f >= limit %.2f", drawdown, params.MaxDrawdownPct)
-	}
-
-	if decision.Breached && e.flags.RiskEnforcementEnabled() {
-		pausedUntil = start.Add(params.StopTradingFor)
-		snap := e.store.SetTradingPaused(e.traderID, true, pausedUntil, e.flags)
-		decision.TradingPaused = snap.TradingPaused
-		decision.PausedUntil = snap.PausedUntil
-		metrics.IncRiskLimitBreaches(e.traderID)
-	}
-
-	metrics.ObserveRiskCheckLatency(e.traderID, time.Since(start))
-	return decision
+	return l
 }
