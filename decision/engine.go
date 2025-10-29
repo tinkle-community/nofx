@@ -60,7 +60,7 @@ type Context struct {
 	Account        AccountInfo             `json:"account"`
 	Positions      []PositionInfo          `json:"positions"`
 	CandidateCoins []CandidateCoin         `json:"candidate_coins"`
-	MarketDataMap  map[string]*market.Data `json:"-"` // 不序列化，但内部使用
+	MarketDataMap  map[string]*market.MarketData `json:"-"` // 不序列化，但内部使用
 	OITopDataMap   map[string]*OITopData   `json:"-"` // OI Top数据映射
 	Performance    interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
 }
@@ -116,7 +116,7 @@ func GetFullDecision(ctx *Context) (*FullDecision, error) {
 
 // fetchMarketDataForContext 为上下文中的所有币种获取市场数据和OI数据
 func fetchMarketDataForContext(ctx *Context) error {
-	ctx.MarketDataMap = make(map[string]*market.Data)
+	ctx.MarketDataMap = make(map[string]*market.MarketData)
 	ctx.OITopDataMap = make(map[string]*OITopData)
 
 	// 收集所有需要获取数据的币种
@@ -144,7 +144,7 @@ func fetchMarketDataForContext(ctx *Context) error {
 	}
 
 	for symbol := range symbolSet {
-		data, err := market.Get(symbol)
+		data, err := market.GetMarketData(symbol)
 		if err != nil {
 			// 单个币种失败不影响整体，只记录错误
 			continue
@@ -287,7 +287,7 @@ func buildUserPrompt(ctx *Context) string {
 
 			// 使用FormatMarketData输出完整市场数据
 			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
-				sb.WriteString(market.Format(marketData))
+				sb.WriteString(market.FormatMarketData(marketData))
 				sb.WriteString("\n")
 			}
 		}
@@ -314,7 +314,7 @@ func buildUserPrompt(ctx *Context) string {
 
 		// 使用FormatMarketData输出完整市场数据
 		sb.WriteString(fmt.Sprintf("### %d. %s%s\n\n", displayedCount, coin.Symbol, sourceTags))
-		sb.WriteString(market.Format(marketData))
+		sb.WriteString(market.FormatMarketData(marketData))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
