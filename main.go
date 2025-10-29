@@ -7,6 +7,7 @@ import (
 	"nofx/config"
 	"nofx/featureflag"
 	"nofx/manager"
+	"nofx/metrics"
 	"nofx/pool"
 	"os"
 	"os/signal"
@@ -36,6 +37,15 @@ func main() {
 	fmt.Println()
 
 	runtimeFlags := featureflag.NewRuntimeFlags(cfg.FeatureFlags)
+
+	flagsSnapshot := runtimeFlags.Snapshot()
+	log.Printf("🧩 Feature flags: guarded_stop_loss=%t, mutex_protection=%t, persistence=%t, risk_enforcement=%t",
+		flagsSnapshot.EnableGuardedStopLoss,
+		flagsSnapshot.EnableMutexProtection,
+		flagsSnapshot.EnablePersistence,
+		flagsSnapshot.EnableRiskEnforcement,
+	)
+	metrics.SetFeatureFlags(flagsSnapshot.Map())
 
 	// 设置是否使用默认主流币种
 	pool.SetUseDefaultCoins(cfg.UseDefaultCoins)

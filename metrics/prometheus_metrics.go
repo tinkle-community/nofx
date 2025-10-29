@@ -53,6 +53,11 @@ var (
 		Name: "risk_persist_latency_ms",
 		Help: "risk.persist_latency_ms – time spent persisting risk state",
 	}, []string{"trader_id"})
+
+	featureFlagGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "feature_flag_state",
+		Help: "feature.flag_state – current value of runtime feature flags",
+	}, []string{"flag"})
 )
 
 func init() {
@@ -66,6 +71,7 @@ func init() {
 		riskDataRacesCounter,
 		riskCheckLatencyGauge,
 		riskPersistLatencyGauge,
+		featureFlagGauge,
 	)
 }
 
@@ -107,4 +113,18 @@ func ObserveRiskCheckLatency(traderID string, duration time.Duration) {
 
 func ObserveRiskPersistLatency(traderID string, duration time.Duration) {
 	riskPersistLatencyGauge.WithLabelValues(traderID).Set(duration.Seconds() * 1000)
+}
+
+func SetFeatureFlag(flag string, enabled bool) {
+	if enabled {
+		featureFlagGauge.WithLabelValues(flag).Set(1)
+		return
+	}
+	featureFlagGauge.WithLabelValues(flag).Set(0)
+}
+
+func SetFeatureFlags(flags map[string]bool) {
+	for name, value := range flags {
+		SetFeatureFlag(name, value)
+	}
 }

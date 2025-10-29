@@ -22,7 +22,7 @@ type TraderManager struct {
 // NewTraderManager 创建trader管理器
 func NewTraderManager(flags *featureflag.RuntimeFlags) *TraderManager {
 	if flags == nil {
-		flags = featureflag.NewRuntimeFlags(featureflag.State{})
+		flags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
 	}
 
 	return &TraderManager{
