@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"nofx/config"
+	"nofx/risk"
+	"nofx/runtimeflags"
 	"nofx/trader"
 	"sync"
 	"time"
@@ -11,14 +13,18 @@ import (
 
 // TraderManager 管理多个trader实例
 type TraderManager struct {
-	traders map[string]*trader.AutoTrader // key: trader ID
-	mu      sync.RWMutex
+	traders      map[string]*trader.AutoTrader // key: trader ID
+	riskStore    *risk.Store
+	runtimeFlags *runtimeflags.Flags
+	mu           sync.RWMutex
 }
 
 // NewTraderManager 创建trader管理器
 func NewTraderManager() *TraderManager {
 	return &TraderManager{
-		traders: make(map[string]*trader.AutoTrader),
+		traders:      make(map[string]*trader.AutoTrader),
+		riskStore:    risk.NewStore(),
+		runtimeFlags: runtimeflags.New(runtimeflags.State{EnforceRiskLimits: true, UsePnLMutex: true, TradingEnabled: true}),
 	}
 }
 
@@ -61,7 +67,7 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 	}
 
 	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig)
+	at, err := trader.NewAutoTrader(traderConfig, tm.riskStore, tm.runtimeFlags)
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
@@ -105,6 +111,11 @@ func (tm *TraderManager) GetTraderIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// RuntimeFlags 暴露运行时开关，供API动态修改。
+func (tm *TraderManager) RuntimeFlags() *runtimeflags.Flags {
+	return tm.runtimeFlags
 }
 
 // StartAll 启动所有trader
