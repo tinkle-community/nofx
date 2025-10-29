@@ -5,6 +5,7 @@ import (
 	"log"
 	"nofx/api"
 	"nofx/config"
+	"nofx/featureflag"
 	"nofx/manager"
 	"nofx/pool"
 	"os"
@@ -34,6 +35,8 @@ func main() {
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))
 	fmt.Println()
 
+	runtimeFlags := featureflag.NewRuntimeFlags(cfg.FeatureFlags)
+
 	// 设置是否使用默认主流币种
 	pool.SetUseDefaultCoins(cfg.UseDefaultCoins)
 	if cfg.UseDefaultCoins {
@@ -51,7 +54,7 @@ func main() {
 	}
 
 	// 创建TraderManager
-	traderManager := manager.NewTraderManager()
+	traderManager := manager.NewTraderManager(runtimeFlags)
 
 	// 添加所有trader
 	for i, traderCfg := range cfg.Traders {
