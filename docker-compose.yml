@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nofx-api:latest
+    container_name: nofx-api
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    # 将宿主机的配置文件挂载到容器
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./decision_logs:/app/decision_logs
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # 前端在构建期注入 API 地址，直接调用后端，不需要 Nginx 反代
+        VITE_API_BASE: http://localhost:8080/api
+    image: nofx-web:latest
+    container_name: nofx-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+

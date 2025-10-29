@@ -8,7 +8,9 @@ import type {
   CompetitionData,
 } from '../types';
 
-const API_BASE = '/api';
+// 从环境变量读取后端 API 基地址，默认为 '/api'
+// Vite 会将 VITE_ 开头的环境变量注入到 import.meta.env
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 export const api = {
   // 竞赛相关接口
