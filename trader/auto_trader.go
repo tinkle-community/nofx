@@ -5,6 +5,8 @@ import (
     "fmt"
     "log"
     "strings"
+    "sync"
+    "sync/atomic"
     "time"
 
     "nofx/decision"
@@ -86,6 +88,9 @@ type AutoTrader struct {
     riskEngine            *risk.Engine
     riskStore             *risk.Store
     featureFlags          *featureflag.RuntimeFlags
+    stateMu               sync.RWMutex
+    mutexEnabledCache     atomic.Bool
+    mutexDisabledCache    atomic.Bool
     initialBalance        float64
     dailyPnL              float64
     lastResetTime         time.Time
@@ -205,7 +210,7 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
         lastReset = time.Now()
     }
 
-    return &AutoTrader{
+    at := &AutoTrader{
         id:                    config.ID,
         name:                  config.Name,
         aiModel:               config.AIModel,
@@ -217,19 +222,22 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
         riskStore:             store,
         featureFlags:          flags,
         initialBalance:        config.InitialBalance,
-        dailyPnL:              snapshot.DailyPnL,
-        lastResetTime:         lastReset,
-        stopUntil:             snapshot.PausedUntil,
         startTime:             time.Now(),
-        callCount:             0,
-        isRunning:             false,
         positionFirstSeenTime: make(map[string]int64),
-    }, nil
+    }
+
+    at.refreshMutexProtectionCache()
+    at.setDailyPnL(snapshot.DailyPnL)
+    at.SetLastResetTime(lastReset)
+    at.SetStopUntil(snapshot.PausedUntil)
+    at.SetTrading(false)
+
+    return at, nil
 }
 
 // Run 运行自动交易主循环
 func (at *AutoTrader) Run() error {
-    at.isRunning = true
+    at.SetTrading(true)
     log.Println("🚀 AI驱动自动交易系统启动")
     log.Printf("💰 初始余额: %.2f USDT", at.initialBalance)
     log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
@@ -243,7 +251,7 @@ func (at *AutoTrader) Run() error {
         log.Printf("❌ 执行失败: %v", err)
     }
 
-    for at.isRunning {
+    for at.IsTrading() {
         select {
         case <-ticker.C:
             if err := at.runCycle(); err != nil {
@@ -257,7 +265,7 @@ func (at *AutoTrader) Run() error {
 
 // Stop 停止自动交易
 func (at *AutoTrader) Stop() {
-    at.isRunning = false
+    at.SetTrading(false)
     log.Println("⏹ 自动交易系统停止")
 }
 
@@ -278,7 +286,7 @@ func (at *AutoTrader) runCycle() error {
     now := time.Now()
     if at.riskEngine != nil {
         paused, until := at.riskEngine.TradingStatus()
-        at.stopUntil = until
+        at.SetStopUntil(until)
         if paused {
             remaining := time.Duration(0)
             if !until.IsZero() {
@@ -299,8 +307,7 @@ func (at *AutoTrader) runCycle() error {
         }
 
         if at.riskEngine.ResetDailyPnLIfNeeded() {
-            at.dailyPnL = 0
-            at.lastResetTime = now
+            at.ResetDailyPnL(now)
             log.Println("📅 日盈亏已重置")
         }
     }
@@ -347,8 +354,8 @@ func (at *AutoTrader) runCycle() error {
 
     if at.riskEngine != nil {
         riskDecision := at.riskEngine.Assess(ctx.Account.TotalEquity)
-        at.dailyPnL = riskDecision.DailyPnL
-        at.stopUntil = riskDecision.PausedUntil
+        at.setDailyPnL(riskDecision.DailyPnL)
+        at.SetStopUntil(riskDecision.PausedUntil)
         if riskDecision.Breached && !riskDecision.TradingPaused && riskDecision.Reason != "" {
             log.Printf("⚠️ 风险限制触发: %s", riskDecision.Reason)
         }
@@ -882,19 +889,22 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
         aiProvider = "Qwen"
     }
 
+    stopUntil := at.GetStopUntil()
+    lastReset := at.GetLastResetTime()
+
     return map[string]interface{}{
         "trader_id":       at.id,
         "trader_name":     at.name,
         "ai_model":        at.aiModel,
         "exchange":        at.exchange,
-        "is_running":      at.isRunning,
+        "is_running":      at.IsTrading(),
         "start_time":      at.startTime.Format(time.RFC3339),
         "runtime_minutes": int(time.Since(at.startTime).Minutes()),
         "call_count":      at.callCount,
         "initial_balance": at.initialBalance,
         "scan_interval":   at.config.ScanInterval.String(),
-        "stop_until":      at.stopUntil.Format(time.RFC3339),
-        "last_reset_time": at.lastResetTime.Format(time.RFC3339),
+        "stop_until":      stopUntil.Format(time.RFC3339),
+        "last_reset_time": lastReset.Format(time.RFC3339),
         "ai_provider":     aiProvider,
     }
 }
@@ -960,6 +970,8 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
         marginUsedPct = (totalMarginUsed / totalEquity) * 100
     }
 
+    dailyPnL := at.GetDailyPnL()
+
     return map[string]interface{}{
         // 核心字段
         "total_equity":      totalEquity,           // 账户净值 = wallet + unrealized
@@ -972,7 +984,7 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
         "total_pnl_pct":        totalPnLPct,        // 总盈亏百分比
         "total_unrealized_pnl": totalUnrealizedPnL, // 未实现盈亏（从持仓计算）
         "initial_balance":      at.initialBalance,  // 初始余额
-        "daily_pnl":            at.dailyPnL,        // 日盈亏
+        "daily_pnl":            dailyPnL,           // 日盈亏
 
         // 持仓信息
         "position_count":  len(positions),  // 持仓数量
@@ -981,14 +993,230 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
     }, nil
 }
 
-// UpdateDailyPnL 更新风险模块记录的日盈亏并返回最新值。
-func (at *AutoTrader) UpdateDailyPnL(delta float64) float64 {
-    if at.riskEngine == nil {
-        at.dailyPnL += delta
+func (at *AutoTrader) refreshMutexProtectionCache() bool {
+    if at == nil {
+        return false
+    }
+
+    enabled := false
+    if at.featureFlags != nil {
+        enabled = at.featureFlags.MutexProtectionEnabled()
+    }
+
+    at.mutexEnabledCache.Store(enabled)
+    at.mutexDisabledCache.Store(!enabled)
+    return enabled
+}
+
+func (at *AutoTrader) mutexProtectionEnabled() bool {
+    if at == nil {
+        return false
+    }
+
+    enabled := false
+    if at.featureFlags != nil {
+        enabled = at.featureFlags.MutexProtectionEnabled()
+    }
+
+    if at.mutexEnabledCache.Load() == enabled {
+        return enabled
+    }
+
+    at.mutexEnabledCache.Store(enabled)
+    at.mutexDisabledCache.Store(!enabled)
+    return enabled
+}
+
+func (at *AutoTrader) mutexProtectionDisabled() bool {
+    if at == nil {
+        return true
+    }
+
+    at.mutexProtectionEnabled()
+    return at.mutexDisabledCache.Load()
+}
+
+// GetDailyPnL returns the current daily PnL snapshot. The helper is safe to
+// call regardless of enable_mutex_protection; it only grabs the mutex when the
+// flag is enabled so disabling the flag remains a back-out path.
+func (at *AutoTrader) GetDailyPnL() float64 {
+    if at == nil {
+        return 0
+    }
+
+    if at.mutexProtectionDisabled() {
         return at.dailyPnL
     }
-    at.dailyPnL = at.riskEngine.UpdateDailyPnL(delta)
+
+    at.stateMu.RLock()
+    defer at.stateMu.RUnlock()
     return at.dailyPnL
+}
+
+func (at *AutoTrader) setDailyPnL(value float64) {
+    if at == nil {
+        return
+    }
+
+    if at.mutexProtectionDisabled() {
+        at.dailyPnL = value
+        return
+    }
+
+    at.stateMu.Lock()
+    at.dailyPnL = value
+    at.stateMu.Unlock()
+}
+
+// UpdateDailyPnL applies a delta to the tracked daily PnL. The helper is safe
+// to call regardless of enable_mutex_protection and falls back to the legacy
+// lock-free path when the flag is disabled so operators retain a back-out path.
+func (at *AutoTrader) UpdateDailyPnL(delta float64) float64 {
+    if at == nil {
+        return 0
+    }
+
+    if at.riskEngine == nil {
+        if at.mutexProtectionDisabled() {
+            at.dailyPnL += delta
+            return at.dailyPnL
+        }
+
+        at.stateMu.Lock()
+        at.dailyPnL += delta
+        value := at.dailyPnL
+        at.stateMu.Unlock()
+        return value
+    }
+
+    updated := at.riskEngine.UpdateDailyPnL(delta)
+    at.setDailyPnL(updated)
+    return updated
+}
+
+// ResetDailyPnL zeroes the accumulated daily PnL and records the reset time.
+// The helper honors enable_mutex_protection, locking only when the flag is on
+// so disabling the flag still provides a safe back-out path.
+func (at *AutoTrader) ResetDailyPnL(atTime time.Time) {
+    if at == nil {
+        return
+    }
+
+    if at.mutexProtectionDisabled() {
+        at.dailyPnL = 0
+        at.lastResetTime = atTime
+        return
+    }
+
+    at.stateMu.Lock()
+    at.dailyPnL = 0
+    at.lastResetTime = atTime
+    at.stateMu.Unlock()
+}
+
+// SetStopUntil updates the trading pause deadline. The helper is safe to call
+// with enable_mutex_protection either on or off, acquiring the mutex only when
+// the flag is active so the rollout retains a back-out path.
+func (at *AutoTrader) SetStopUntil(until time.Time) {
+    if at == nil {
+        return
+    }
+
+    if at.mutexProtectionDisabled() {
+        at.stopUntil = until
+        return
+    }
+
+    at.stateMu.Lock()
+    at.stopUntil = until
+    at.stateMu.Unlock()
+}
+
+// GetStopUntil exposes the current trading pause deadline. The helper remains
+// safe regardless of enable_mutex_protection and avoids locking when the flag
+// is disabled so operators can revert via the flag if required.
+func (at *AutoTrader) GetStopUntil() time.Time {
+    if at == nil {
+        return time.Time{}
+    }
+
+    if at.mutexProtectionDisabled() {
+        return at.stopUntil
+    }
+
+    at.stateMu.RLock()
+    defer at.stateMu.RUnlock()
+    return at.stopUntil
+}
+
+// SetLastResetTime updates the timestamp of the last daily PnL reset. The
+// helper is safe to call regardless of enable_mutex_protection, falling back to
+// the legacy path when the flag is disabled to keep a back-out option.
+func (at *AutoTrader) SetLastResetTime(ts time.Time) {
+    if at == nil {
+        return
+    }
+
+    if at.mutexProtectionDisabled() {
+        at.lastResetTime = ts
+        return
+    }
+
+    at.stateMu.Lock()
+    at.lastResetTime = ts
+    at.stateMu.Unlock()
+}
+
+// GetLastResetTime returns the timestamp of the last daily PnL reset. The
+// helper respects enable_mutex_protection, only locking when the flag is true
+// so disabling the flag continues to provide the back-out path.
+func (at *AutoTrader) GetLastResetTime() time.Time {
+    if at == nil {
+        return time.Time{}
+    }
+
+    if at.mutexProtectionDisabled() {
+        return at.lastResetTime
+    }
+
+    at.stateMu.RLock()
+    defer at.stateMu.RUnlock()
+    return at.lastResetTime
+}
+
+// SetTrading flips the trading loop state. The helper is safe independent of
+// enable_mutex_protection and skips locking when the feature flag is turned off
+// so we can revert to the legacy behavior instantly.
+func (at *AutoTrader) SetTrading(running bool) {
+    if at == nil {
+        return
+    }
+
+    if at.mutexProtectionDisabled() {
+        at.isRunning = running
+        return
+    }
+
+    at.stateMu.Lock()
+    at.isRunning = running
+    at.stateMu.Unlock()
+}
+
+// IsTrading reports whether the AutoTrader loop is currently running. The
+// helper automatically honors enable_mutex_protection and bypasses the mutex
+// when the feature flag is disabled, preserving the back-out path.
+func (at *AutoTrader) IsTrading() bool {
+    if at == nil {
+        return false
+    }
+
+    if at.mutexProtectionDisabled() {
+        return at.isRunning
+    }
+
+    at.stateMu.RLock()
+    defer at.stateMu.RUnlock()
+    return at.isRunning
 }
 
 // GetPositions 获取持仓列表（用于API）
