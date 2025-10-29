@@ -4,14 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
+	"time"
+
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/metrics"
 	"nofx/pool"
-	"strings"
-	"time"
+	"nofx/risk"
+	"nofx/runtimeflags"
 )
+
+// TraderFactory allows tests to inject a deterministic trader implementation.
+type TraderFactory func(config AutoTraderConfig) (Trader, error)
 
 // AutoTraderConfig 自动交易配置（简化版 - AI全权决策）
 type AutoTraderConfig struct {
@@ -52,29 +59,34 @@ type AutoTraderConfig struct {
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
 	StopTradingTime time.Duration // 触发风控后暂停时长
+
+	TraderFactory TraderFactory `json:"-"`
 }
 
 // AutoTrader 自动交易器
 type AutoTrader struct {
-	id                   string                 // Trader唯一标识
-	name                 string                 // Trader显示名称
-	aiModel              string                 // AI模型名称
-	exchange             string                 // 交易平台名称
-	config               AutoTraderConfig
-	trader               Trader                 // 使用Trader接口（支持多平台）
-	decisionLogger       *logger.DecisionLogger // 决策日志记录器
-	initialBalance       float64
-	dailyPnL             float64
-	lastResetTime        time.Time
-	stopUntil            time.Time
-	isRunning            bool
-	startTime            time.Time                 // 系统启动时间
-	callCount            int                       // AI调用次数
-	positionFirstSeenTime map[string]int64         // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	id                    string // Trader唯一标识
+	name                  string // Trader显示名称
+	aiModel               string // AI模型名称
+	exchange              string // 交易平台名称
+	config                AutoTraderConfig
+	trader                Trader                 // 使用Trader接口（支持多平台）
+	decisionLogger        *logger.DecisionLogger // 决策日志记录器
+	riskEngine            *risk.Engine
+	riskStore             *risk.Store
+	runtimeFlags          *runtimeflags.Flags
+	initialBalance        float64
+	dailyPnL              float64
+	lastResetTime         time.Time
+	stopUntil             time.Time
+	isRunning             bool
+	startTime             time.Time        // 系统启动时间
+	callCount             int              // AI调用次数
+	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
 }
 
 // NewAutoTrader 创建自动交易器
-func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
+func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *runtimeflags.Flags) (*AutoTrader, error) {
 	// 设置默认值
 	if config.ID == "" {
 		config.ID = "default_trader"
@@ -110,21 +122,31 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	}
 
 	// 根据配置创建对应的交易器
-	var trader Trader
-	var err error
+	var (
+		traderInstance Trader
+		err            error
+	)
 
-	switch config.Exchange {
-	case "binance":
-		log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
-	case "hyperliquid":
-		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
-		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
+	if config.TraderFactory != nil {
+		traderInstance, err = config.TraderFactory(config)
 		if err != nil {
-			return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			return nil, fmt.Errorf("初始化自定义交易器失败: %w", err)
 		}
-	default:
-		return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
+		log.Printf("🏦 [%s] 使用自定义Trader工厂", config.Name)
+	} else {
+		switch config.Exchange {
+		case "binance":
+			log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
+			traderInstance = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
+		case "hyperliquid":
+			log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
+			traderInstance, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
+		}
 	}
 
 	// 验证初始金额配置
@@ -136,19 +158,48 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
+	if store == nil {
+		store = risk.NewStore()
+	}
+	if flags == nil {
+		flags = runtimeflags.New(runtimeflags.State{
+			EnforceRiskLimits: true,
+			UsePnLMutex:       true,
+			TradingEnabled:    true,
+		})
+	}
+
+	riskParams := risk.Parameters{
+		MaxDailyLossPct: config.MaxDailyLoss,
+		MaxDrawdownPct:  config.MaxDrawdown,
+		StopTradingFor:  config.StopTradingTime,
+	}
+	riskEngine := risk.NewEngine(config.ID, config.InitialBalance, riskParams, store, flags)
+	riskEngine.RecordEquity(config.InitialBalance)
+	snapshot := riskEngine.Snapshot()
+	lastReset := snapshot.LastReset
+	if lastReset.IsZero() {
+		lastReset = time.Now()
+	}
+
 	return &AutoTrader{
-		id:                   config.ID,
-		name:                 config.Name,
-		aiModel:              config.AIModel,
-		exchange:             config.Exchange,
-		config:               config,
-		trader:               trader,
-		decisionLogger:       decisionLogger,
-		initialBalance:       config.InitialBalance,
-		lastResetTime:        time.Now(),
-		startTime:            time.Now(),
-		callCount:            0,
-		isRunning:            false,
+		id:                    config.ID,
+		name:                  config.Name,
+		aiModel:               config.AIModel,
+		exchange:              config.Exchange,
+		config:                config,
+		trader:                traderInstance,
+		decisionLogger:        decisionLogger,
+		riskEngine:            riskEngine,
+		riskStore:             store,
+		runtimeFlags:          flags,
+		initialBalance:        config.InitialBalance,
+		dailyPnL:              snapshot.DailyPnL,
+		lastResetTime:         lastReset,
+		stopUntil:             snapshot.PausedUntil,
+		startTime:             time.Now(),
+		callCount:             0,
+		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
 	}, nil
 }
@@ -191,9 +242,9 @@ func (at *AutoTrader) Stop() {
 func (at *AutoTrader) runCycle() error {
 	at.callCount++
 
-	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Print("\n" + strings.Repeat("=", 70))
 	log.Printf("⏰ %s - AI决策周期 #%d", time.Now().Format("2006-01-02 15:04:05"), at.callCount)
-	log.Printf(strings.Repeat("=", 70))
+	log.Print(strings.Repeat("=", 70))
 
 	// 创建决策记录
 	record := &logger.DecisionRecord{
@@ -201,21 +252,42 @@ func (at *AutoTrader) runCycle() error {
 		Success:      true,
 	}
 
-	// 1. 检查是否需要停止交易
-	if time.Now().Before(at.stopUntil) {
-		remaining := at.stopUntil.Sub(time.Now())
-		log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟", remaining.Minutes())
+	if at.runtimeFlags != nil && !at.runtimeFlags.TradingEnabled() {
+		log.Printf("⏸ 运行时开关禁止交易")
 		record.Success = false
-		record.ErrorMessage = fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
+		record.ErrorMessage = "运行时开关禁止交易"
 		at.decisionLogger.LogDecision(record)
 		return nil
 	}
 
-	// 2. 重置日盈亏（每天重置）
-	if time.Since(at.lastResetTime) > 24*time.Hour {
-		at.dailyPnL = 0
-		at.lastResetTime = time.Now()
-		log.Println("📅 日盈亏已重置")
+	now := time.Now()
+	if at.riskEngine != nil {
+		paused, until := at.riskEngine.TradingStatus()
+		at.stopUntil = until
+		if paused {
+			remaining := time.Duration(0)
+			if !until.IsZero() {
+				remaining = until.Sub(now)
+				if remaining < 0 {
+					remaining = 0
+				}
+			}
+			log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟", remaining.Minutes())
+			record.Success = false
+			if !until.IsZero() {
+				record.ErrorMessage = fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
+			} else {
+				record.ErrorMessage = "风险控制暂停中"
+			}
+			at.decisionLogger.LogDecision(record)
+			return nil
+		}
+
+		if at.riskEngine.ResetDailyPnLIfNeeded() {
+			at.dailyPnL = 0
+			at.lastResetTime = now
+			log.Println("📅 日盈亏已重置")
+		}
 	}
 
 	// 3. 收集交易上下文
@@ -258,6 +330,26 @@ func (at *AutoTrader) runCycle() error {
 	log.Printf("📊 账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
+	if at.riskEngine != nil {
+		riskDecision := at.riskEngine.Assess(ctx.Account.TotalEquity)
+		at.dailyPnL = riskDecision.DailyPnL
+		at.stopUntil = riskDecision.PausedUntil
+		if riskDecision.Breached && !riskDecision.TradingPaused && riskDecision.Reason != "" {
+			log.Printf("⚠️ 风险限制触发: %s", riskDecision.Reason)
+		}
+		if riskDecision.TradingPaused {
+			reason := riskDecision.Reason
+			if reason == "" {
+				reason = "风险控制暂停中"
+			}
+			log.Printf("⏸ 风险控制触发：%s", reason)
+			record.Success = false
+			record.ErrorMessage = reason
+			at.decisionLogger.LogDecision(record)
+			return nil
+		}
+	}
+
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := decision.GetFullDecision(ctx)
@@ -278,11 +370,11 @@ func (at *AutoTrader) runCycle() error {
 
 		// 打印AI思维链（即使有错误）
 		if decision != nil && decision.CoTTrace != "" {
-			log.Printf("\n" + strings.Repeat("-", 70))
+			log.Print("\n" + strings.Repeat("-", 70))
 			log.Println("💭 AI思维链分析（错误情况）:")
 			log.Println(strings.Repeat("-", 70))
 			log.Println(decision.CoTTrace)
-			log.Printf(strings.Repeat("-", 70) + "\n")
+			log.Print(strings.Repeat("-", 70) + "\n")
 		}
 
 		at.decisionLogger.LogDecision(record)
@@ -290,11 +382,11 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// 5. 打印AI思维链
-	log.Printf("\n" + strings.Repeat("-", 70))
+	log.Print("\n" + strings.Repeat("-", 70))
 	log.Println("💭 AI思维链分析:")
 	log.Println(strings.Repeat("-", 70))
 	log.Println(decision.CoTTrace)
-	log.Printf(strings.Repeat("-", 70) + "\n")
+	log.Print(strings.Repeat("-", 70) + "\n")
 
 	// 6. 打印AI决策
 	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
@@ -493,11 +585,11 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. 构建上下文
 	ctx := &decision.Context{
-		CurrentTime:      time.Now().Format("2006-01-02 15:04:05"),
-		RuntimeMinutes:   int(time.Since(at.startTime).Minutes()),
-		CallCount:        at.callCount,
-		BTCETHLeverage:   at.config.BTCETHLeverage,   // 使用配置的杠杆倍数
-		AltcoinLeverage:  at.config.AltcoinLeverage,  // 使用配置的杠杆倍数
+		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
+		CallCount:       at.callCount,
+		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
+		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,
@@ -579,6 +671,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
 		log.Printf("  ⚠ 设置止损失败: %v", err)
+		metrics.IncRiskStopLossFailures(at.id)
 	}
 	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
 		log.Printf("  ⚠ 设置止盈失败: %v", err)
@@ -632,6 +725,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
 		log.Printf("  ⚠ 设置止损失败: %v", err)
+		metrics.IncRiskStopLossFailures(at.id)
 	}
 	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
 		log.Printf("  ⚠ 设置止盈失败: %v", err)
@@ -816,6 +910,16 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 		"margin_used":     totalMarginUsed, // 保证金占用
 		"margin_used_pct": marginUsedPct,   // 保证金使用率
 	}, nil
+}
+
+// UpdateDailyPnL 更新风险模块记录的日盈亏并返回最新值。
+func (at *AutoTrader) UpdateDailyPnL(delta float64) float64 {
+	if at.riskEngine == nil {
+		at.dailyPnL += delta
+		return at.dailyPnL
+	}
+	at.dailyPnL = at.riskEngine.UpdateDailyPnL(delta)
+	return at.dailyPnL
 }
 
 // GetPositions 获取持仓列表（用于API）
