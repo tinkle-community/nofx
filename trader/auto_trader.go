@@ -193,7 +193,7 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
         store = risk.NewStore()
     }
     if flags == nil {
-        flags = featureflag.NewRuntimeFlags(featureflag.State{})
+        flags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
     }
     config.FeatureFlags = flags
 
@@ -669,7 +669,7 @@ func (at *AutoTrader) openPositionWithProtection(decision *decision.Decision, qu
         return nil, fmt.Errorf("unsupported action %s for openPositionWithProtection", decision.Action)
     }
 
-    guardEnabled := at.featureFlags != nil && at.featureFlags.GuardClausesEnabled()
+    guardEnabled := at.featureFlags != nil && at.featureFlags.GuardedStopLossEnabled()
 
     if !guardEnabled {
         order, err := openFn(decision.Symbol, quantity, decision.Leverage)
@@ -691,7 +691,7 @@ func (at *AutoTrader) openPositionWithProtection(decision *decision.Decision, qu
     if decision.StopLoss <= 0 {
         metrics.IncRiskStopLossFailures(at.id)
         log.Printf("CRITICAL: Position opening blocked - missing stop-loss for %s", decision.Symbol)
-        return nil, fmt.Errorf("guard clauses require stop-loss for %s", decision.Symbol)
+        return nil, fmt.Errorf("guarded stop-loss enforcement requires stop-loss for %s", decision.Symbol)
     }
 
     if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, decision.StopLoss); err != nil {

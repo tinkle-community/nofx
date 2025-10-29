@@ -25,7 +25,7 @@ func NewEngine(traderID string, initialBalance float64, params Parameters, store
 		store = NewStore()
 	}
 	if flags == nil {
-		flags = featureflag.NewRuntimeFlags(featureflag.State{})
+		flags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
 	}
 
 	e := &Engine{

@@ -71,10 +71,14 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config Config
+	config := Config{
+		FeatureFlags: featureflag.DefaultState(),
+	}
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+
+	config.FeatureFlags = featureflag.WithEnvOverrides(config.FeatureFlags)
 
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
