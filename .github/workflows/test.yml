@@ -15,6 +15,10 @@ jobs:
       GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
       TEST_DB_URL: postgresql://trader:trader@127.0.0.1:5432/trader?sslmode=disable
       COVERAGE_FOCUS_PACKAGES: "nofx/db nofx/risk nofx/featureflag"
+      GOFLAGS: ""
+      DISABLE_DB_TESTS: 0
+      SKIP_DOCKER_TESTS: 0
+      NO_DOCKER: 0
     services:
       postgres:
         image: timescale/timescaledb:latest-pg16
