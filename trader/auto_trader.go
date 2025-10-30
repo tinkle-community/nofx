@@ -519,11 +519,12 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. 构建上下文
 	ctx := &decision.Context{
-		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
-		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
-		CallCount:       at.callCount,
-		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
-		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
+		CurrentTime:         time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes:      int(time.Since(at.startTime).Minutes()),
+		CallCount:           at.callCount,
+		BTCETHLeverage:      at.config.BTCETHLeverage,                 // 使用配置的杠杆倍数
+		AltcoinLeverage:     at.config.AltcoinLeverage,                // 使用配置的杠杆倍数
+		ScanIntervalMinutes: int(at.config.ScanInterval.Minutes()),    // 扫描间隔（分钟）
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,
