@@ -201,6 +201,54 @@ func TestAutoTraderRiskEnforcementToggleRestoresTrading(t *testing.T) {
 	}
 }
 
+func TestAutoTraderCanTradeRespectsStopUntil(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+
+	deadline := time.Now().Add(2 * time.Minute)
+	at.SetStopUntil(deadline)
+
+	canTrade, reason := at.CanTrade()
+	if canTrade {
+		t.Fatalf("expected trading to remain paused while stopUntil in future, reason: %s", reason)
+	}
+	if reason == "" || !strings.Contains(reason, "暂停") {
+		t.Fatalf("expected pause reason to be returned, got %q", reason)
+	}
+}
+
+func TestAutoTraderCanTradeBypassesRiskWhenDisabled(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: false, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+
+	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
+	excessLoss := baselineLoss + 25
+	at.UpdateDailyPnL(-excessLoss)
+	at.setCurrentBalance(at.initialBalance - excessLoss)
+
+	canTrade, reason := at.CanTrade()
+	if !canTrade {
+		t.Fatalf("expected trading to proceed when enforcement disabled, got reason: %s", reason)
+	}
+	if reason != "" {
+		t.Fatalf("expected empty reason when trading allowed, got %q", reason)
+	}
+}
+
+func TestAutoTraderCanTradeWithoutRiskEngine(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+	at.riskEngine = nil
+
+	canTrade, reason := at.CanTrade()
+	if !canTrade {
+		t.Fatalf("expected trading to proceed without risk engine, got reason: %s", reason)
+	}
+	if reason != "" {
+		t.Fatalf("expected empty reason without risk engine, got %q", reason)
+	}
+}
+
 func TestRiskParameterAdjustments(t *testing.T) {
 	t.Run("tolerance increases", func(t *testing.T) {
 		at := newTestAutoTrader(t, featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true}))

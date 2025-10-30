@@ -22,6 +22,28 @@ func (m *mockTraderWithStopLossFailure) SetStopLoss(symbol, side string, quantit
 	return nil
 }
 
+type mockTraderOpenFailure struct {
+	*fakeTrader
+	cancelCalls int
+	err         error
+}
+
+func (m *mockTraderOpenFailure) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	if m.err == nil {
+		return nil, errors.New("open error not provided")
+	}
+	return nil, m.err
+}
+
+func (m *mockTraderOpenFailure) OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	return m.OpenLong(symbol, quantity, leverage)
+}
+
+func (m *mockTraderOpenFailure) CancelAllOrders(symbol string) error {
+	m.cancelCalls++
+	return nil
+}
+
 func TestAutoTrader_GuardedStopLoss_PreventOpenOnMissingStopLoss(t *testing.T) {
 	flags := featureflag.NewRuntimeFlags(featureflag.State{
 		EnableGuardedStopLoss: true,
@@ -124,6 +146,69 @@ func TestAutoTrader_GuardedStopLoss_BlockOnStopLossPlacementFailure(t *testing.T
 	}
 	if err.Error() != "stop-loss placement failed: simulated stop-loss placement failure" {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestAutoTrader_GuardedStopLoss_RollbackOnOpenFailure(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{
+		EnableGuardedStopLoss: true,
+		EnableRiskEnforcement: true,
+		EnableMutexProtection: true,
+	})
+
+	failureErr := errors.New("simulated open failure")
+	failingTrader := &mockTraderOpenFailure{
+		fakeTrader: newFakeTrader(),
+		err:        failureErr,
+	}
+
+	cfg := AutoTraderConfig{
+		ID:               "test-guarded-sl-open-fail",
+		Name:             "Guarded SL Open Failure",
+		AIModel:          "deepseek",
+		Exchange:         "binance",
+		BinanceAPIKey:    "key",
+		BinanceSecretKey: "secret",
+		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
+		InitialBalance:   1000.0,
+		BTCETHLeverage:   5,
+		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
+		TraderFactory: func(AutoTraderConfig) (Trader, error) {
+			return failingTrader, nil
+		},
+	}
+
+	store := risk.NewStore()
+	at, err := NewAutoTrader(cfg, store, flags)
+	if err != nil {
+		t.Fatalf("failed to create auto trader: %v", err)
+	}
+
+	dec := decision.Decision{
+		Symbol:          "BTCUSDT",
+		Action:          "open_long",
+		Leverage:        5,
+		PositionSizeUSD: 100.0,
+		StopLoss:        45000.0,
+		TakeProfit:      50000.0,
+	}
+
+	order, err := at.openPositionWithProtection(&dec, 0.002)
+	if err == nil {
+		t.Fatal("expected open position error when exchange rejects order")
+	}
+	if !errors.Is(err, failureErr) {
+		t.Fatalf("expected failure error %v, got %v", failureErr, err)
+	}
+	if order != nil {
+		t.Fatalf("expected nil order on failure, got %v", order)
+	}
+	if failingTrader.cancelCalls != 1 {
+		t.Fatalf("expected CancelAllOrders to be invoked once, got %d calls", failingTrader.cancelCalls)
 	}
 }
 
