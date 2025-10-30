@@ -196,8 +196,10 @@ nano config.json  # або використайте будь-який редак
 chmod +x start.sh
 ./start.sh start --build
 
-# Варіант 2: Використайте docker-compose безпосередньо
-docker-compose up -d --build
+# Варіант 2: Використайте docker compose безпосередньо
+# Цей проект використовує синтаксис Docker Compose V2 (з пробілами)
+# Якщо у вас встановлена стара версія `docker-compose`, оновіть до Docker Desktop або Docker 20.10+
+docker compose up -d --build
 ```
 
 #### Крок 3: Доступ до панелі

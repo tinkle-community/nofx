@@ -15,22 +15,33 @@ Before you begin, ensure your system has:
 Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 #### Linux (Ubuntu/Debian)
+
+> #### Docker Compose Version Notes
+>
+> **New User Recommendation:**
+> - **Use Docker Desktop**: Automatically includes latest Docker Compose, no separate installation needed
+> - Simple installation, one-click setup, provides GUI management
+> - Supports macOS, Windows, and some Linux distributions
+>
+> **Upgrading User Note:**
+> - **Deprecating standalone docker-compose**: No longer recommended to download the independent Docker Compose binary
+> - **Use built-in version**: Docker 20.10+ includes `docker compose` command (with space)
+> - If still using old `docker-compose`, please upgrade to new syntax
+
+*Recommended: Use Docker Desktop (if available) or Docker CE with built-in Compose*
+
 ```bash
-# Install Docker
+# Install Docker (includes compose)
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Add current user to docker group
+# Add user to docker group
 sudo usermod -aG docker $USER
 newgrp docker
 
-# Verify installation
+# Verify installation (new command)
 docker --version
-docker-compose --version
+docker compose --version  # Docker 24+ includes this, no separate installation needed
 ```
 
 ## 🚀 Quick Start (3 Steps)
@@ -69,10 +80,10 @@ nano config.json  # or use any other editor
 
 ```bash
 # Build and start all services (first run)
-docker-compose up -d --build
+docker compose up -d --build
 
 # Subsequent starts (without rebuilding)
-docker-compose up -d
+docker compose up -d
 ```
 
 **Startup options:**
@@ -91,49 +102,49 @@ Once deployed, open your browser and visit:
 ### View Running Status
 ```bash
 # View all container status
-docker-compose ps
+docker compose ps
 
 # View service health status
-docker-compose ps --format json | jq
+docker compose ps --format json | jq
 ```
 
 ### View Logs
 ```bash
 # View all service logs
-docker-compose logs -f
+docker compose logs -f
 
 # View backend logs only
-docker-compose logs -f backend
+docker compose logs -f backend
 
 # View frontend logs only
-docker-compose logs -f frontend
+docker compose logs -f frontend
 
 # View last 100 lines
-docker-compose logs --tail=100
+docker compose logs --tail=100
 ```
 
 ### Stop Services
 ```bash
 # Stop all services (keep data)
-docker-compose stop
+docker compose stop
 
 # Stop and remove containers (keep data)
-docker-compose down
+docker compose down
 
 # Stop and remove containers and volumes (clear all data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Restart Services
 ```bash
 # Restart all services
-docker-compose restart
+docker compose restart
 
 # Restart backend only
-docker-compose restart backend
+docker compose restart backend
 
 # Restart frontend only
-docker-compose restart frontend
+docker compose restart frontend
 ```
 
 ### Update Services
@@ -142,7 +153,7 @@ docker-compose restart frontend
 git pull
 
 # Rebuild and restart
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ## 🔧 Advanced Configuration
@@ -226,14 +237,14 @@ tar -xzf backup_20241029.tar.gz
 
 ```bash
 # View detailed error messages
-docker-compose logs backend
-docker-compose logs frontend
+docker compose logs backend
+docker compose logs frontend
 
 # Check container status
-docker-compose ps -a
+docker compose ps -a
 
 # Rebuild (clear cache)
-docker-compose build --no-cache
+docker compose build --no-cache
 ```
 
 ### Port Already in Use
@@ -273,10 +284,10 @@ curl http://localhost:3000/health
 
 ```bash
 # Check network connectivity
-docker-compose exec frontend ping backend
+docker compose exec frontend ping backend
 
 # Check if backend service is running
-docker-compose exec frontend wget -O- http://backend:8080/health
+docker compose exec frontend wget -O- http://backend:8080/health
 ```
 
 ### Clean Docker Resources
@@ -321,8 +332,8 @@ docker system prune -a --volumes
 
 4. **Regularly update images**
    ```bash
-   docker-compose pull
-   docker-compose up -d
+   docker compose pull
+   docker compose up -d
    ```
 
 ## 🌐 Production Deployment
@@ -391,7 +402,7 @@ logging:
     max-file: "3"
 
 # View log statistics
-docker-compose logs --timestamps | wc -l
+docker compose logs --timestamps | wc -l
 ```
 
 ### Monitoring Tool Integration
@@ -424,28 +435,28 @@ services:
 
 ```bash
 # Start
-docker-compose up -d --build       # Build and start
-docker-compose up -d               # Start (without rebuilding)
+docker compose up -d --build       # Build and start
+docker compose up -d               # Start (without rebuilding)
 
 # Stop
-docker-compose stop                # Stop services
-docker-compose down                # Stop and remove containers
-docker-compose down -v             # Stop and remove containers and data
+docker compose stop                # Stop services
+docker compose down                # Stop and remove containers
+docker compose down -v             # Stop and remove containers and data
 
 # View
-docker-compose ps                  # View status
-docker-compose logs -f             # View logs
-docker-compose top                 # View processes
+docker compose ps                  # View status
+docker compose logs -f             # View logs
+docker compose top                 # View processes
 
 # Restart
-docker-compose restart             # Restart all services
-docker-compose restart backend     # Restart backend
+docker compose restart             # Restart all services
+docker compose restart backend     # Restart backend
 
 # Update
-git pull && docker-compose up -d --build
+git pull && docker compose up -d --build
 
 # Clean
-docker-compose down -v             # Clear all data
+docker compose down -v             # Clear all data
 docker system prune -a             # Clean Docker resources
 ```
 

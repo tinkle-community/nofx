@@ -1,22 +1,21 @@
 version: '3.8'
 
 services:
-  # NOFX Trading Backend
+  # Backend service (API and core logic)
   nofx:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ./docker/Dockerfile.backend
     container_name: nofx-trading
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${NOFX_BACKEND_PORT:-8080}:8080"
     volumes:
       - ./config.json:/app/config.json:ro
       - ./decision_logs:/app/decision_logs
-      - /etc/localtime:/etc/localtime:ro  # 同步主机时间
-      - frontend-dist:/app/web/dist-shared:rw  # 共享前端文件
+      - /etc/localtime:/etc/localtime:ro  # Sync host time
     environment:
-      - TZ=Asia/Shanghai  # 使用中国时区
+      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
     networks:
       - nofx-network
     healthcheck:
@@ -25,25 +24,26 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    command: sh -c "cp -r /app/web/dist/* /app/web/dist-shared/ 2>/dev/null || true && exec ./nofx"
 
-  # Frontend (Nginx)
+  # Frontend service (static serving and proxy)
   nofx-frontend:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.frontend
     container_name: nofx-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
-    volumes:
-      - frontend-dist:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - "${NOFX_FRONTEND_PORT:-3000}:80"
     networks:
       - nofx-network
     depends_on:
       - nofx
-
-volumes:
-  frontend-dist:
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
 networks:
   nofx-network:
