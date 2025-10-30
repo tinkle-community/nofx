@@ -1,14 +1,8 @@
 # docker/backend/Dockerfile
 
 # ═══════════════════════════════════════════════════════════════
-<<<<<<< HEAD
 # NOFX Backend Dockerfile (Go + TA-Lib + Risk Persistence Tooling)
 # Multi-stage build with shared TA-Lib compilation stage
-=======
-# NOFX Backend Dockerfile (Go + TA-Lib)
-# Multi-stage build with shared TA-Lib compilation stage
-# Versions extracted as ARGs for maintainability
->>>>>>> upstream/main
 # ═══════════════════════════════════════════════════════════════
 
 ARG GO_VERSION=1.25-alpine
@@ -39,19 +33,11 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-${TA_LIB_VERSION}-src.
     cd .. && rm -rf ta-lib ta-lib-${TA_LIB_VERSION}-src.tar.gz
 
 # ──────────────────────────────────────────────────────────────
-<<<<<<< HEAD
 # Backend Build Stage (Go Application + Migrate CLI)
 # ──────────────────────────────────────────────────────────────
 FROM golang:${GO_VERSION} AS backend-builder
 
 RUN apk update && apk add --no-cache git make gcc g++ musl-dev curl wget
-=======
-# Backend Build Stage (Go Application)
-# ──────────────────────────────────────────────────────────────
-FROM golang:${GO_VERSION} AS backend-builder
-
-RUN apk update && apk add --no-cache git make gcc g++ musl-dev
->>>>>>> upstream/main
 
 COPY --from=ta-lib-builder /usr/local /usr/local
 
@@ -60,20 +46,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-<<<<<<< HEAD
 
 RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o nofx .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -tags 'postgres' -ldflags='-s -w -extldflags "-static"' -o migrate-binary github.com/golang-migrate/migrate/v4/cmd/migrate
-=======
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o nofx .
->>>>>>> upstream/main
 
 # ──────────────────────────────────────────────────────────────
 # Runtime Stage (Minimal Executable Environment)
 # ──────────────────────────────────────────────────────────────
 FROM alpine:${ALPINE_VERSION}
 
-<<<<<<< HEAD
 RUN apk update && apk add --no-cache \
     ca-certificates \
     tzdata \
@@ -90,13 +71,6 @@ COPY --from=backend-builder /app/migrate-binary /usr/local/bin/migrate
 COPY --from=backend-builder /app/db/migrations ./db/migrations
 
 RUN mkdir -p /app/decision_logs /app/data
-=======
-RUN apk update && apk add --no-cache ca-certificates tzdata
-
-COPY --from=ta-lib-builder /usr/local /usr/local
-WORKDIR /app
-COPY --from=backend-builder /app/nofx .
->>>>>>> upstream/main
 
 EXPOSE 8080
 

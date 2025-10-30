@@ -195,19 +195,11 @@ func (t *AsterTrader) formatQuantity(symbol string, quantity float64) (float64, 
 func (t *AsterTrader) formatFloatWithPrecision(value float64, precision int) string {
 	// 使用指定精度格式化
 	formatted := strconv.FormatFloat(value, 'f', precision, 64)
-<<<<<<< HEAD
 	
 	// 去除末尾的0和小数点（如果有）
 	formatted = strings.TrimRight(formatted, "0")
 	formatted = strings.TrimRight(formatted, ".")
 	
-=======
-
-	// 去除末尾的0和小数点（如果有）
-	formatted = strings.TrimRight(formatted, "0")
-	formatted = strings.TrimRight(formatted, ".")
-
->>>>>>> upstream/main
 	return formatted
 }
 
@@ -530,14 +522,6 @@ func (t *AsterTrader) GetPositions() ([]map[string]interface{}, error) {
 
 // OpenLong 开多单
 func (t *AsterTrader) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
-<<<<<<< HEAD
-=======
-	// 开仓前先取消所有挂单,防止残留挂单导致仓位叠加
-	if err := t.CancelAllOrders(symbol); err != nil {
-		log.Printf("  ⚠ 取消挂单失败(继续开仓): %v", err)
-	}
-
->>>>>>> upstream/main
 	// 先设置杠杆
 	if err := t.SetLeverage(symbol, leverage); err != nil {
 		return nil, fmt.Errorf("设置杠杆失败: %w", err)
@@ -572,11 +556,7 @@ func (t *AsterTrader) OpenLong(symbol string, quantity float64, leverage int) (m
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
-<<<<<<< HEAD
 	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)", 
-=======
-	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)",
->>>>>>> upstream/main
 		limitPrice, priceStr, prec.PricePrecision, quantity, qtyStr, prec.QuantityPrecision)
 
 	params := map[string]interface{}{
@@ -604,14 +584,6 @@ func (t *AsterTrader) OpenLong(symbol string, quantity float64, leverage int) (m
 
 // OpenShort 开空单
 func (t *AsterTrader) OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
-<<<<<<< HEAD
-=======
-	// 开仓前先取消所有挂单,防止残留挂单导致仓位叠加
-	if err := t.CancelAllOrders(symbol); err != nil {
-		log.Printf("  ⚠ 取消挂单失败(继续开仓): %v", err)
-	}
-
->>>>>>> upstream/main
 	// 先设置杠杆
 	if err := t.SetLeverage(symbol, leverage); err != nil {
 		return nil, fmt.Errorf("设置杠杆失败: %w", err)
@@ -646,11 +618,7 @@ func (t *AsterTrader) OpenShort(symbol string, quantity float64, leverage int) (
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
-<<<<<<< HEAD
 	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)", 
-=======
-	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)",
->>>>>>> upstream/main
 		limitPrice, priceStr, prec.PricePrecision, quantity, qtyStr, prec.QuantityPrecision)
 
 	params := map[string]interface{}{
@@ -725,11 +693,7 @@ func (t *AsterTrader) CloseLong(symbol string, quantity float64) (map[string]int
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
-<<<<<<< HEAD
 	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)", 
-=======
-	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)",
->>>>>>> upstream/main
 		limitPrice, priceStr, prec.PricePrecision, quantity, qtyStr, prec.QuantityPrecision)
 
 	params := map[string]interface{}{
@@ -753,15 +717,6 @@ func (t *AsterTrader) CloseLong(symbol string, quantity float64) (map[string]int
 	}
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, qtyStr)
-<<<<<<< HEAD
-=======
-
-	// 平仓后取消该币种的所有挂单(止损止盈单)
-	if err := t.CancelAllOrders(symbol); err != nil {
-		log.Printf("  ⚠ 取消挂单失败: %v", err)
-	}
-
->>>>>>> upstream/main
 	return result, nil
 }
 
@@ -815,11 +770,7 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
-<<<<<<< HEAD
 	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)", 
-=======
-	log.Printf("  📏 精度处理: 价格 %.8f -> %s (精度=%d), 数量 %.8f -> %s (精度=%d)",
->>>>>>> upstream/main
 		limitPrice, priceStr, prec.PricePrecision, quantity, qtyStr, prec.QuantityPrecision)
 
 	params := map[string]interface{}{
@@ -843,15 +794,6 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 	}
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, qtyStr)
-<<<<<<< HEAD
-=======
-
-	// 平仓后取消该币种的所有挂单(止损止盈单)
-	if err := t.CancelAllOrders(symbol); err != nil {
-		log.Printf("  ⚠ 取消挂单失败: %v", err)
-	}
-
->>>>>>> upstream/main
 	return result, nil
 }
 
