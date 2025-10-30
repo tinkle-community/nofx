@@ -211,7 +211,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 
 	sb.WriteString("# 🎯 核心目标\n\n")
 	sb.WriteString("**最大化夏普比率（Sharpe Ratio）**\n\n")
-	sb.WriteString("夏普比率 = (平均收益 - 无风险利率) / 收益波动率\n\n")
+	sb.WriteString("夏普比率 = 平均收益 / 收益波动率\n\n")
 	sb.WriteString("**这意味着**：\n")
 	sb.WriteString("- ✅ 高质量交易（高胜率、大盈亏比）→ 提升夏普\n")
 	sb.WriteString("- ✅ 稳定收益、控制回撤 → 提升夏普\n")
