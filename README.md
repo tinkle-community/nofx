@@ -99,7 +99,7 @@ A Binance-compatible decentralized perpetual futures exchange!
 - ROI PK and win rate statistics
 
 ### 🧠 AI Self-Learning Mechanism (NEW!)
-- **Historical Feedback**: Analyzes last 20 cycles of trading performance before each decision
+- **Historical Feedback**: Analyzes last 100 cycles of trading performance before each decision
 - **Smart Optimization**:
   - Identifies best/worst performing coins
   - Calculates win rate, profit/loss ratio, average profit
@@ -859,7 +859,7 @@ Each decision cycle (default 3 minutes), the system executes the following intel
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ 1. 📊 Analyze Historical Performance (last 20 cycles)    │
+│ 1. 📊 Analyze Historical Performance (last 100 cycles)   │
 ├──────────────────────────────────────────────────────────┤
 │  ✓ Calculate overall win rate, avg profit, P/L ratio    │
 │  ✓ Per-coin statistics (win rate, avg P/L in USDT)      │

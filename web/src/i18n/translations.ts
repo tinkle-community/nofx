@@ -109,7 +109,7 @@ export const translations = {
 
     // AI Learning Description
     howAILearns: 'How AI Learns & Evolves',
-    aiLearningPoint1: 'Analyzes last 20 trading cycles before each decision',
+    aiLearningPoint1: 'Analyzes last 100 trading cycles before each decision',
     aiLearningPoint2: 'Identifies best & worst performing symbols',
     aiLearningPoint3: 'Optimizes position sizing based on win rate',
     aiLearningPoint4: 'Avoids repeating past mistakes',
@@ -227,7 +227,7 @@ export const translations = {
 
     // AI Learning Description
     howAILearns: '💡 AI如何学习和进化',
-    aiLearningPoint1: '每次决策前分析最近20个交易周期',
+    aiLearningPoint1: '每次决策前分析最近100个交易周期',
     aiLearningPoint2: '识别表现最好和最差的币种',
     aiLearningPoint3: '根据胜率优化仓位大小',
     aiLearningPoint4: '避免重复过去的错误',
