@@ -109,7 +109,8 @@ func (c *Config) Validate() error {
 	}
 
 	traderIDs := make(map[string]bool)
-	for i, trader := range c.Traders {
+	for i := range c.Traders {
+		trader := &c.Traders[i]
 		if trader.ID == "" {
 			return fmt.Errorf("trader[%d]: ID不能为空", i)
 		}
