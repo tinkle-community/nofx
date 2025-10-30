@@ -576,6 +576,22 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 		}
 	}
 
+	// ⚠️ 关键：检查可用保证金是否足够
+	requiredMargin := decision.PositionSizeUSD / float64(decision.Leverage)
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("获取账户余额失败: %w", err)
+	}
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+	if requiredMargin > availableBalance {
+		return fmt.Errorf("❌ 保证金不足: 开仓需要%.2f U保证金（仓位%.2f U ÷ %dx杠杆），但可用保证金仅%.2f U",
+			requiredMargin, decision.PositionSizeUSD, decision.Leverage, availableBalance)
+	}
+	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U", requiredMargin, availableBalance)
+
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
 	if err != nil {
@@ -628,6 +644,22 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 			}
 		}
 	}
+
+	// ⚠️ 关键：检查可用保证金是否足够
+	requiredMargin := decision.PositionSizeUSD / float64(decision.Leverage)
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("获取账户余额失败: %w", err)
+	}
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+	if requiredMargin > availableBalance {
+		return fmt.Errorf("❌ 保证金不足: 开仓需要%.2f U保证金（仓位%.2f U ÷ %dx杠杆），但可用保证金仅%.2f U",
+			requiredMargin, decision.PositionSizeUSD, decision.Leverage, availableBalance)
+	}
+	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U", requiredMargin, availableBalance)
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)

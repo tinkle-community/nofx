@@ -264,6 +264,16 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n")
 	sb.WriteString("5. **清算风险**: 确保清算价格距离入场价 >15%\n\n")
 
+	sb.WriteString("**⚠️ 保证金计算规则（极其重要！）**:\n")
+	sb.WriteString("- `position_size_usd` 是**仓位价值**（持仓价值），不是保证金！\n")
+	sb.WriteString("- 实际所需保证金 = `position_size_usd / leverage`\n")
+	sb.WriteString("- **必须确保**: 所需保证金 ≤ 可用余额（available_balance）\n")
+	sb.WriteString("- 示例: 开1000U仓位用5x杠杆 → 需要200U保证金 → 账户必须有≥200U可用余额\n\n")
+	sb.WriteString("**开仓前必做检查**:\n")
+	sb.WriteString("1. 计算所需保证金 = position_size_usd / leverage\n")
+	sb.WriteString("2. 检查 available_balance 是否 ≥ 所需保证金\n")
+	sb.WriteString("3. 如果不足，必须减小 position_size_usd 或放弃开仓\n\n")
+
 	sb.WriteString("**每笔交易必须明确指定**:\n")
 	sb.WriteString("- `stop_loss`: 精确止损价格（限制单笔损失1-3%账户价值）\n")
 	sb.WriteString("- `take_profit`: 精确止盈价格（基于技术阻力位/支撑位）\n")
@@ -457,13 +467,15 @@ func buildUserPrompt(ctx *Context) string {
 	}
 
 	// 账户
-	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | 余额%.2f (%.1f%%) | 盈亏%+.2f%% | 保证金%.1f%% | 持仓%d个\n\n",
+	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | **可用保证金%.2f** (%.1f%%) | 盈亏%+.2f%% | 已用保证金%.1f%% | 持仓%d个\n\n",
 		ctx.Account.TotalEquity,
 		ctx.Account.AvailableBalance,
 		(ctx.Account.AvailableBalance/ctx.Account.TotalEquity)*100,
 		ctx.Account.TotalPnLPct,
 		ctx.Account.MarginUsedPct,
 		ctx.Account.PositionCount))
+	sb.WriteString(fmt.Sprintf("⚠️ **开仓提醒**: 可用保证金为%.2f U，开仓时所需保证金 = position_size_usd / leverage，必须≤%.2f U\n\n",
+		ctx.Account.AvailableBalance, ctx.Account.AvailableBalance))
 
 	// === 当前持仓 ===
 	if len(ctx.Positions) > 0 {
