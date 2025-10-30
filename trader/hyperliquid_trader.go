@@ -85,6 +85,7 @@ func (t *HyperliquidTrader) GetBalance() (map[string]interface{}, error) {
 
 	accountValue, _ := strconv.ParseFloat(accountState.CrossMarginSummary.AccountValue, 64)
 	totalMarginUsed, _ := strconv.ParseFloat(accountState.CrossMarginSummary.TotalMarginUsed, 64)
+	availableBalance, _ := strconv.ParseFloat(accountState.CrossMarginSummary.AccountValue, 64)
 
 	// ⚠️ 关键修复：从所有持仓中累加真正的未实现盈亏
 	totalUnrealizedPnl := 0.0
@@ -98,9 +99,9 @@ func (t *HyperliquidTrader) GetBalance() (map[string]interface{}, error) {
 	// 钱包余额（已实现）= AccountValue - 未实现盈亏
 	walletBalance := accountValue - totalUnrealizedPnl
 
-	result["totalWalletBalance"] = walletBalance                // 钱包余额（已实现部分）
-	result["availableBalance"] = accountValue - totalMarginUsed // 可用余额
-	result["totalUnrealizedProfit"] = totalUnrealizedPnl        // 未实现盈亏
+	result["totalWalletBalance"] = walletBalance                    // 钱包余额（已实现部分）
+	result["availableBalance"] = availableBalance - totalMarginUsed // 可用余额
+	result["totalUnrealizedProfit"] = totalUnrealizedPnl            // 未实现盈亏
 
 	log.Printf("✓ Hyperliquid API返回: 账户净值=%.2f, 钱包余额=%.2f, 可用=%.2f, 未实现盈亏=%.2f",
 		accountValue,
