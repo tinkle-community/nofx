@@ -330,7 +330,45 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 	// 追踪持仓状态：symbol_side -> {side, openPrice, openTime, quantity, leverage}
 	openPositions := make(map[string]map[string]interface{})
 
-	// 遍历所有记录
+	// 为了避免开仓记录在窗口外导致匹配失败，需要先从所有历史记录中找出未平仓的持仓
+	// 获取更多历史记录来构建完整的持仓状态（使用更大的窗口）
+	allRecords, err := l.GetLatestRecords(lookbackCycles * 3) // 扩大3倍窗口
+	if err == nil && len(allRecords) > len(records) {
+		// 先从扩大的窗口中收集所有开仓记录
+		for _, record := range allRecords {
+			for _, action := range record.Decisions {
+				if !action.Success {
+					continue
+				}
+
+				symbol := action.Symbol
+				side := ""
+				if action.Action == "open_long" || action.Action == "close_long" {
+					side = "long"
+				} else if action.Action == "open_short" || action.Action == "close_short" {
+					side = "short"
+				}
+				posKey := symbol + "_" + side
+
+				switch action.Action {
+				case "open_long", "open_short":
+					// 记录开仓
+					openPositions[posKey] = map[string]interface{}{
+						"side":      side,
+						"openPrice": action.Price,
+						"openTime":  action.Timestamp,
+						"quantity":  action.Quantity,
+						"leverage":  action.Leverage,
+					}
+				case "close_long", "close_short":
+					// 移除已平仓记录
+					delete(openPositions, posKey)
+				}
+			}
+		}
+	}
+
+	// 遍历分析窗口内的记录，生成交易结果
 	for _, record := range records {
 		for _, action := range record.Decisions {
 			if !action.Success {
@@ -348,7 +386,7 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 
 			switch action.Action {
 			case "open_long", "open_short":
-				// 记录开仓（包括数量和杠杆）
+				// 更新开仓记录（可能已经在预填充时记录过了）
 				openPositions[posKey] = map[string]interface{}{
 					"side":      side,
 					"openPrice": action.Price,
@@ -358,7 +396,7 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 				}
 
 			case "close_long", "close_short":
-				// 查找对应的开仓记录
+				// 查找对应的开仓记录（可能来自预填充或当前窗口）
 				if openPos, exists := openPositions[posKey]; exists {
 					openPrice := openPos["openPrice"].(float64)
 					openTime := openPos["openTime"].(time.Time)
@@ -366,18 +404,23 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 					quantity := openPos["quantity"].(float64)
 					leverage := openPos["leverage"].(int)
 
-					// 计算盈亏百分比
-					pnlPct := 0.0
+					// 计算实际盈亏（USDT）
+					// 合约交易 PnL 计算：quantity × 价格差
+					// 注意：杠杆不影响绝对盈亏，只影响保证金需求
+					var pnl float64
 					if side == "long" {
-						pnlPct = ((action.Price - openPrice) / openPrice) * 100
+						pnl = quantity * (action.Price - openPrice)
 					} else {
-						pnlPct = ((openPrice - action.Price) / openPrice) * 100
+						pnl = quantity * (openPrice - action.Price)
 					}
 
-					// 计算实际盈亏（USDT）
-					// PnL = 仓位价值 × 价格变化百分比 × 杠杆倍数
+					// 计算盈亏百分比（相对保证金）
 					positionValue := quantity * openPrice
-					pnl := positionValue * (pnlPct / 100) * float64(leverage)
+					marginUsed := positionValue / float64(leverage)
+					pnlPct := 0.0
+					if marginUsed > 0 {
+						pnlPct = (pnl / marginUsed) * 100
+					}
 
 					// 记录交易结果
 					outcome := TradeOutcome{
@@ -395,13 +438,15 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 					analysis.RecentTrades = append(analysis.RecentTrades, outcome)
 					analysis.TotalTrades++
 
+					// 分类交易：盈利、亏损、持平（避免将pnl=0算入亏损）
 					if pnl > 0 {
 						analysis.WinningTrades++
 						analysis.AvgWin += pnl
-					} else {
+					} else if pnl < 0 {
 						analysis.LosingTrades++
 						analysis.AvgLoss += pnl
 					}
+					// pnl == 0 的交易不计入盈利也不计入亏损，但计入总交易数
 
 					// 更新币种统计
 					if _, exists := analysis.SymbolStats[symbol]; !exists {
@@ -414,7 +459,7 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 					stats.TotalPnL += pnl
 					if pnl > 0 {
 						stats.WinningTrades++
-					} else {
+					} else if pnl < 0 {
 						stats.LosingTrades++
 					}
 
@@ -444,6 +489,9 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 		// 注意：totalLossAmount 是负数，所以取负号得到绝对值
 		if totalLossAmount != 0 {
 			analysis.ProfitFactor = totalWinAmount / (-totalLossAmount)
+		} else if totalWinAmount > 0 {
+			// 只有盈利没有亏损的情况，设置为一个很大的值表示完美策略
+			analysis.ProfitFactor = 999.0
 		}
 	}
 
