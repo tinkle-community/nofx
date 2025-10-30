@@ -40,7 +40,7 @@
 | 字段 | 类型 | 必需 | 说明 |
 |-----|------|------|------|
 | `ai_model` | string | ✅ | 设置为 `"custom"` 启用自定义 API |
-| `custom_api_url` | string | ✅ | API 的 Base URL (不含 `/chat/completions`) |
+| `custom_api_url` | string | ✅ | API 的 Base URL (不含 `/chat/completions`)。特殊用法：如果以 `#` 结尾，则使用完整 URL（不自动添加路径） |
 | `custom_api_key` | string | ✅ | API 密钥 |
 | `custom_model_name` | string | ✅ | 模型名称 (如 `gpt-4o`, `claude-3-5-sonnet` 等) |
 
@@ -90,11 +90,26 @@
 }
 ```
 
+### 5. 使用完整自定义路径（末尾添加 #）
+
+对于某些特殊的 API 端点，如果已经包含完整路径（包括 `/chat/completions` 或其他自定义路径），可以在 URL 末尾添加 `#` 来强制使用完整 URL：
+
+```json
+{
+  "ai_model": "custom",
+  "custom_api_url": "https://api.example.com/v2/ai/chat/completions#",
+  "custom_api_key": "your-api-key",
+  "custom_model_name": "custom-model"
+}
+```
+
+**注意**：`#` 会被自动去除，实际请求会发送到 `https://api.example.com/v2/ai/chat/completions`
+
 ## 兼容性要求
 
 自定义 API 必须：
 1. 支持 OpenAI Chat Completions 格式
-2. 接受 `POST /chat/completions` 端点
+2. 接受 `POST` 请求到 `/chat/completions` 端点（或在 URL 末尾添加 `#` 以使用自定义路径）
 3. 支持 `Authorization: Bearer {api_key}` 认证
 4. 返回标准的 OpenAI 响应格式
 
@@ -103,6 +118,9 @@
 1. **URL 格式**：`custom_api_url` 应该是 Base URL，系统会自动添加 `/chat/completions`
    - ✅ 正确：`https://api.openai.com/v1`
    - ❌ 错误：`https://api.openai.com/v1/chat/completions`
+   - 🔧 **特殊用法**：如果需要使用完整的自定义路径（不自动添加 `/chat/completions`），可以在 URL 末尾添加 `#`
+     - 例如：`https://api.example.com/custom/path/chat/completions#`
+     - 系统会自动去掉 `#` 并直接使用该完整 URL
 
 2. **模型名称**：确保 `custom_model_name` 与 API 提供商支持的模型名称完全一致
 
@@ -157,7 +175,9 @@
 ### 问题：API 调用失败
 
 **可能原因**：
-1. URL 格式错误（检查是否包含了 `/chat/completions`）
+1. URL 格式错误
+   - 普通用法：不应包含 `/chat/completions`（系统会自动添加）
+   - 特殊用法：如果需要完整路径，记得在 URL 末尾添加 `#`
 2. API 密钥无效
 3. 模型名称错误
 4. 网络连接问题

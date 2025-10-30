@@ -101,28 +101,32 @@ function App() {
     <div className="min-h-screen" style={{ background: '#0B0E11', color: '#EAECEF' }}>
       {/* Header - Binance Style */}
       <header className="glass sticky top-0 z-50 backdrop-blur-xl">
-        <div className="max-w-[1920px] mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xl" style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
+        <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-3 sm:py-4">
+          {/* Mobile: Two rows, Desktop: Single row */}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            {/* Left: Logo and Title */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-lg sm:text-xl" style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
                 ⚡
               </div>
               <div>
-                <h1 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+                <h1 className="text-base sm:text-xl font-bold leading-tight" style={{ color: '#EAECEF' }}>
                   {t('appTitle', language)}
                 </h1>
-                <p className="text-xs mono" style={{ color: '#848E9C' }}>
+                <p className="text-xs mono hidden sm:block" style={{ color: '#848E9C' }}>
                   {t('subtitle', language)}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              {/* GitHub Link */}
+
+            {/* Right: Controls - Wrap on mobile */}
+            <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
+              {/* GitHub Link - Hidden on mobile, icon only on tablet */}
               <a
                 href="https://github.com/tinkle-community/nofx"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                className="hidden sm:flex items-center gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded text-sm font-semibold transition-all hover:scale-105"
                 style={{ background: '#1E2329', color: '#848E9C', border: '1px solid #2B3139' }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = '#2B3139';
@@ -135,17 +139,17 @@ function App() {
                   e.currentTarget.style.borderColor = '#2B3139';
                 }}
               >
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                 </svg>
-                <span>GitHub</span>
+                <span className="hidden md:inline">GitHub</span>
               </a>
 
               {/* Language Toggle */}
-              <div className="flex gap-1 rounded p-1" style={{ background: '#1E2329' }}>
+              <div className="flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1" style={{ background: '#1E2329' }}>
                 <button
                   onClick={() => setLanguage('zh')}
-                  className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs font-semibold transition-all"
                   style={language === 'zh'
                     ? { background: '#F0B90B', color: '#000' }
                     : { background: 'transparent', color: '#848E9C' }
@@ -155,7 +159,7 @@ function App() {
                 </button>
                 <button
                   onClick={() => setLanguage('en')}
-                  className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs font-semibold transition-all"
                   style={language === 'en'
                     ? { background: '#F0B90B', color: '#000' }
                     : { background: 'transparent', color: '#848E9C' }
@@ -166,12 +170,10 @@ function App() {
               </div>
 
               {/* Page Toggle */}
-              <div className="flex gap-1 rounded p-1" style={{ background: '#1E2329' }}>
+              <div className="flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1" style={{ background: '#1E2329' }}>
                 <button
                   onClick={() => setCurrentPage('competition')}
-                  className={`px-4 py-2 rounded text-sm font-semibold transition-all ${
-                    currentPage === 'competition' ? '' : ''
-                  }`}
+                  className="px-2 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-semibold transition-all"
                   style={currentPage === 'competition'
                     ? { background: '#F0B90B', color: '#000' }
                     : { background: 'transparent', color: '#848E9C' }
@@ -181,7 +183,7 @@ function App() {
                 </button>
                 <button
                   onClick={() => setCurrentPage('trader')}
-                  className={`px-4 py-2 rounded text-sm font-semibold transition-all`}
+                  className="px-2 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-semibold transition-all"
                   style={currentPage === 'trader'
                     ? { background: '#F0B90B', color: '#000' }
                     : { background: 'transparent', color: '#848E9C' }
@@ -196,7 +198,7 @@ function App() {
                 <select
                   value={selectedTraderId}
                   onChange={(e) => setSelectedTraderId(e.target.value)}
-                  className="rounded px-3 py-2 text-sm font-medium cursor-pointer transition-colors"
+                  className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial"
                   style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
                 >
                   {traders.map((trader) => (
@@ -210,7 +212,7 @@ function App() {
               {/* Status Indicator (only show on trader page) */}
               {currentPage === 'trader' && status && (
                 <div
-                  className="flex items-center gap-2 px-3 py-2 rounded"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded"
                   style={status.is_running
                     ? { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.2)' }
                     : { background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }
