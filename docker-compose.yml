@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-<<<<<<< HEAD
   # PostgreSQL + TimescaleDB for risk state persistence
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -55,32 +54,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-=======
-  # Backend service (API and core logic)
-  nofx:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.backend
-    container_name: nofx-trading
-    restart: unless-stopped
-    ports:
-      - "${NOFX_BACKEND_PORT:-8080}:8080"
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./decision_logs:/app/decision_logs
-      - /etc/localtime:/etc/localtime:ro  # Sync host time
-    environment:
-      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
-    networks:
-      - nofx-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
->>>>>>> upstream/main
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-<<<<<<< HEAD
     command: sh -c "cp -r /app/web/dist/* /app/web/dist-shared/ 2>/dev/null || true && exec ./nofx"
 
   # Frontend (Nginx)
@@ -93,23 +70,10 @@ services:
     volumes:
       - frontend-dist:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-=======
-
-  # Frontend service (static serving and proxy)
-  nofx-frontend:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.frontend
-    container_name: nofx-frontend
-    restart: unless-stopped
-    ports:
-      - "${NOFX_FRONTEND_PORT:-3000}:80"
->>>>>>> upstream/main
     networks:
       - nofx-network
     depends_on:
       - nofx
-<<<<<<< HEAD
 
 volumes:
   frontend-dist:
@@ -117,15 +81,3 @@ volumes:
 networks:
   nofx-network:
     driver: bridge
-=======
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
-networks:
-  nofx-network:
-    driver: bridge
->>>>>>> upstream/main
