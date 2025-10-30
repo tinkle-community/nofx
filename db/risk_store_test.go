@@ -47,7 +47,9 @@ func TestNewRiskStore(t *testing.T) {
     if err != nil {
         t.Fatalf("NewRiskStore failed: %v", err)
     }
-    defer store.Close()
+    defer func() {
+        _ = store.Close(context.Background())
+    }()
 
     if store.pool == nil {
         t.Fatal("expected non-nil connection pool")
@@ -62,7 +64,7 @@ func TestRiskStore_SaveAndLoad(t *testing.T) {
     }
     defer func() {
         cleanupTestDB(t, store)
-        store.Close()
+        _ = store.Close(context.Background())
     }()
 
     traderID := "test-trader-save-load"
@@ -116,7 +118,7 @@ func TestRiskStore_LoadWhenNoState(t *testing.T) {
     }
     defer func() {
         cleanupTestDB(t, store)
-        store.Close()
+        _ = store.Close(context.Background())
     }()
 
     traderID := "test-trader-no-state"
@@ -147,7 +149,7 @@ func TestRiskStore_PersistenceFailuresAreNonFatal(t *testing.T) {
     }
 
     if store != nil {
-        store.Close()
+        _ = store.Close(context.Background())
     }
 }
 
@@ -159,7 +161,7 @@ func TestRiskStore_ConcurrentSaves(t *testing.T) {
     }
     defer func() {
         cleanupTestDB(t, store)
-        store.Close()
+        _ = store.Close(context.Background())
     }()
 
     traderID := "test-trader-concurrent"
@@ -170,26 +172,24 @@ func TestRiskStore_ConcurrentSaves(t *testing.T) {
     iterations := 50
     wg.Add(workers)
 
+    ctx := context.Background()
     for i := 0; i < workers; i++ {
         go func(workerID int) {
             defer wg.Done()
             for j := 0; j < iterations; j++ {
-                state := &RiskState{
-                    TraderID:      traderID,
-                    DailyPnL:      float64(workerID*iterations + j),
-                    DrawdownPct:   float64(workerID),
-                    CurrentEquity: 1000.0,
-                    PeakEquity:    1200.0,
-                    TradingPaused: false,
-                    UpdatedAt:     time.Now(),
+                delta := DailyDelta{
+                    DailyPnL: 1,
+                    Equity:   1,
+                    Reason:   "concurrent_delta",
                 }
-                _ = store.Save(state, fmt.Sprintf("trace-%d-%d", workerID, j), "concurrent_test")
+                if err := store.SaveDelta(ctx, traderID, delta); err != nil {
+                    t.Errorf("SaveDelta failed (worker=%d, iter=%d): %v", workerID, j, err)
+                }
             }
         }(i)
     }
 
     wg.Wait()
-    time.Sleep(500 * time.Millisecond)
 
     loaded, err := store.Load()
     if err != nil {
@@ -197,6 +197,17 @@ func TestRiskStore_ConcurrentSaves(t *testing.T) {
     }
     if loaded == nil {
         t.Fatal("expected loaded state after concurrent writes")
+    }
+
+    expected := float64(workers * iterations)
+    if loaded.DailyPnL != expected {
+        t.Errorf("DailyPnL mismatch: got %.2f, want %.2f", loaded.DailyPnL, expected)
+    }
+    if loaded.CurrentEquity != expected {
+        t.Errorf("CurrentEquity mismatch: got %.2f, want %.2f", loaded.CurrentEquity, expected)
+    }
+    if loaded.PeakEquity != expected {
+        t.Errorf("PeakEquity mismatch: got %.2f, want %.2f", loaded.PeakEquity, expected)
     }
 }
 
@@ -228,13 +239,17 @@ func TestRiskStore_RestartRecovery(t *testing.T) {
         t.Fatalf("Save failed: %v", err)
     }
     time.Sleep(100 * time.Millisecond)
-    firstStore.Close()
+    if err := firstStore.Close(context.Background()); err != nil {
+        t.Fatalf("first store close failed: %v", err)
+    }
 
     secondStore, err := NewRiskStore(connStr)
     if err != nil {
         t.Fatalf("NewRiskStore after restart failed: %v", err)
     }
-    defer secondStore.Close()
+    defer func() {
+        _ = secondStore.Close(context.Background())
+    }()
 
     secondStore.BindTrader(traderID)
 
@@ -278,7 +293,7 @@ func TestRiskStore_QueueFull(t *testing.T) {
     }
     defer func() {
         cleanupTestDB(t, store)
-        store.Close()
+        _ = store.Close(context.Background())
     }()
 
     store.queueSize = 2
