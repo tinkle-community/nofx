@@ -124,8 +124,8 @@ jobs:
             echo "files=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure conflict resolver executable
-        run: chmod +x scripts/gha_resolve_conflicts.sh
+      - name: Ensure automation scripts executable
+        run: chmod +x scripts/gha_resolve_conflicts.sh scripts/gha_create_draft_pr.sh scripts/gha_prepare_upstream_pr_body.sh
 
       - name: Resolve conflicts via scripted strategy
         env:
@@ -254,55 +254,7 @@ jobs:
           CONFLICT_COUNT: ${{ env.CONFLICT_COUNT }}
           REBASE_RESULT: ${{ env.REBASE_RESULT }}
           MERGE_RESULT: ${{ env.MERGE_RESULT }}
-        run: |
-          gh --version
-          existing=$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${SYNC_BRANCH}" --json number --jq '.[].number')
-          if [ -n "$existing" ]; then
-            echo "Draft PR already exists: #$existing"
-            exit 0
-          fi
-          conflicts_file="${SYNC_DIR}/conflicts.txt"
-          if [ -s "$conflicts_file" ]; then
-            conflict_lines=$(sed 's/^/- /' "$conflicts_file")
-          else
-            conflict_lines="- None"
-          fi
-          resolution_log="${SYNC_DIR}/conflict_resolution.log"
-          if [ -s "$resolution_log" ]; then
-            resolution_lines=$(sed 's/^/- /' "$resolution_log")
-          else
-            resolution_lines="- No conflicts detected"
-          fi
-          title="chore: upstream sync ${SYNC_BRANCH##sync/}"
-          body=$(cat <<EOF
-## Summary
-- Automated upstream sync via GitHub Actions.
-- Strategy: ${SYNC_STRATEGY}
-- Rebase result: ${REBASE_RESULT}
-- Merge result: ${MERGE_RESULT}
-- Conflicts detected: ${CONFLICT_COUNT}
-
-## Conflicts
-${conflict_lines}
-
-## Conflict Resolution Log
-${resolution_lines}
-
-## Next Steps
-- [ ] Monitor automated test matrix.
-- [ ] Review DIFF_REPORT.md artifact for additional context.
-- [ ] Promote this PR upstream after validation completes.
-
-> Generated automatically by workflow run ${GITHUB_RUN_ID}.
-EOF
-)
-          gh pr create \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "$title" \
-            --body "$body" \
-            --draft \
-            --head "${SYNC_BRANCH}" \
-            --base main
+        run: ./scripts/gha_create_draft_pr.sh
 
   tests-with-docker:
     name: Tests (with Docker/PostgreSQL)
@@ -475,6 +427,9 @@ EOF
       needs.tests-without-docker.result == 'success' &&
       needs.race-detector.result == 'success'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download sync artifacts
         uses: actions/download-artifact@v4
         with:
@@ -483,79 +438,16 @@ EOF
 
       - name: Prepare upstream PR body
         id: prepare-body
-        run: |
-          BRANCH='${{ needs.sync.outputs.branch }}'
-          STRATEGY='${{ needs.sync.outputs.strategy }}'
-          REBASE='${{ needs.sync.outputs.rebase_result }}'
-          MERGE='${{ needs.sync.outputs.merge_result }}'
-          CONFLICT_COUNT='${{ needs.sync.outputs.conflict_count }}'
-          if [ -z "$CONFLICT_COUNT" ]; then
-            CONFLICT_COUNT=0
-          fi
-          if [ -z "$REBASE" ]; then
-            REBASE="n/a"
-          fi
-          if [ -z "$MERGE" ]; then
-            MERGE="n/a"
-          fi
-          RESOLUTION_FILE="sync-artifacts/conflict_resolution.log"
-          CONFLICT_FILE="sync-artifacts/conflicts.txt"
-          if [ -s "$RESOLUTION_FILE" ]; then
-            RESOLUTION_LINES=$(sed 's/^/- /' "$RESOLUTION_FILE")
-          else
-            RESOLUTION_LINES="- No conflicts detected"
-          fi
-          if [ -s "$CONFLICT_FILE" ]; then
-            CONFLICT_LINES=$(sed 's/^/- /' "$CONFLICT_FILE")
-          else
-            CONFLICT_LINES="- None"
-          fi
-          cat <<EOF > pr_body.md
-## Summary
-- Upstream sync executed on $(date -u +"%Y-%m-%d %H:%M UTC")
-- Branch: ${BRANCH}
-- Strategy: ${STRATEGY}
-- Rebase result: ${REBASE}
-- Merge result: ${MERGE}
-- Conflicts detected: ${CONFLICT_COUNT}
-
-## Conflict Resolution Summary
-${RESOLUTION_LINES}
-
-## Remaining Conflicts
-${CONFLICT_LINES}
-
-## Validation
-- [x] Tests (with Docker/PostgreSQL) — workflow run ${{ github.run_id }}
-- [x] Tests (without Docker)
-- [x] Race detector suite
-
-## Feature Flags
-- `enable_guarded_stop_loss`: default ON (unchanged)
-- `enable_mutex_protection`: default ON (unchanged)
-- `enable_persistence`: default ON (unchanged)
-- `enable_risk_enforcement`: default ON (unchanged)
-
-## Persistence
-- PostgreSQL-backed persistence validated in Docker matrix job.
-- Queue-based risk persistence remains guarded by `enable_persistence`.
-- Failures remain non-fatal, preserving trading continuity.
-
-## Deployment Checklist
-- [x] Sync branch pushed: `${BRANCH}`
-- [x] Diff report generated (see workflow artifacts)
-- [x] Automated test matrix green
-- [ ] Manual review of DIFF_REPORT.md
-- [ ] Monitor feature flag telemetry after deploy
-
-## Artifacts
-- `DIFF_REPORT.md`
-- `conflict_resolution.log`
-- `conflicts.txt`
-
-Generated by workflow run [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
-EOF
-          echo "body_path=pr_body.md" >> "$GITHUB_OUTPUT"
+        env:
+          BRANCH: ${{ needs.sync.outputs.branch }}
+          STRATEGY: ${{ needs.sync.outputs.strategy }}
+          REBASE_RESULT: ${{ needs.sync.outputs.rebase_result }}
+          MERGE_RESULT: ${{ needs.sync.outputs.merge_result }}
+          CONFLICT_COUNT: ${{ needs.sync.outputs.conflict_count }}
+          ARTIFACT_DIR: sync-artifacts
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/gha_prepare_upstream_pr_body.sh
 
       - name: Create or update upstream PR
         env:
