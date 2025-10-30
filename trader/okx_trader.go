@@ -120,6 +120,16 @@ func (t *OKXTrader) request(ctx context.Context, method, path string, body inter
 
 // GetBalance 获取账户余额（带缓存）
 func (t *OKXTrader) GetBalance() (map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：返回模拟账户数据
+	if t.dryRun {
+		result := make(map[string]interface{})
+		result["totalWalletBalance"] = 1000.0  // 模拟初始余额
+		result["availableBalance"] = 1000.0     // 全部可用
+		result["totalUnrealizedProfit"] = 0.0   // 无未实现盈亏
+		log.Printf("📝 [DRY RUN] 模拟账户余额: 总余额=1000.00, 可用=1000.00")
+		return result, nil
+	}
+
 	// 先检查缓存是否有效
 	t.balanceCacheMutex.RLock()
 	if t.cachedBalance != nil && time.Since(t.balanceCacheTime) < t.cacheDuration {
@@ -188,6 +198,12 @@ func (t *OKXTrader) GetBalance() (map[string]interface{}, error) {
 
 // GetPositions 获取所有持仓（带缓存）
 func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：返回空持仓列表
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 模拟持仓信息: 无持仓")
+		return []map[string]interface{}{}, nil
+	}
+
 	// 先检查缓存是否有效
 	t.positionsCacheMutex.RLock()
 	if t.cachedPositions != nil && time.Since(t.positionsCacheTime) < t.cacheDuration {
