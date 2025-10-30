@@ -188,21 +188,33 @@ func (at *AutoTrader) Run() error {
 	log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
 	log.Println("🤖 AI将全权决定杠杆、仓位大小、止损止盈等参数")
 
-	ticker := time.NewTicker(at.config.ScanInterval)
-	defer ticker.Stop()
+	// 对齐到整间隔边界（加入设置 间隔时间 5min 如 21:00, 21:05, 21:10）
+	interval := at.config.ScanInterval
+	now := time.Now()
+	nextTick := now.Truncate(interval).Add(interval)
+	delay := time.Until(nextTick)
+	log.Printf("🕘 首次执行对齐至: %s", nextTick.Format("2006-01-02 15:04:05"))
 
-	// 首次立即执行
-	if err := at.runCycle(); err != nil {
-		log.Printf("❌ 执行失败: %v", err)
-	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 
 	for at.isRunning {
-		select {
-		case <-ticker.C:
-			if err := at.runCycle(); err != nil {
-				log.Printf("❌ 执行失败: %v", err)
+		<-timer.C
+		if err := at.runCycle(); err != nil {
+			log.Printf("❌ 执行失败: %v", err)
+		}
+
+		// 计算并对齐到下一个整间隔时刻
+		nextTick = time.Now().Truncate(interval).Add(interval)
+		delay = time.Until(nextTick)
+		if !timer.Stop() {
+			// 清空可能残留的触发
+			select {
+			case <-timer.C:
+			default:
 			}
 		}
+		timer.Reset(delay)
 	}
 
 	return nil
