@@ -255,10 +255,25 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		posMap["liquidationPrice"], _ = strconv.ParseFloat(pos.LiqPx, 64)
 
 		// 判断方向
+		// OKX有两种持仓模式：
+		// 1. 双向持仓：posSide = "long" 或 "short"
+		// 2. 单向持仓：posSide = "net"，通过pos数量正负判断方向
 		if pos.PosSide == "long" {
 			posMap["side"] = "long"
 		} else if pos.PosSide == "short" {
 			posMap["side"] = "short"
+		} else if pos.PosSide == "net" || pos.PosSide == "" {
+			// 单向持仓模式：正数=多仓，负数=空仓
+			if posAmt > 0 {
+				posMap["side"] = "long"
+			} else {
+				posMap["side"] = "short"
+				posAmt = -posAmt // 转为正数
+				posMap["positionAmt"] = posAmt
+			}
+		} else {
+			log.Printf("⚠️  未知的持仓方向: %s (symbol=%s), 跳过该持仓", pos.PosSide, pos.InstId)
+			continue
 		}
 
 		result = append(result, posMap)
