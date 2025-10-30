@@ -73,7 +73,7 @@
   ],
   "coin_pool_api_url": "",
   "oi_top_api_url": "",
-  "api_server_port": 8080,
+  "api_server_port": 8090,
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
   "stop_trading_minutes": 60

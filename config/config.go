@@ -174,7 +174,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.APIServerPort <= 0 {
-		c.APIServerPort = 8080 // 默认8080端口
+		c.APIServerPort = 8090 // 默认8090端口
 	}
 
 	// 设置杠杆默认值（适配币安子账户限制，最大5倍）
