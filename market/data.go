@@ -469,8 +469,17 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 	return data
 }
 
-// getOpenInterestData 获取OI数据
+// getOpenInterestData 获取OI数据（支持 Binance 和 OKX）
 func getOpenInterestData(symbol string) (*OIData, error) {
+	// 根据 symbol 格式判断交易所
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return getOpenInterestDataOKX(symbol)
+	}
+	return getOpenInterestDataBinance(symbol)
+}
+
+// getOpenInterestDataBinance 从 Binance 获取OI数据
+func getOpenInterestDataBinance(symbol string) (*OIData, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
 
 	resp, err := http.Get(url)
@@ -502,8 +511,59 @@ func getOpenInterestData(symbol string) (*OIData, error) {
 	}, nil
 }
 
-// getFundingRate 获取资金费率
+// getOpenInterestDataOKX 从 OKX 获取OI数据
+func getOpenInterestDataOKX(symbol string) (*OIData, error) {
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=%s", symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var okxResp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstId string `json:"instId"`
+			Oi     string `json:"oi"`
+			OiCcy  string `json:"oiCcy"`
+			Ts     string `json:"ts"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &okxResp); err != nil {
+		return nil, err
+	}
+
+	if okxResp.Code != "0" || len(okxResp.Data) == 0 {
+		return nil, fmt.Errorf("OKX OI API错误: code=%s", okxResp.Code)
+	}
+
+	oi, _ := strconv.ParseFloat(okxResp.Data[0].Oi, 64)
+
+	return &OIData{
+		Latest:  oi,
+		Average: oi * 0.999, // 近似平均值
+	}, nil
+}
+
+// getFundingRate 获取资金费率（支持 Binance 和 OKX）
 func getFundingRate(symbol string) (float64, error) {
+	// 根据 symbol 格式判断交易所
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return getFundingRateOKX(symbol)
+	}
+	return getFundingRateBinance(symbol)
+}
+
+// getFundingRateBinance 从 Binance 获取资金费率
+func getFundingRateBinance(symbol string) (float64, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
 
 	resp, err := http.Get(url)
@@ -532,6 +592,43 @@ func getFundingRate(symbol string) (float64, error) {
 	}
 
 	rate, _ := strconv.ParseFloat(result.LastFundingRate, 64)
+	return rate, nil
+}
+
+// getFundingRateOKX 从 OKX 获取资金费率
+func getFundingRateOKX(symbol string) (float64, error) {
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/funding-rate?instId=%s", symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var okxResp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstId      string `json:"instId"`
+			FundingRate string `json:"fundingRate"`
+			FundingTime string `json:"fundingTime"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &okxResp); err != nil {
+		return 0, err
+	}
+
+	if okxResp.Code != "0" || len(okxResp.Data) == 0 {
+		return 0, fmt.Errorf("OKX Funding Rate API错误: code=%s", okxResp.Code)
+	}
+
+	rate, _ := strconv.ParseFloat(okxResp.Data[0].FundingRate, 64)
 	return rate, nil
 }
 
