@@ -9,7 +9,7 @@
 
 ---
 
-An automated crypto futures trading system powered by **DeepSeek/Qwen AI**, supporting **Binance, Hyperliquid, and Aster DEX exchanges**, **multi-AI model live trading competition**, featuring comprehensive market analysis, AI decision-making, **self-learning mechanism**, and professional Web monitoring interface.
+An automated crypto futures trading system powered by **DeepSeek/Qwen AI**, supporting **Binance, OKX, Hyperliquid, and Aster DEX exchanges**, **multi-AI model live trading competition**, featuring comprehensive market analysis, AI decision-making, **self-learning mechanism**, and professional Web monitoring interface.
 
 > ⚠️ **Risk Warning**: This system is experimental. AI auto-trading carries significant risks. Strongly recommended for learning/research purposes or testing with small amounts only!
 
@@ -25,7 +25,7 @@ Join our Telegram developer community to discuss, share ideas, and get support:
 
 ### 🚀 Multi-Exchange Support!
 
-NOFX now supports **three major exchanges**: Binance, Hyperliquid, and Aster DEX!
+NOFX now supports **four major exchanges**: Binance, OKX, Hyperliquid, and Aster DEX!
 
 #### **Hyperliquid Exchange**
 
@@ -51,6 +51,31 @@ A high-performance decentralized perpetual futures exchange!
 4. Start trading!
 
 See [Configuration Guide](#-alternative-using-hyperliquid-exchange) for details.
+
+#### **OKX Exchange** (NEW!)
+
+A leading global cryptocurrency exchange with comprehensive futures trading!
+
+**Key Features:**
+- ✅ OKX V5 API support with full futures trading
+- ✅ High liquidity and competitive fees
+- ✅ Unified trading account mode
+- ✅ Advanced order types (market, limit, conditional)
+- ✅ Automatic precision handling for all symbols
+
+**Why OKX?**
+- 🌟 Top-tier centralized exchange with deep liquidity
+- 📈 Wide range of perpetual futures contracts
+- 💼 Professional trading tools and API
+- 🔐 Secure API authentication with passphrase
+
+**Quick Start:**
+1. Get your OKX API credentials (API Key, Secret Key, Passphrase)
+2. Set `"exchange": "okx"` in config.json
+3. Add `"okx_api_key"`, `"okx_secret_key"`, and `"okx_passphrase"`
+4. Start trading on OKX!
+
+See [Configuration Guide](#-alternative-using-okx-exchange) for details.
 
 #### **Aster DEX Exchange** (NEW! v2.0.2)
 
@@ -485,6 +510,60 @@ cp config.json.example config.json
 - Set `hyperliquid_testnet: false` for mainnet (or `true` for testnet)
 
 **⚠️ Security Warning**: Never share your private key! Use a dedicated wallet for trading, not your main wallet.
+
+---
+
+#### 🟠 Alternative: Using OKX Exchange
+
+**NOFX now supports OKX** - a leading global cryptocurrency exchange with comprehensive futures trading!
+
+**Step 1**: Get your OKX API credentials
+
+1. Log in to your **OKX account**
+2. Go to **Profile** → **API** → **Create API Key**
+3. Set API permissions: **Read** and **Trade** (futures trading)
+4. Save your **API Key**, **Secret Key**, and **Passphrase** (you'll need all three)
+5. Enable **IP whitelist** for additional security (optional but recommended)
+
+**Step 2**: Configure `config.json` for OKX
+
+```json
+{
+  "traders": [
+    {
+      "id": "okx_trader",
+      "name": "My OKX Trader",
+      "ai_model": "deepseek",
+      "exchange": "okx",
+      "okx_api_key": "your_okx_api_key",
+      "okx_secret_key": "your_okx_secret_key",
+      "okx_passphrase": "your_okx_passphrase",
+      "deepseek_key": "sk-xxxxxxxxxxxxx",
+      "initial_balance": 1000.0,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "use_default_coins": true,
+  "api_server_port": 8080
+}
+```
+
+**Key Configuration Fields:**
+- `okx_api_key`: Your OKX API Key
+- `okx_secret_key`: Your OKX Secret Key
+- `okx_passphrase`: Your OKX API Passphrase (required for V5 API)
+- Set `"exchange": "okx"` to use OKX
+
+**Symbol Format:**
+- OKX uses different symbol formats: `BTC-USDT-SWAP`, `ETH-USDT-SWAP`
+- The system automatically handles symbol formatting
+- Make sure you have USDT in your OKX trading account
+
+**⚠️ Important Notes:**
+- OKX API V5 requires all three credentials (Key, Secret, Passphrase)
+- Enable **Unified Trading Account** mode for best compatibility
+- Test with small amounts first before live trading
+- Set up IP whitelist for enhanced security
 
 ---
 

@@ -149,6 +149,9 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		if err != nil {
 			return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
 		}
+	case "okx":
+		log.Printf("🏦 [%s] 使用OKX交易", config.Name)
+		trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
 	default:
 		return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 	}

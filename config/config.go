@@ -30,6 +30,11 @@ type TraderConfig struct {
 	AsterSigner     string `json:"aster_signer,omitempty"`      // Aster API钱包地址
 	AsterPrivateKey string `json:"aster_private_key,omitempty"` // Aster API钱包私钥
 
+	// OKX配置
+	OKXAPIKey     string `json:"okx_api_key,omitempty"`
+	OKXSecretKey  string `json:"okx_secret_key,omitempty"`
+	OKXPassphrase string `json:"okx_passphrase,omitempty"`
+
 	// AI配置
 	QwenKey     string `json:"qwen_key,omitempty"`
 	DeepSeekKey string `json:"deepseek_key,omitempty"`
@@ -129,8 +134,8 @@ func (c *Config) Validate() error {
 		if trader.Exchange == "" {
 			trader.Exchange = "binance" // 默认使用币安
 		}
-		if trader.Exchange != "binance" && trader.Exchange != "hyperliquid" && trader.Exchange != "aster" {
-			return fmt.Errorf("trader[%d]: exchange必须是 'binance', 'hyperliquid' 或 'aster'", i)
+		if trader.Exchange != "binance" && trader.Exchange != "hyperliquid" && trader.Exchange != "aster" && trader.Exchange != "okx" {
+			return fmt.Errorf("trader[%d]: exchange必须是 'binance', 'hyperliquid', 'aster' 或 'okx'", i)
 		}
 
 		// 根据平台验证对应的密钥
@@ -145,6 +150,10 @@ func (c *Config) Validate() error {
 		} else if trader.Exchange == "aster" {
 			if trader.AsterUser == "" || trader.AsterSigner == "" || trader.AsterPrivateKey == "" {
 				return fmt.Errorf("trader[%d]: 使用Aster时必须配置aster_user, aster_signer和aster_private_key", i)
+			}
+		} else if trader.Exchange == "okx" {
+			if trader.OKXAPIKey == "" || trader.OKXSecretKey == "" || trader.OKXPassphrase == "" {
+				return fmt.Errorf("trader[%d]: 使用OKX时必须配置okx_api_key, okx_secret_key和okx_passphrase", i)
 			}
 		}
 
