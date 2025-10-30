@@ -9,6 +9,8 @@ echo
 
 COVERAGE_TARGET=${COVERAGE_TARGET:-90}
 SKIP_RACE=${SKIP_RACE:-false}
+TEST_TIMEOUT=${TEST_TIMEOUT:-10m}
+WITH_DOCKER=${WITH_DOCKER:-false}
 
 export TEST_DB_URL="${TEST_DB_URL:-}"
 
@@ -18,6 +20,12 @@ if [ "$SKIP_RACE" = "true" ]; then
 else
   echo "✓ Race detector enabled"
   RACE_FLAG="-race"
+fi
+
+echo "✓ go test timeout: ${TEST_TIMEOUT}"
+
+if [ "$WITH_DOCKER" = "true" ]; then
+  echo "✓ Docker-backed PostgreSQL tests enabled"
 fi
 
 if [ -z "$TEST_DB_URL" ]; then
@@ -56,9 +64,12 @@ fi
 
 COVERAGE_PACKAGES=("${PACKAGES[@]}")
 
-if [ "$SKIP_DB_PACKAGES" = "1" ]; then
-  DEFAULT_COVERAGE_FOCUS="nofx/risk nofx/featureflag"
-  read -ra REQUESTED_COVERAGE <<< "${COVERAGE_FOCUS_PACKAGES:-$DEFAULT_COVERAGE_FOCUS}"
+if [ "$SKIP_DB_PACKAGES" = "1" ] && [ -z "${COVERAGE_FOCUS_PACKAGES:-}" ]; then
+  COVERAGE_FOCUS_PACKAGES="nofx/risk nofx/featureflag"
+fi
+
+if [ -n "${COVERAGE_FOCUS_PACKAGES:-}" ]; then
+  read -ra REQUESTED_COVERAGE <<< "${COVERAGE_FOCUS_PACKAGES}"
   tmp=()
   for pkg in "${REQUESTED_COVERAGE[@]}"; do
     if go list "$pkg" >/dev/null 2>&1; then
@@ -95,13 +106,27 @@ fi
 echo "─────────────────────────────────────────────────────────────"
 echo
 
-go test $RACE_FLAG \
-  -coverpkg="${COVERPKG}" \
-  -coverprofile=coverage.out \
-  -covermode=atomic \
-  -count=1 \
-  -v \
+GO_TEST_ARGS=(go test)
+if [ -n "$RACE_FLAG" ]; then
+  GO_TEST_ARGS+=("$RACE_FLAG")
+fi
+
+if [ "$WITH_DOCKER" = "true" ]; then
+  GO_TEST_ARGS+=(-p 2)
+fi
+
+GO_TEST_ARGS+=(
+  -timeout "$TEST_TIMEOUT"
+  -coverpkg="${COVERPKG}"
+  -coverprofile=coverage.out
+  -covermode=atomic
+  -count=1
+  -v
   "${COVERAGE_PACKAGES[@]}"
+)
+
+echo "Running: ${GO_TEST_ARGS[*]}"
+"${GO_TEST_ARGS[@]}"
 
 REMAINING_PACKAGES=()
 for pkg in "${PACKAGES[@]}"; do
@@ -123,7 +148,22 @@ if [ ${#REMAINING_PACKAGES[@]} -gt 0 ]; then
   echo "  Running tests without coverage for ${#REMAINING_PACKAGES[@]} additional packages"
   echo "─────────────────────────────────────────────────────────────"
   echo
-  go test $RACE_FLAG -count=1 -v "${REMAINING_PACKAGES[@]}"
+  
+  REMAINING_ARGS=(go test)
+  if [ -n "$RACE_FLAG" ]; then
+    REMAINING_ARGS+=("$RACE_FLAG")
+  fi
+  if [ "$WITH_DOCKER" = "true" ]; then
+    REMAINING_ARGS+=(-p 2)
+  fi
+  REMAINING_ARGS+=(
+    -timeout "$TEST_TIMEOUT"
+    -count=1
+    -v
+    "${REMAINING_PACKAGES[@]}"
+  )
+  echo "Running: ${REMAINING_ARGS[*]}"
+  "${REMAINING_ARGS[@]}"
 fi
 
 echo

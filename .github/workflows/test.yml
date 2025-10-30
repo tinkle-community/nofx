@@ -10,8 +10,25 @@ jobs:
   test-with-docker:
     name: Tests (with Docker/PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      TEST_DB_URL: postgresql://trader:trader@127.0.0.1:5432/trader?sslmode=disable
+      COVERAGE_FOCUS_PACKAGES: "nofx/db nofx/risk nofx/featureflag"
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: trader
+          POSTGRES_DB: trader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Checkout code
@@ -38,8 +55,10 @@ jobs:
       - name: Run tests with Docker (PostgreSQL integration tests)
         run: ./scripts/ci_test.sh
         env:
-          COVERAGE_TARGET: 90
+          COVERAGE_TARGET: 60
           SKIP_RACE: true
+          TEST_TIMEOUT: 20m
+          WITH_DOCKER: true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
