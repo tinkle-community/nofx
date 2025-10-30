@@ -1,0 +1,29 @@
+{
+  "traders": [
+    {
+      "id": "my_binance_trader",
+      "name": "My Binance AI Trader",
+      "ai_model": "deepseek",
+      "exchange": "binance",
+      "binance_api_key": "your_binance_api_key",
+      "binance_secret_key": "your_binance_secret_key",
+      "deepseek_key": "sk-your-deepseek-api-key",
+      "initial_balance": 1000,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "leverage": {
+    "btc_eth_leverage": 5,
+    "altcoin_leverage": 5
+  },
+  "use_default_coins": true,
+  "default_coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT"
+  ],
+  "api_server_port": 8080,
+  "max_daily_loss": 10.0,
+  "max_drawdown": 20.0,
+  "stop_trading_minutes": 60
+}

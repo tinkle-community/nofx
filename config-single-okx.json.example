@@ -1,0 +1,30 @@
+{
+  "traders": [
+    {
+      "id": "my_okx_trader",
+      "name": "My OKX AI Trader",
+      "ai_model": "deepseek",
+      "exchange": "okx",
+      "okx_api_key": "your_okx_api_key",
+      "okx_secret_key": "your_okx_secret_key",
+      "okx_passphrase": "your_okx_passphrase",
+      "deepseek_key": "sk-your-deepseek-api-key",
+      "initial_balance": 1000,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "leverage": {
+    "btc_eth_leverage": 5,
+    "altcoin_leverage": 5
+  },
+  "use_default_coins": true,
+  "default_coins": [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "SOL-USDT-SWAP"
+  ],
+  "api_server_port": 8080,
+  "max_daily_loss": 10.0,
+  "max_drawdown": 20.0,
+  "stop_trading_minutes": 60
+}

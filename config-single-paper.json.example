@@ -1,0 +1,30 @@
+{
+  "traders": [
+    {
+      "id": "my_trader",
+      "name": "My Paper Trading Bot",
+      "ai_model": "deepseek",
+      "paper_trading": true,
+      "exchange": "binance",
+      "deepseek_key": "sk-your-deepseek-api-key",
+      "initial_balance": 10000,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "leverage": {
+    "btc_eth_leverage": 5,
+    "altcoin_leverage": 5
+  },
+  "use_default_coins": true,
+  "default_coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT"
+  ],
+  "api_server_port": 8080,
+  "max_daily_loss": 10.0,
+  "max_drawdown": 20.0,
+  "stop_trading_minutes": 60
+}
