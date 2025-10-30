@@ -20,12 +20,20 @@ type AutoTraderConfig struct {
 	Name    string // Trader显示名称
 	AIModel string // AI模型: "qwen" 或 "deepseek"
 
+	// 交易模式
+	PaperTrading bool // true=模拟交易, false=真实交易
+
 	// 交易平台选择
-	Exchange string // "binance", "hyperliquid" 或 "aster"
+	Exchange string // "binance", "okx", "hyperliquid" 或 "aster"
 
 	// 币安API配置
 	BinanceAPIKey    string
 	BinanceSecretKey string
+
+	// OKX配置
+	OKXAPIKey     string
+	OKXSecretKey  string
+	OKXPassphrase string
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string
@@ -131,7 +139,6 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 
 	// 根据配置创建对应的交易器
 	var trader Trader
-	var err error
 
 	// 如果启用了模拟交易模式
 	if config.PaperTrading {
@@ -144,17 +151,9 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 			log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
 			trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
 		case "hyperliquid":
-			log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
-			trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
-			if err != nil {
-				return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
-			}
+			return nil, fmt.Errorf("Hyperliquid交易所需要Go 1.25+版本支持，当前版本不支持。请使用binance、okx或paper_trading模式")
 		case "aster":
-			log.Printf("🏦 [%s] 使用Aster交易", config.Name)
-			trader, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
-			if err != nil {
-				return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
-			}
+			return nil, fmt.Errorf("Aster交易所需要特定依赖，当前版本不支持。请使用binance、okx或paper_trading模式")
 		case "okx":
 			log.Printf("🏦 [%s] 使用OKX交易", config.Name)
 			trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
