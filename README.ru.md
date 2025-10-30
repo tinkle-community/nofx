@@ -398,9 +398,11 @@ cp config.json.example config.json
     {
       "id": "hyperliquid_trader",
       "name": "My Hyperliquid Trader",
+      "enabled": true,
       "ai_model": "deepseek",
       "exchange": "hyperliquid",
       "hyperliquid_private_key": "your_private_key_without_0x",
+      "hyperliquid_wallet_addr": "your_ethereum_address",
       "hyperliquid_testnet": false,
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "initial_balance": 1000.0,
@@ -450,13 +452,14 @@ cp config.json.example config.json
     {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
+      "enabled": true,
       "ai_model": "deepseek",
       "exchange": "aster",
-      
+
       "aster_user": "0x63DD5aCC6b1aa0f563956C0e534DD30B6dcF7C4e",
       "aster_signer": "0x21cF8Ae13Bb72632562c6Fff438652Ba1a151bb0",
       "aster_private_key": "4fd0a42218f3eae43a6ce26d22544e986139a01e5b34a62db53757ffca81bae1",
-      
+
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "initial_balance": 1000.0,
       "scan_interval_minutes": 3
@@ -536,9 +539,14 @@ cp config.json.example config.json
 |------|----------|-----------------|--------------|
 | `id` | Уникальный идентификатор для этого трейдера | `"my_trader"` | ✅ Да |
 | `name` | Отображаемое имя | `"Мой AI Трейдер"` | ✅ Да |
-| `ai_model` | Используемый AI провайдер | `"deepseek"` или `"qwen"` | ✅ Да |
-| `binance_api_key` | Binance API ключ | `"abc123..."` | ✅ Да |
-| `binance_secret_key` | Binance Secret ключ | `"xyz789..."` | ✅ Да |
+| `enabled` | Включен ли этот трейдер<br>Установите в `false` для пропуска запуска | `true` или `false` | ✅ Да |
+| `ai_model` | Используемый AI провайдер | `"deepseek"` или `"qwen"` или `"custom"` | ✅ Да |
+| `exchange` | Используемая биржа | `"binance"` или `"hyperliquid"` или `"aster"` | ✅ Да |
+| `binance_api_key` | Binance API ключ | `"abc123..."` | Требуется при использовании Binance |
+| `binance_secret_key` | Binance Secret ключ | `"xyz789..."` | Требуется при использовании Binance |
+| `hyperliquid_private_key` | Hyperliquid приватный ключ<br>⚠️ Удалите префикс `0x` | `"your_key..."` | Требуется при использовании Hyperliquid |
+| `hyperliquid_wallet_addr` | Hyperliquid адрес кошелька | `"0xabc..."` | Требуется при использовании Hyperliquid |
+| `hyperliquid_testnet` | Использовать тестнет | `true` или `false` | ❌ Нет (по умолчанию false) |
 | `use_qwen` | Использовать ли Qwen | `true` или `false` | ✅ Да |
 | `deepseek_key` | DeepSeek API ключ | `"sk-xxx"` | Требуется при использовании DeepSeek |
 | `qwen_key` | Qwen API ключ | `"sk-xxx"` | Требуется при использовании Qwen |
