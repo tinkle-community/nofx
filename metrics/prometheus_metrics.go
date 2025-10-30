@@ -3,10 +3,32 @@
 package metrics
 
 import (
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const (
+	BackendUnknown  = "unknown"
+	BackendMemory   = "memory"
+	BackendPostgres = "postgres"
+)
+
+func normalizeBackend(backend string) string {
+	backend = strings.TrimSpace(strings.ToLower(backend))
+	if backend == "" {
+		return BackendUnknown
+	}
+	switch backend {
+	case "postgres", "postgresql", "pg", "timescale", "timescaledb":
+		return BackendPostgres
+	case "memory", "mem", "inmemory":
+		return BackendMemory
+	default:
+		return backend
+	}
+}
 
 var (
 	riskDailyPnLGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -37,12 +59,12 @@ var (
 	riskPersistenceFailuresCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "risk_persistence_failures_total",
 		Help: "risk.persistence_failures – errors persisting risk state",
-	}, []string{"trader_id"})
+	}, []string{"trader_id", "backend"})
 
 	riskPersistenceAttemptsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "risk_persistence_attempts_total",
 		Help: "risk.persistence_attempts – attempted persists to database",
-	}, []string{"trader_id"})
+	}, []string{"trader_id", "backend"})
 
 	riskDataRacesCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "risk_data_races_total",
@@ -57,7 +79,7 @@ var (
 	riskPersistLatencyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "risk_persist_latency_ms",
 		Help: "risk.persist_latency_ms – time spent persisting risk state",
-	}, []string{"trader_id"})
+	}, []string{"trader_id", "backend"})
 
 	featureFlagGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "feature_flag_state",
@@ -106,11 +128,19 @@ func IncRiskStopLossFailures(traderID string) {
 }
 
 func IncRiskPersistenceFailures(traderID string) {
-	riskPersistenceFailuresCounter.WithLabelValues(traderID).Inc()
+	IncRiskPersistenceFailuresWithBackend(traderID, BackendUnknown)
+}
+
+func IncRiskPersistenceFailuresWithBackend(traderID, backend string) {
+	riskPersistenceFailuresCounter.WithLabelValues(traderID, normalizeBackend(backend)).Inc()
 }
 
 func IncRiskPersistenceAttempts(traderID string) {
-	riskPersistenceAttemptsCounter.WithLabelValues(traderID).Inc()
+	IncRiskPersistenceAttemptsWithBackend(traderID, BackendUnknown)
+}
+
+func IncRiskPersistenceAttemptsWithBackend(traderID, backend string) {
+	riskPersistenceAttemptsCounter.WithLabelValues(traderID, normalizeBackend(backend)).Inc()
 }
 
 func IncRiskDataRaces(traderID string) {
@@ -122,7 +152,11 @@ func ObserveRiskCheckLatency(traderID string, duration time.Duration) {
 }
 
 func ObserveRiskPersistLatency(traderID string, duration time.Duration) {
-	riskPersistLatencyGauge.WithLabelValues(traderID).Set(duration.Seconds() * 1000)
+	ObserveRiskPersistLatencyWithBackend(traderID, duration, BackendUnknown)
+}
+
+func ObserveRiskPersistLatencyWithBackend(traderID string, duration time.Duration, backend string) {
+	riskPersistLatencyGauge.WithLabelValues(traderID, normalizeBackend(backend)).Set(duration.Seconds() * 1000)
 }
 
 func SetFeatureFlag(flag string, enabled bool) {

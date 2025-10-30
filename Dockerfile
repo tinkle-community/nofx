@@ -12,7 +12,8 @@ RUN apk update && \
     wget \
     tar \
     autoconf \
-    automake
+    automake \
+    curl
 
 # Install TA-Lib
 RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
@@ -46,6 +47,12 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o nofx .
 
+# Build migrate tool
+RUN CGO_ENABLED=0 GOOS=linux go build -a -tags 'postgres' \
+    -ldflags '-extldflags "-static"' \
+    -o migrate-binary \
+    github.com/golang-migrate/migrate/v4/cmd/migrate
+
 # Frontend build stage
 FROM node:18-alpine AS frontend-builder
 
@@ -72,6 +79,8 @@ RUN apk update && \
     ca-certificates \
     tzdata \
     wget \
+    postgresql16-client \
+    libpq \
     tar \
     make \
     gcc \
@@ -105,11 +114,17 @@ WORKDIR /app
 # Copy backend binary from builder
 COPY --from=backend-builder /app/nofx .
 
+# Copy migrate binary from builder
+COPY --from=backend-builder /app/migrate-binary /usr/local/bin/migrate
+
 # Copy frontend build from builder
 COPY --from=frontend-builder /app/web/dist ./web/dist
 
+# Copy migrations for CLI usage
+COPY --from=backend-builder /app/db/migrations ./db/migrations
+
 # Create directories for logs and data
-RUN mkdir -p /app/decision_logs
+RUN mkdir -p /app/decision_logs /app/data
 
 # Expose ports
 # 8080 for backend API

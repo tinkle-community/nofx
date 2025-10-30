@@ -44,6 +44,9 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=nofx_risk
+      - POSTGRES_URL=postgres://postgres:postgres@postgres:5432/nofx_risk?sslmode=disable
+      - PERSISTENCE_BACKEND=postgres
+      - ENABLE_PERSISTENCE=true
     networks:
       - nofx-network
     depends_on:

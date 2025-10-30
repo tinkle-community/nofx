@@ -93,12 +93,19 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 }
 
 func (tm *TraderManager) buildDBPath(traderID string) string {
+	// Check for POSTGRES_URL env first
+	if url, ok := os.LookupEnv("POSTGRES_URL"); ok && url != "" {
+		return url
+	}
+
+	// Fall back to building from individual components
 	dbHost := getEnvOrDefault("DB_HOST", "localhost")
 	dbPort := getEnvOrDefault("DB_PORT", "5432")
 	dbUser := getEnvOrDefault("DB_USER", "postgres")
 	dbPass := getEnvOrDefault("DB_PASSWORD", "postgres")
 	dbName := getEnvOrDefault("DB_NAME", "nofx_risk")
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
+	sslmode := getEnvOrDefault("POSTGRES_SSLMODE", "disable")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPort, dbName, sslmode)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
