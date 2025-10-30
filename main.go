@@ -5,9 +5,13 @@ import (
 	"log"
 	"nofx/api"
 	"nofx/config"
+<<<<<<< HEAD
 	"nofx/featureflag"
 	"nofx/manager"
 	"nofx/metrics"
+=======
+	"nofx/manager"
+>>>>>>> upstream/main
 	"nofx/pool"
 	"os"
 	"os/signal"
@@ -36,6 +40,7 @@ func main() {
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))
 	fmt.Println()
 
+<<<<<<< HEAD
 	if err := os.MkdirAll("data", 0755); err != nil {
 		log.Printf("⚠️  无法创建数据目录: %v", err)
 	}
@@ -50,11 +55,19 @@ func main() {
 		flagsSnapshot.EnableRiskEnforcement,
 	)
 	metrics.SetFeatureFlags(flagsSnapshot.Map())
+=======
+	// 设置默认主流币种列表
+	pool.SetDefaultCoins(cfg.DefaultCoins)
+>>>>>>> upstream/main
 
 	// 设置是否使用默认主流币种
 	pool.SetUseDefaultCoins(cfg.UseDefaultCoins)
 	if cfg.UseDefaultCoins {
+<<<<<<< HEAD
 		log.Printf("✓ 已启用默认主流币种列表（BTC、ETH、SOL、BNB、XRP、DOGE、ADA、HYPE）")
+=======
+		log.Printf("✓ 已启用默认主流币种列表（共%d个币种）: %v", len(cfg.DefaultCoins), cfg.DefaultCoins)
+>>>>>>> upstream/main
 	}
 
 	// 设置币种池API URL
@@ -68,10 +81,25 @@ func main() {
 	}
 
 	// 创建TraderManager
+<<<<<<< HEAD
 	traderManager := manager.NewTraderManager(runtimeFlags)
 
 	// 添加所有trader
 	for i, traderCfg := range cfg.Traders {
+=======
+	traderManager := manager.NewTraderManager()
+
+	// 添加所有启用的trader
+	enabledCount := 0
+	for i, traderCfg := range cfg.Traders {
+		// 跳过未启用的trader
+		if !traderCfg.Enabled {
+			log.Printf("⏭️  [%d/%d] 跳过未启用的 %s", i+1, len(cfg.Traders), traderCfg.Name)
+			continue
+		}
+
+		enabledCount++
+>>>>>>> upstream/main
 		log.Printf("📦 [%d/%d] 初始化 %s (%s模型)...",
 			i+1, len(cfg.Traders), traderCfg.Name, strings.ToUpper(traderCfg.AIModel))
 
@@ -88,9 +116,24 @@ func main() {
 		}
 	}
 
+<<<<<<< HEAD
 	fmt.Println()
 	fmt.Println("🏁 竞赛参赛者:")
 	for _, traderCfg := range cfg.Traders {
+=======
+	// 检查是否至少有一个启用的trader
+	if enabledCount == 0 {
+		log.Fatalf("❌ 没有启用的trader，请在config.json中设置至少一个trader的enabled=true")
+	}
+
+	fmt.Println()
+	fmt.Println("🏁 竞赛参赛者:")
+	for _, traderCfg := range cfg.Traders {
+		// 只显示启用的trader
+		if !traderCfg.Enabled {
+			continue
+		}
+>>>>>>> upstream/main
 		fmt.Printf("  • %s (%s) - 初始资金: %.0f USDT\n",
 			traderCfg.Name, strings.ToUpper(traderCfg.AIModel), traderCfg.InitialBalance)
 	}
