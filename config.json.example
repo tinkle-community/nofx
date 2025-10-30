@@ -10,6 +10,7 @@
       "hyperliquid_testnet": false,
       "deepseek_key": "your_deepseek_api_key",
       "initial_balance": 1000,
+      // 交易周期（分钟），可选，未配置时默认3分钟
       "scan_interval_minutes": 3
     },
     {
@@ -21,6 +22,7 @@
       "binance_secret_key": "your_binance_secret_key",
       "qwen_key": "your_qwen_api_key",
       "initial_balance": 1000,
+      // 交易周期（分钟），可选，未配置时默认3分钟
       "scan_interval_minutes": 3
     },
     {
@@ -34,8 +36,9 @@
       "custom_api_key": "sk-your-api-key",
       "custom_model_name": "gpt-4o",
       "initial_balance": 1000,
+      // 交易周期（分钟），可选，未配置时默认3分钟
       "scan_interval_minutes": 3
-    }，
+    },
     {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
@@ -53,6 +56,7 @@
 
       "deepseek_key": "your_deepseek_api_key",
       "initial_balance": 1000.0,
+      // 交易周期（分钟），可选，未配置时默认3分钟
       "scan_interval_minutes": 3
     }
   ],
