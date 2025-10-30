@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"nofx/featureflag"
@@ -62,6 +63,9 @@ type Config struct {
 	StopTradingMinutes int               `json:"stop_trading_minutes"`
 	Leverage           LeverageConfig    `json:"leverage"` // 杠杆配置
 	FeatureFlags       featureflag.State `json:"feature_flags"`
+	PostgresURL        string            `json:"postgres_url"`        // PostgreSQL connection URL
+	PostgresSSLMode    string            `json:"postgres_sslmode"`    // SSL mode (disable, require, verify-full)
+	PersistenceBackend string            `json:"persistence_backend"` // "postgres" or "memory"
 }
 
 // LoadConfig 从文件加载配置
@@ -79,6 +83,30 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	config.FeatureFlags = featureflag.WithEnvOverrides(config.FeatureFlags)
+
+	// Apply environment overrides for persistence configuration
+	if postgresURL, ok := os.LookupEnv("POSTGRES_URL"); ok && postgresURL != "" {
+		config.PostgresURL = postgresURL
+	}
+	if backend, ok := os.LookupEnv("PERSISTENCE_BACKEND"); ok && backend != "" {
+		config.PersistenceBackend = strings.ToLower(strings.TrimSpace(backend))
+	}
+	if sslmode, ok := os.LookupEnv("POSTGRES_SSLMODE"); ok && sslmode != "" {
+		config.PostgresSSLMode = strings.ToLower(strings.TrimSpace(sslmode))
+	}
+
+	// Default backend and SSL mode
+	if config.PostgresURL != "" && strings.TrimSpace(config.PersistenceBackend) == "" {
+		config.PersistenceBackend = "postgres"
+	}
+	if strings.TrimSpace(config.PersistenceBackend) == "" {
+		config.PersistenceBackend = "memory"
+	} else {
+		config.PersistenceBackend = strings.ToLower(strings.TrimSpace(config.PersistenceBackend))
+	}
+	if config.PostgresSSLMode == "" {
+		config.PostgresSSLMode = "disable"
+	}
 
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
