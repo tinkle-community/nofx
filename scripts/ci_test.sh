@@ -56,21 +56,25 @@ fi
 
 echo "✓ Selected ${#PACKAGES[@]} packages for testing"
 
-COVERPKG=$(
-  IFS=,
-  printf "%s" "${PACKAGES[*]}"
-)
+COVERPKG="./..."
+
+echo "✓ Using coverpkg ${COVERPKG}"
 
 echo
 echo "─────────────────────────────────────────────────────────────"
-echo "  Running tests with race detector and coverage"
+if [ -z "$RACE_FLAG" ]; then
+  echo "  Running tests with coverage (race detector disabled)"
+else
+  echo "  Running tests with race detector and coverage"
+fi
 echo "─────────────────────────────────────────────────────────────"
 echo
 
 go test $RACE_FLAG \
-  -coverpkg="$COVERPKG" \
+  -coverpkg="${COVERPKG}" \
   -coverprofile=coverage.out \
   -covermode=atomic \
+  -count=1 \
   -v \
   "${PACKAGES[@]}"
 

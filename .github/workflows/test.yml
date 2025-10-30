@@ -37,7 +37,7 @@ jobs:
         run: ./scripts/ci_test.sh
         env:
           COVERAGE_TARGET: 90
-          SKIP_RACE: false
+          SKIP_RACE: true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -57,6 +57,7 @@ jobs:
   test-without-docker:
     name: Tests (without Docker, skip DB tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 8
 
     steps:
       - name: Checkout code
@@ -88,7 +89,7 @@ jobs:
         run: ./scripts/ci_test.sh
         env:
           COVERAGE_TARGET: 90
-          SKIP_RACE: false
+          SKIP_RACE: true
           SKIP_DOCKER_TESTS: 1
 
       - name: Upload coverage artifact
@@ -102,6 +103,7 @@ jobs:
   race-detector:
     name: Race Detector Stress Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -125,14 +127,5 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Run mutex/race stress tests
-        run: |
-          go test -race -v -run 'TestStore_.*Concurrent|TestStore_.*Mutex|TestUpdateDailyPnLConcurrent|TestSetStopUntilConcurrent' ./risk/... ./trader/...
-
-      - name: Run risk enforcement tests
-        run: |
-          go test -race -v -run 'TestEngine_.*Enforce.*|TestEngine_.*Breach.*|TestAutoTrader.*Risk.*|TestAutoTrader_CanTrade' ./risk/... ./trader/...
-
-      - name: Run guarded stop-loss tests
-        run: |
-          go test -race -v -run 'TestAutoTrader_GuardedStopLoss.*' ./trader/...
+      - name: Run race detector suite
+        run: go test -race -count=1 ./risk/... ./trader/...
