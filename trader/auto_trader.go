@@ -202,12 +202,22 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
 	}
 	config.FeatureFlags = flags
 
-	riskParams := risk.Parameters{
-		MaxDailyLossPct: config.MaxDailyLoss,
-		MaxDrawdownPct:  config.MaxDrawdown,
-		StopTradingFor:  config.StopTradingTime,
+	maxDailyLossAbs := 0.0
+	if config.InitialBalance > 0 && config.MaxDailyLoss > 0 {
+		maxDailyLossAbs = config.InitialBalance * config.MaxDailyLoss / 100
 	}
-	riskEngine := risk.NewEngine(config.ID, config.InitialBalance, riskParams, store, flags)
+
+	stopMinutes := int(config.StopTradingTime / time.Minute)
+	if stopMinutes <= 0 && config.StopTradingTime > 0 {
+		stopMinutes = 1
+	}
+
+	riskLimits := risk.Limits{
+		MaxDailyLoss:       maxDailyLossAbs,
+		MaxDrawdown:        config.MaxDrawdown,
+		StopTradingMinutes: stopMinutes,
+	}
+	riskEngine := risk.NewEngineWithContext(config.ID, config.InitialBalance, riskLimits, store, flags)
 	riskEngine.RecordEquity(config.InitialBalance)
 	snapshot := riskEngine.Snapshot()
 	lastReset := snapshot.LastReset
@@ -1248,6 +1258,10 @@ func (at *AutoTrader) peakBalanceSnapshot() float64 {
 // CanTrade evaluates whether the trader is allowed to execute trades at the
 // present moment. It enforces stop-until windows and consults the risk engine
 // when risk enforcement is enabled. On breach it logs an explicit warning.
+//
+// The method integrates with the risk engine's CheckLimits and CalculateStopDuration
+// API for gating trading decisions. When enable_risk_enforcement is disabled, all
+// checks are bypassed and trading proceeds normally.
 func (at *AutoTrader) CanTrade() (bool, string) {
 	if at == nil {
 		return false, "auto trader not initialized"
@@ -1276,27 +1290,32 @@ func (at *AutoTrader) CanTrade() (bool, string) {
 		return true, ""
 	}
 
-	decision := at.riskEngine.Assess(equity)
-	at.setDailyPnL(decision.DailyPnL)
-	at.SetStopUntil(decision.PausedUntil)
-
+	at.riskEngine.RecordEquity(equity)
 	snapshot := at.riskEngine.Snapshot()
+	at.setDailyPnL(snapshot.DailyPnL)
 	at.setCurrentBalance(snapshot.CurrentEquity)
 	at.setPeakBalance(snapshot.PeakEquity)
 
-	if decision.Breached {
-		reason := decision.Reason
+	state := risk.State{
+		DailyPnL:       snapshot.DailyPnL,
+		PeakBalance:    snapshot.PeakEquity,
+		CurrentBalance: snapshot.CurrentEquity,
+		LastResetTime:  snapshot.LastReset,
+	}
+
+	breached, reason := at.riskEngine.CheckLimits(state)
+	if breached {
 		if reason == "" {
 			reason = "risk limit breached"
 		}
 		log.Printf("RISK LIMIT BREACHED [%s]: %s", at.name, reason)
-	}
 
-	if decision.TradingPaused {
-		reason := decision.Reason
-		if reason == "" {
-			reason = "风险控制暂停中"
-		}
+		stopDuration := at.riskEngine.CalculateStopDuration()
+		pausedUntil := now.Add(stopDuration)
+		at.SetStopUntil(pausedUntil)
+		at.riskEngine.PauseTrading(pausedUntil)
+		metrics.IncRiskLimitBreaches(at.id)
+
 		return false, reason
 	}
 
