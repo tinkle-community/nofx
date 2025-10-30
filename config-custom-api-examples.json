@@ -1,0 +1,59 @@
+{
+  "//": "自定义AI API配置示例 - 支持任何OpenAI兼容的API",
+
+  "example_1_openai_official": {
+    "ai_model": "custom",
+    "custom_api_url": "https://api.openai.com/v1",
+    "custom_api_key": "sk-your-openai-key",
+    "custom_model_name": "gpt-4o",
+    "note": "OpenAI官方API - GPT-4o"
+  },
+
+  "example_2_azure_openai": {
+    "ai_model": "custom",
+    "custom_api_url": "https://your-resource.openai.azure.com/openai/deployments/your-deployment",
+    "custom_api_key": "your-azure-key",
+    "custom_model_name": "gpt-4",
+    "note": "Azure OpenAI服务"
+  },
+
+  "example_3_local_vllm": {
+    "ai_model": "custom",
+    "custom_api_url": "http://localhost:8000/v1",
+    "custom_api_key": "not-needed-for-local",
+    "custom_model_name": "meta-llama/Llama-3.1-70B-Instruct",
+    "note": "本地部署的vLLM服务"
+  },
+
+  "example_4_ollama": {
+    "ai_model": "custom",
+    "custom_api_url": "http://localhost:11434/v1",
+    "custom_api_key": "ollama",
+    "custom_model_name": "llama3.1:70b",
+    "note": "本地Ollama服务"
+  },
+
+  "example_5_anthropic_compatible": {
+    "ai_model": "custom",
+    "custom_api_url": "https://api.anthropic.com/v1",
+    "custom_api_key": "sk-ant-your-key",
+    "custom_model_name": "claude-3-5-sonnet-20241022",
+    "note": "如果有OpenAI兼容的适配器"
+  },
+
+  "example_6_groq": {
+    "ai_model": "custom",
+    "custom_api_url": "https://api.groq.com/openai/v1",
+    "custom_api_key": "gsk-your-groq-key",
+    "custom_model_name": "llama-3.1-70b-versatile",
+    "note": "Groq API (OpenAI兼容)"
+  },
+
+  "example_7_together_ai": {
+    "ai_model": "custom",
+    "custom_api_url": "https://api.together.xyz/v1",
+    "custom_api_key": "your-together-key",
+    "custom_model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    "note": "Together AI (OpenAI兼容)"
+  }
+}
