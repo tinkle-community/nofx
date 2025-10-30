@@ -426,16 +426,49 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 	currentPositionKeys := make(map[string]bool)
 
 	for _, pos := range positions {
-		symbol := pos["symbol"].(string)
-		side := pos["side"].(string)
-		entryPrice := pos["entryPrice"].(float64)
-		markPrice := pos["markPrice"].(float64)
-		quantity := pos["positionAmt"].(float64)
+		// 安全的类型断言，避免 nil 值导致 panic
+		symbol, ok := pos["symbol"].(string)
+		if !ok || symbol == "" {
+			log.Printf("警告: 持仓信息缺少有效的 symbol，跳过该持仓")
+			continue
+		}
+
+		side, ok := pos["side"].(string)
+		if !ok || side == "" {
+			log.Printf("警告: 持仓 %s 缺少有效的 side，跳过该持仓", symbol)
+			continue
+		}
+
+		entryPrice, ok := pos["entryPrice"].(float64)
+		if !ok {
+			log.Printf("警告: 持仓 %s %s 缺少有效的 entryPrice，跳过该持仓", symbol, side)
+			continue
+		}
+
+		markPrice, ok := pos["markPrice"].(float64)
+		if !ok {
+			log.Printf("警告: 持仓 %s %s 缺少有效的 markPrice，跳过该持仓", symbol, side)
+			continue
+		}
+
+		quantity, ok := pos["positionAmt"].(float64)
+		if !ok {
+			log.Printf("警告: 持仓 %s %s 缺少有效的 positionAmt，跳过该持仓", symbol, side)
+			continue
+		}
 		if quantity < 0 {
 			quantity = -quantity // 空仓数量为负，转为正数
 		}
-		unrealizedPnl := pos["unRealizedProfit"].(float64)
-		liquidationPrice := pos["liquidationPrice"].(float64)
+
+		unrealizedPnl, ok := pos["unRealizedProfit"].(float64)
+		if !ok {
+			unrealizedPnl = 0.0 // 使用默认值
+		}
+
+		liquidationPrice, ok := pos["liquidationPrice"].(float64)
+		if !ok {
+			liquidationPrice = 0.0 // 使用默认值
+		}
 
 		// 计算盈亏百分比
 		pnlPct := 0.0
