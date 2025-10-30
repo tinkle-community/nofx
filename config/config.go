@@ -15,6 +15,7 @@ type TraderConfig struct {
 
 	// 交易模式
 	PaperTrading bool `json:"paper_trading,omitempty"` // true=模拟交易(无需API Key), false=真实交易
+	DryRun       bool `json:"dry_run,omitempty"`       // true=连接真实API但不下单(仅日志), false=真实交易
 
 	// 交易平台选择（二选一）
 	Exchange string `json:"exchange"` // "binance" or "hyperliquid"
@@ -145,6 +146,11 @@ func (c *Config) Validate() error {
 		if trader.PaperTrading {
 			fmt.Printf("🎮 [%s] 模拟交易模式已启用 (Paper Trading)\n", trader.Name)
 			continue
+		}
+
+		// 如果是Dry Run模式，显示提示但继续验证API Key（需要真实API连接）
+		if trader.DryRun {
+			fmt.Printf("📝 [%s] Dry Run模式已启用 (仅记录交易日志，不发送真实订单)\n", trader.Name)
 		}
 
 		// 根据平台验证对应的密钥

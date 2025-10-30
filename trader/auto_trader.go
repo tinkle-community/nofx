@@ -22,6 +22,7 @@ type AutoTraderConfig struct {
 
 	// 交易模式
 	PaperTrading bool // true=模拟交易, false=真实交易
+	DryRun       bool // true=连接真实API但不下单(仅日志), false=真实交易
 
 	// 交易平台选择
 	Exchange string // "binance", "okx", "hyperliquid" 或 "aster"
@@ -156,7 +157,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 			return nil, fmt.Errorf("Aster交易所需要特定依赖，当前版本不支持。请使用binance、okx或paper_trading模式")
 		case "okx":
 			log.Printf("🏦 [%s] 使用OKX交易", config.Name)
-			trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
+			trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase, config.DryRun)
 		default:
 			return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 		}

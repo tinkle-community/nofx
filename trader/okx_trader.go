@@ -23,6 +23,7 @@ type OKXTrader struct {
 	passphrase string
 	baseURL    string
 	client     *http.Client
+	dryRun     bool // Dry Run模式：只记录日志，不发送真实订单
 
 	// 余额缓存
 	cachedBalance     map[string]interface{}
@@ -39,13 +40,14 @@ type OKXTrader struct {
 }
 
 // NewOKXTrader 创建OKX交易器
-func NewOKXTrader(apiKey, secretKey, passphrase string) *OKXTrader {
+func NewOKXTrader(apiKey, secretKey, passphrase string, dryRun bool) *OKXTrader {
 	return &OKXTrader{
 		apiKey:        apiKey,
 		secretKey:     secretKey,
 		passphrase:    passphrase,
 		baseURL:       "https://www.okx.com",
 		client:        &http.Client{Timeout: 30 * time.Second},
+		dryRun:        dryRun,
 		cacheDuration: 15 * time.Second,
 	}
 }
@@ -300,6 +302,16 @@ func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
 
 // OpenLong 开多仓
 func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：只记录日志，不发送真实订单
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 开多仓: %s, 数量: %.4f, 杠杆: %dx (模拟)", symbol, quantity, leverage)
+		return map[string]interface{}{
+			"orderId": "DRY_RUN_" + symbol + "_LONG",
+			"symbol":  symbol,
+			"status":  "filled",
+		}, nil
+	}
+
 	// 先取消该币种的所有委托单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
@@ -362,6 +374,16 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 
 // OpenShort 开空仓
 func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：只记录日志，不发送真实订单
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 开空仓: %s, 数量: %.4f, 杠杆: %dx (模拟)", symbol, quantity, leverage)
+		return map[string]interface{}{
+			"orderId": "DRY_RUN_" + symbol + "_SHORT",
+			"symbol":  symbol,
+			"status":  "filled",
+		}, nil
+	}
+
 	// 先取消该币种的所有委托单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
@@ -424,6 +446,16 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 
 // CloseLong 平多仓
 func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：只记录日志，不发送真实订单
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 平多仓: %s (模拟)", symbol)
+		return map[string]interface{}{
+			"orderId": "DRY_RUN_CLOSE_" + symbol + "_LONG",
+			"symbol":  symbol,
+			"status":  "filled",
+		}, nil
+	}
+
 	// 如果数量为0，获取当前持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
@@ -498,6 +530,16 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 
 // CloseShort 平空仓
 func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
+	// 🔥 Dry Run 模式：只记录日志，不发送真实订单
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 平空仓: %s (模拟)", symbol)
+		return map[string]interface{}{
+			"orderId": "DRY_RUN_CLOSE_" + symbol + "_SHORT",
+			"symbol":  symbol,
+			"status":  "filled",
+		}, nil
+	}
+
 	// 如果数量为0，获取当前持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
