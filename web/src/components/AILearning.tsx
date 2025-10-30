@@ -6,12 +6,8 @@ import { api } from '../lib/api';
 interface TradeOutcome {
   symbol: string;
   side: string;
-  quantity: number;
-  leverage: number;
   open_price: number;
   close_price: number;
-  position_value: number;
-  margin_used: number;
   pn_l: number;
   pn_l_pct: number;
   duration: string;
@@ -54,11 +50,7 @@ export default function AILearning({ traderId }: AILearningProps) {
   const { data: performance, error } = useSWR<PerformanceAnalysis>(
     traderId ? `performance-${traderId}` : 'performance',
     () => api.getPerformance(traderId),
-    {
-      refreshInterval: 30000, // 30秒刷新（AI学习分析数据更新频率较低）
-      revalidateOnFocus: false,
-      dedupingInterval: 20000,
-    }
+    { refreshInterval: 10000 }
   );
 
   if (error) {
@@ -558,34 +550,6 @@ export default function AILearning({ traderId }: AILearningProps) {
                         <div style={{ color: '#94A3B8' }}>{t('exit', language)}</div>
                         <div className="font-mono font-semibold" style={{ color: '#CBD5E1' }}>
                           {trade.close_price.toFixed(4)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Position Details */}
-                    <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-                      <div>
-                        <div style={{ color: '#94A3B8' }}>Quantity</div>
-                        <div className="font-mono font-semibold" style={{ color: '#CBD5E1' }}>
-                          {trade.quantity ? trade.quantity.toFixed(4) : '-'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div style={{ color: '#94A3B8' }}>Leverage</div>
-                        <div className="font-mono font-semibold" style={{ color: '#FCD34D' }}>
-                          {trade.leverage ? `${trade.leverage}x` : '-'}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ color: '#94A3B8' }}>Position Value</div>
-                        <div className="font-mono font-semibold" style={{ color: '#CBD5E1' }}>
-                          {trade.position_value ? `$${trade.position_value.toFixed(2)}` : '-'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div style={{ color: '#94A3B8' }}>Margin Used</div>
-                        <div className="font-mono font-semibold" style={{ color: '#A78BFA' }}>
-                          {trade.margin_used ? `$${trade.margin_used.toFixed(2)}` : '-'}
                         </div>
                       </div>
                     </div>

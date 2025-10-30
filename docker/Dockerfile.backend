@@ -1,9 +1,8 @@
 # docker/backend/Dockerfile
 
 # ═══════════════════════════════════════════════════════════════
-# NOFX Backend Dockerfile (Go + TA-Lib)
+# NOFX Backend Dockerfile (Go + TA-Lib + Risk Persistence Tooling)
 # Multi-stage build with shared TA-Lib compilation stage
-# Versions extracted as ARGs for maintainability
 # ═══════════════════════════════════════════════════════════════
 
 ARG GO_VERSION=1.25-alpine
@@ -34,11 +33,11 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-${TA_LIB_VERSION}-src.
     cd .. && rm -rf ta-lib ta-lib-${TA_LIB_VERSION}-src.tar.gz
 
 # ──────────────────────────────────────────────────────────────
-# Backend Build Stage (Go Application)
+# Backend Build Stage (Go Application + Migrate CLI)
 # ──────────────────────────────────────────────────────────────
 FROM golang:${GO_VERSION} AS backend-builder
 
-RUN apk update && apk add --no-cache git make gcc g++ musl-dev
+RUN apk update && apk add --no-cache git make gcc g++ musl-dev curl wget
 
 COPY --from=ta-lib-builder /usr/local /usr/local
 
@@ -47,18 +46,31 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
 RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o nofx .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -tags 'postgres' -ldflags='-s -w -extldflags "-static"' -o migrate-binary github.com/golang-migrate/migrate/v4/cmd/migrate
 
 # ──────────────────────────────────────────────────────────────
 # Runtime Stage (Minimal Executable Environment)
 # ──────────────────────────────────────────────────────────────
 FROM alpine:${ALPINE_VERSION}
 
-RUN apk update && apk add --no-cache ca-certificates tzdata
+RUN apk update && apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    postgresql16-client \
+    libpq \
+    wget \
+    curl
 
 COPY --from=ta-lib-builder /usr/local /usr/local
+
 WORKDIR /app
 COPY --from=backend-builder /app/nofx .
+COPY --from=backend-builder /app/migrate-binary /usr/local/bin/migrate
+COPY --from=backend-builder /app/db/migrations ./db/migrations
+
+RUN mkdir -p /app/decision_logs /app/data
 
 EXPOSE 8080
 

@@ -46,17 +46,12 @@
       "ai_model": "deepseek",
       "exchange": "aster",
 
-      // 注意请仔细阅读这三个提示 请进入https://www.asterdex.com/en/api-wallet网站 -> 选择专业api -> 创建新api获取以下信息
-      // user: 主钱包地址 (登录地址/连接到aster的钱包地址)
-      // signer: API钱包地址 (点击生成地址后生成的地址)
-      // privateKey: API钱包私钥 (生成地址对应的私钥)
-
       "aster_user": "0x63DD5aCC6b1aa0f563956C0e534DD30B6dcF7C4e",
       "aster_signer": "0x21cF8Ae13Bb72632562c6Fff438652Ba1a151bb0",
       "aster_private_key": "your_aster_api_wallet_private_key_without_0x_prefix",
 
       "deepseek_key": "your_deepseek_api_key",
-      "initial_balance": 1000.0,
+      "initial_balance": 1000,
       "scan_interval_minutes": 3
     }
   ],
@@ -80,5 +75,11 @@
   "api_server_port": 8080,
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
-  "stop_trading_minutes": 60
+  "stop_trading_minutes": 60,
+  "feature_flags": {
+    "enable_guarded_stop_loss": true,
+    "enable_mutex_protection": true,
+    "enable_persistence": true,
+    "enable_risk_enforcement": true
+  }
 }

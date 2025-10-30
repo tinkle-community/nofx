@@ -3,7 +3,11 @@ package manager
 import (
 	"fmt"
 	"log"
+	"os"
+
 	"nofx/config"
+	"nofx/featureflag"
+	"nofx/risk"
 	"nofx/trader"
 	"sync"
 	"time"
@@ -11,14 +15,22 @@ import (
 
 // TraderManager 管理多个trader实例
 type TraderManager struct {
-	traders map[string]*trader.AutoTrader // key: trader ID
-	mu      sync.RWMutex
+	traders      map[string]*trader.AutoTrader // key: trader ID
+	riskStore    *risk.Store
+	featureFlags *featureflag.RuntimeFlags
+	mu           sync.RWMutex
 }
 
 // NewTraderManager 创建trader管理器
-func NewTraderManager() *TraderManager {
+func NewTraderManager(flags *featureflag.RuntimeFlags) *TraderManager {
+	if flags == nil {
+		flags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
+	}
+
 	return &TraderManager{
-		traders: make(map[string]*trader.AutoTrader),
+		traders:      make(map[string]*trader.AutoTrader),
+		riskStore:    risk.NewStore(),
+		featureFlags: flags,
 	}
 }
 
@@ -40,7 +52,6 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		BinanceAPIKey:         cfg.BinanceAPIKey,
 		BinanceSecretKey:      cfg.BinanceSecretKey,
 		HyperliquidPrivateKey: cfg.HyperliquidPrivateKey,
-		HyperliquidWalletAddr: cfg.HyperliquidWalletAddr,
 		HyperliquidTestnet:    cfg.HyperliquidTestnet,
 		AsterUser:             cfg.AsterUser,
 		AsterSigner:           cfg.AsterSigner,
@@ -59,10 +70,19 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
+		FeatureFlags:          tm.featureFlags,
 	}
 
-	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig)
+	var at *trader.AutoTrader
+	var err error
+
+	if tm.featureFlags.PersistenceEnabled() {
+		dbPath := tm.buildDBPath(cfg.ID)
+		at, err = trader.NewAutoTraderWithPersistence(traderConfig, dbPath, tm.featureFlags)
+	} else {
+		at, err = trader.NewAutoTrader(traderConfig, tm.riskStore, tm.featureFlags)
+	}
+
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
@@ -70,6 +90,29 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 	tm.traders[cfg.ID] = at
 	log.Printf("✓ Trader '%s' (%s) 已添加", cfg.Name, cfg.AIModel)
 	return nil
+}
+
+func (tm *TraderManager) buildDBPath(traderID string) string {
+	// Check for POSTGRES_URL env first
+	if url, ok := os.LookupEnv("POSTGRES_URL"); ok && url != "" {
+		return url
+	}
+
+	// Fall back to building from individual components
+	dbHost := getEnvOrDefault("DB_HOST", "localhost")
+	dbPort := getEnvOrDefault("DB_PORT", "5432")
+	dbUser := getEnvOrDefault("DB_USER", "postgres")
+	dbPass := getEnvOrDefault("DB_PASSWORD", "postgres")
+	dbName := getEnvOrDefault("DB_NAME", "nofx_risk")
+	sslmode := getEnvOrDefault("POSTGRES_SSLMODE", "disable")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPort, dbName, sslmode)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 // GetTrader 获取指定ID的trader
@@ -106,6 +149,11 @@ func (tm *TraderManager) GetTraderIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// FeatureFlags 暴露运行时特性开关，供API动态修改。
+func (tm *TraderManager) FeatureFlags() *featureflag.RuntimeFlags {
+	return tm.featureFlags
 }
 
 // StartAll 启动所有trader

@@ -31,6 +31,7 @@ config.json
 decision_logs/
 coin_pool_cache/
 nofx_test
+data/
 
 # Node.js
 web/node_modules/

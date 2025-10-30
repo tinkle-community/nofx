@@ -1,49 +1,82 @@
 version: '3.8'
 
 services:
-  # Backend service (API and core logic)
-  nofx:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.backend
-    container_name: nofx-trading
+  # PostgreSQL + TimescaleDB for risk state persistence
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nofx-postgres
     restart: unless-stopped
     ports:
-      - "${NOFX_BACKEND_PORT:-8080}:8080"
+      - "5432:5432"
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./decision_logs:/app/decision_logs
-      - /etc/localtime:/etc/localtime:ro  # Sync host time
+      - ./data/postgres:/var/lib/postgresql/data
     environment:
-      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=nofx_risk
     networks:
       - nofx-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NOFX Trading Backend
+  nofx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nofx-trading
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./decision_logs:/app/decision_logs
+      - ./data:/app/data
+      - /etc/localtime:/etc/localtime:ro  # 同步主机时间
+      - frontend-dist:/app/web/dist-shared:rw  # 共享前端文件
+    environment:
+      - TZ=Asia/Shanghai  # 使用中国时区
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=nofx_risk
+      - POSTGRES_URL=postgres://postgres:postgres@postgres:5432/nofx_risk?sslmode=disable
+      - PERSISTENCE_BACKEND=postgres
+      - ENABLE_PERSISTENCE=true
+    networks:
+      - nofx-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    command: sh -c "cp -r /app/web/dist/* /app/web/dist-shared/ 2>/dev/null || true && exec ./nofx"
 
-  # Frontend service (static serving and proxy)
+  # Frontend (Nginx)
   nofx-frontend:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.frontend
+    image: nginx:alpine
     container_name: nofx-frontend
     restart: unless-stopped
     ports:
-      - "${NOFX_FRONTEND_PORT:-3000}:80"
+      - "3000:80"
+    volumes:
+      - frontend-dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - nofx-network
     depends_on:
       - nofx
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+
+volumes:
+  frontend-dist:
 
 networks:
   nofx-network:

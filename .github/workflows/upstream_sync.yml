@@ -1,0 +1,470 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+    inputs: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Prepare upstream sync branch
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.branch-name.outputs.branch }}
+      artifact_name: ${{ steps.branch-name.outputs.artifact }}
+      strategy: ${{ steps.integration.outputs.strategy }}
+      conflict_count: ${{ steps.conflicts.outputs.count }}
+      conflict_list: ${{ steps.conflicts.outputs.files }}
+      rebase_result: ${{ steps.rebase.outputs.result }}
+      merge_result: ${{ steps.merge.outputs.result }}
+      resolution_summary: ${{ steps.resolution-summary.outputs.summary }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare sync workspace
+        id: prepare-workspace
+        run: |
+          SYNC_DIR="${RUNNER_TEMP}/upstream-sync"
+          mkdir -p "${SYNC_DIR}"
+          echo "SYNC_DIR=${SYNC_DIR}" >> "$GITHUB_ENV"
+
+      - name: Configure upstream remote
+        run: |
+          if git remote | grep -q '^upstream$'; then
+            git remote set-url upstream https://github.com/tinkle-community/nofx.git
+          else
+            git remote add upstream https://github.com/tinkle-community/nofx.git
+          fi
+          git fetch upstream --tags --prune
+          git fetch origin --prune
+
+      - name: Determine sync branch name
+        id: branch-name
+        run: |
+          BRANCH="sync/upstream-$(date -u +%Y%m%d-%H%M)"
+          ARTIFACT="upstream-sync-$(echo "${BRANCH}" | tr '/' '-')"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "artifact=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "SYNC_BRANCH=${BRANCH}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=${ARTIFACT}" >> "$GITHUB_ENV"
+
+      - name: Create sync branch from main
+        run: |
+          git checkout main
+          git pull --ff-only origin main
+          git checkout -b "${SYNC_BRANCH}"
+
+      - name: Attempt rebase onto upstream/main
+        id: rebase
+        run: |
+          set +e
+          git rebase --rebase-merges upstream/main
+          status=$?
+          if [ $status -eq 0 ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "result=failure" >> "$GITHUB_OUTPUT"
+          git rebase --abort || true
+          exit 0
+
+      - name: Merge upstream/main (fallback)
+        id: merge
+        if: steps.rebase.outputs.result == 'failure'
+        run: |
+          git reset --hard HEAD
+          set +e
+          git merge --no-ff --no-commit upstream/main
+          status=$?
+          if [ $status -eq 0 ]; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=conflicts" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Capture merge conflicts
+        id: conflicts
+        run: |
+          mkdir -p "${SYNC_DIR}"
+          git status --short --branch
+          git diff --name-only --diff-filter=U > "${SYNC_DIR}/conflicts.txt" || true
+          COUNT=$(wc -l < "${SYNC_DIR}/conflicts.txt" | tr -d '[:space:]')
+          if [ -z "$COUNT" ]; then
+            COUNT=0
+          fi
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "CONFLICT_COUNT=${COUNT}" >> "$GITHUB_ENV"
+          if [ "$COUNT" -gt 0 ]; then
+            {
+              echo "files<<EOF"
+              cat "${SYNC_DIR}/conflicts.txt"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "files=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure automation scripts executable
+        run: chmod +x scripts/gha_resolve_conflicts.sh scripts/gha_create_draft_pr.sh scripts/gha_prepare_upstream_pr_body.sh
+
+      - name: Resolve conflicts via scripted strategy
+        env:
+          UPSTREAM_SYNC_DIR: ${{ env.SYNC_DIR }}
+          RESOLUTION_LOG: ${{ env.SYNC_DIR }}/conflict_resolution.log
+        run: |
+          ./scripts/gha_resolve_conflicts.sh upstream/main origin/main
+
+      - name: Verify merge state is clean
+        run: |
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved conflicts remain" >&2
+            git status --short
+            exit 1
+          fi
+
+      - name: Build conflict resolution summary
+        id: resolution-summary
+        run: |
+          LOG_FILE="${SYNC_DIR}/conflict_resolution.log"
+          if [ -f "$LOG_FILE" ]; then
+            echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+            cat "$LOG_FILE" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=No conflicts detected" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine integration strategy
+        id: integration
+        run: |
+          rebase_result='${{ steps.rebase.outputs.result }}'
+          merge_result='${{ steps.merge.outputs.result }}'
+          if [ "$rebase_result" = "success" ]; then
+            strategy="rebase"
+          elif [ "$merge_result" = "success" ]; then
+            strategy="merge"
+          elif [ "$merge_result" = "conflicts" ]; then
+            strategy="merge-with-conflicts"
+          else
+            strategy="unknown"
+          fi
+          echo "strategy=${strategy}" >> "$GITHUB_OUTPUT"
+          echo "SYNC_STRATEGY=${strategy}" >> "$GITHUB_ENV"
+          if [ -n "$rebase_result" ]; then
+            echo "REBASE_RESULT=${rebase_result}" >> "$GITHUB_ENV"
+          else
+            echo "REBASE_RESULT=unknown" >> "$GITHUB_ENV"
+          fi
+          if [ -n "$merge_result" ]; then
+            echo "MERGE_RESULT=${merge_result}" >> "$GITHUB_ENV"
+          else
+            echo "MERGE_RESULT=not_attempted" >> "$GITHUB_ENV"
+          fi
+
+      - name: Commit resolved sync changes (if needed)
+        run: |
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit."
+            exit 0
+          fi
+          if [ "${CONFLICT_COUNT:-0}" -gt 0 ]; then
+            message="chore: resolve upstream sync conflicts"
+          else
+            message="chore: merge upstream/main (automated sync)"
+          fi
+          git commit -m "$message"
+
+      - name: Generate diff report
+        run: |
+          REPORT="${SYNC_DIR}/DIFF_REPORT.md"
+          TMP_UPSTREAM="${SYNC_DIR}/upstream_commits.log"
+          TMP_FORK="${SYNC_DIR}/fork_commits.log"
+          git log --oneline origin/main..upstream/main > "$TMP_UPSTREAM" 2>/dev/null || true
+          git log --oneline upstream/main..HEAD > "$TMP_FORK" 2>/dev/null || true
+          {
+            echo "# Upstream Sync Report"
+            echo
+            echo "- Generated: $(date -u +"%Y-%m-%d %H:%M UTC")"
+            echo "- Sync branch: ${SYNC_BRANCH}"
+            echo "- Strategy: ${SYNC_STRATEGY}"
+            echo "- Rebase result: ${REBASE_RESULT}"
+            echo "- Merge result: ${MERGE_RESULT}"
+            echo "- Conflicts detected: ${CONFLICT_COUNT}"
+            echo "- Upstream HEAD: $(git rev-parse --short upstream/main)"
+            echo "- Fork main HEAD: $(git rev-parse --short origin/main)"
+            echo "- Sync branch HEAD: $(git rev-parse --short HEAD)"
+            echo
+            echo "## Upstream commits included"
+            if [ -s "$TMP_UPSTREAM" ]; then
+              sed 's/^/- /' "$TMP_UPSTREAM"
+            else
+              echo "- (no new upstream commits)"
+            fi
+            echo
+            echo "## Fork commits retained on sync branch"
+            if [ -s "$TMP_FORK" ]; then
+              sed 's/^/- /' "$TMP_FORK"
+            else
+              echo "- (no fork commits beyond upstream)"
+            fi
+          } > "$REPORT"
+
+      - name: Upload sync artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.branch-name.outputs.artifact }}
+          path: ${{ env.SYNC_DIR }}
+
+      - name: Configure auth for push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Push sync branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push --set-upstream origin "${SYNC_BRANCH}"
+
+      - name: Create draft PR on fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_STRATEGY: ${{ env.SYNC_STRATEGY }}
+          CONFLICT_COUNT: ${{ env.CONFLICT_COUNT }}
+          REBASE_RESULT: ${{ env.REBASE_RESULT }}
+          MERGE_RESULT: ${{ env.MERGE_RESULT }}
+        run: ./scripts/gha_create_draft_pr.sh
+
+  tests-with-docker:
+    name: Tests (with Docker/PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: sync
+    if: needs.sync.result == 'success'
+    timeout-minutes: 30
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      TEST_DB_URL: postgresql://trader:trader@127.0.0.1:5432/trader?sslmode=disable
+      COVERAGE_FOCUS_PACKAGES: "nofx/db nofx/risk nofx/featureflag"
+      GOFLAGS: ""
+      DISABLE_DB_TESTS: 0
+      SKIP_DOCKER_TESTS: 0
+      NO_DOCKER: 0
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: trader
+          POSTGRES_DB: trader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.branch }}
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests with Docker (PostgreSQL integration tests)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 60
+          SKIP_RACE: true
+          TEST_TIMEOUT: 20m
+          WITH_DOCKER: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-with-docker-${{ needs.sync.outputs.branch }}
+          path: |
+            coverage.out
+            coverage.html
+
+  tests-without-docker:
+    name: Tests (without Docker, skip DB tests)
+    runs-on: ubuntu-latest
+    needs: sync
+    if: needs.sync.result == 'success'
+    timeout-minutes: 8
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      GOFLAGS: -tags=nodocker
+      DISABLE_DB_TESTS: 1
+      SKIP_DOCKER_TESTS: 1
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.branch }}
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Disable Docker (simulate environment without Docker)
+        run: |
+          echo "SKIP_DOCKER_TESTS=1" >> $GITHUB_ENV
+
+      - name: Run tests without Docker (DB tests auto-skip)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 90
+          SKIP_RACE: true
+          SKIP_DOCKER_TESTS: 1
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-without-docker-${{ needs.sync.outputs.branch }}
+          path: |
+            coverage.out
+            coverage.html
+
+  race-detector:
+    name: Race Detector Stress Tests
+    runs-on: ubuntu-latest
+    needs: sync
+    if: needs.sync.result == 'success'
+    timeout-minutes: 10
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.branch }}
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run race detector suite
+        run: go test -race -count=1 ./risk/... ./trader/...
+
+  open-upstream-pr:
+    name: Open upstream pull request
+    runs-on: ubuntu-latest
+    needs:
+      - sync
+      - tests-with-docker
+      - tests-without-docker
+      - race-detector
+    if: |
+      needs.sync.result == 'success' &&
+      needs.tests-with-docker.result == 'success' &&
+      needs.tests-without-docker.result == 'success' &&
+      needs.race-detector.result == 'success'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download sync artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.sync.outputs.artifact_name }}
+          path: sync-artifacts
+
+      - name: Prepare upstream PR body
+        id: prepare-body
+        env:
+          BRANCH: ${{ needs.sync.outputs.branch }}
+          STRATEGY: ${{ needs.sync.outputs.strategy }}
+          REBASE_RESULT: ${{ needs.sync.outputs.rebase_result }}
+          MERGE_RESULT: ${{ needs.sync.outputs.merge_result }}
+          CONFLICT_COUNT: ${{ needs.sync.outputs.conflict_count }}
+          ARTIFACT_DIR: sync-artifacts
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/gha_prepare_upstream_pr_body.sh
+
+      - name: Create or update upstream PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH='${{ needs.sync.outputs.branch }}'
+          BODY_PATH='${{ steps.prepare-body.outputs.body_path }}'
+          HEAD_REF="${{ github.repository_owner }}:${BRANCH}"
+          existing=$(gh pr list --repo tinkle-community/nofx --head "$HEAD_REF" --state all --json number --jq '.[].number')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo tinkle-community/nofx --body-file "$BODY_PATH"
+            echo "Updated existing upstream PR #$existing"
+            exit 0
+          fi
+          gh pr create \
+            --repo tinkle-community/nofx \
+            --head "$HEAD_REF" \
+            --base main \
+            --title "chore: upstream sync ${BRANCH##sync/}" \
+            --body-file "$BODY_PATH"

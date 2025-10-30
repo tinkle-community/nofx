@@ -4,7 +4,6 @@ import type { CompetitionData } from '../types';
 import { ComparisonChart } from './ComparisonChart';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
-import { getTraderColor } from '../utils/traderColors';
 
 export function CompetitionPage() {
   const { language } = useLanguage();
@@ -12,9 +11,8 @@ export function CompetitionPage() {
     'competition',
     api.getCompetition,
     {
-      refreshInterval: 15000, // 15秒刷新（竞赛数据不需要太频繁更新）
-      revalidateOnFocus: false,
-      dedupingInterval: 10000,
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
     }
   );
 
@@ -109,7 +107,7 @@ export function CompetitionPage() {
           <div className="space-y-2">
             {sortedTraders.map((trader, index) => {
               const isLeader = index === 0;
-              const traderColor = getTraderColor(sortedTraders, trader.trader_id);
+              const aiModelColor = trader.ai_model === 'qwen' ? '#c084fc' : '#60a5fa';
 
               return (
                 <div
@@ -129,7 +127,7 @@ export function CompetitionPage() {
                       </div>
                       <div>
                         <div className="font-bold text-sm" style={{ color: '#EAECEF' }}>{trader.trader_name}</div>
-                        <div className="text-xs mono font-semibold" style={{ color: traderColor }}>
+                        <div className="text-xs mono font-semibold" style={{ color: aiModelColor }}>
                           {trader.ai_model.toUpperCase()}
                         </div>
                       </div>
@@ -224,7 +222,7 @@ export function CompetitionPage() {
                   <div className="text-center">
                     <div
                       className="text-base font-bold mb-2"
-                      style={{ color: getTraderColor(sortedTraders, trader.trader_id) }}
+                      style={{ color: trader.ai_model === 'qwen' ? '#c084fc' : '#60a5fa' }}
                     >
                       {trader.trader_name}
                     </div>

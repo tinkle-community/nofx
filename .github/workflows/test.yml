@@ -1,0 +1,163 @@
+name: Test Suite with Coverage
+
+on:
+  push:
+    branches: [ main, test-* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-with-docker:
+    name: Tests (with Docker/PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      TEST_DB_URL: postgresql://trader:trader@127.0.0.1:5432/trader?sslmode=disable
+      COVERAGE_FOCUS_PACKAGES: "nofx/db nofx/risk nofx/featureflag"
+      GOFLAGS: ""
+      DISABLE_DB_TESTS: 0
+      SKIP_DOCKER_TESTS: 0
+      NO_DOCKER: 0
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: trader
+          POSTGRES_DB: trader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests with Docker (PostgreSQL integration tests)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 60
+          SKIP_RACE: true
+          TEST_TIMEOUT: 20m
+          WITH_DOCKER: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          flags: with-docker
+          name: with-docker-coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-with-docker
+          path: |
+            coverage.out
+            coverage.html
+
+  test-without-docker:
+    name: Tests (without Docker, skip DB tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      GOFLAGS: -tags=nodocker
+      DISABLE_DB_TESTS: 1
+      SKIP_DOCKER_TESTS: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Disable Docker (simulate environment without Docker)
+        run: |
+          echo "SKIP_DOCKER_TESTS=1" >> $GITHUB_ENV
+
+      - name: Run tests without Docker (DB tests auto-skip)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 90
+          SKIP_RACE: true
+          SKIP_DOCKER_TESTS: 1
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-without-docker
+          path: |
+            coverage.out
+            coverage.html
+
+  race-detector:
+    name: Race Detector Stress Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run race detector suite
+        run: go test -race -count=1 ./risk/... ./trader/...

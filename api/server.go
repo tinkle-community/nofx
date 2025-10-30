@@ -1,10 +1,15 @@
 package api
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"nofx/featureflag"
 	"nofx/manager"
+	"nofx/metrics"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -54,10 +59,29 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// adminAuthMiddleware 可选的简单鉴权。若未设置 ADMIN_API_TOKEN 环境变量则所有请求均允许，
+// 需依赖外层网络策略保障安全。
+func (s *Server) adminAuthMiddleware() gin.HandlerFunc {
+	token := os.Getenv("ADMIN_API_TOKEN")
+	if token == "" {
+		return func(c *gin.Context) {
+			c.Next()
+		}
+	}
+
+	return func(c *gin.Context) {
+		if c.GetHeader("X-Admin-Token") != token {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid admin token"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // setupRoutes 设置路由
 func (s *Server) setupRoutes() {
 	// 健康检查
-	s.router.Any("/health", s.handleHealth)
+	s.router.GET("/health", s.handleHealth)
 
 	// API路由组
 	api := s.router.Group("/api")
@@ -77,6 +101,12 @@ func (s *Server) setupRoutes() {
 		api.GET("/statistics", s.handleStatistics)
 		api.GET("/equity-history", s.handleEquityHistory)
 		api.GET("/performance", s.handlePerformance)
+	}
+
+	admin := s.router.Group("/admin")
+	admin.Use(s.adminAuthMiddleware())
+	{
+		admin.POST("/feature-flags", s.handleFeatureFlagsUpdate)
 	}
 }
 
@@ -100,6 +130,29 @@ func (s *Server) getTraderFromQuery(c *gin.Context) (*manager.TraderManager, str
 		traderID = ids[0]
 	}
 	return s.traderManager, traderID, nil
+}
+
+func (s *Server) handleFeatureFlagsUpdate(c *gin.Context) {
+	if c.Request.ContentLength == 0 {
+		state := s.traderManager.FeatureFlags().Snapshot()
+		c.JSON(http.StatusOK, gin.H{"flags": state})
+		return
+	}
+
+	var payload featureflag.Update
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		if errors.Is(err, io.EOF) {
+			state := s.traderManager.FeatureFlags().Snapshot()
+			c.JSON(http.StatusOK, gin.H{"flags": state})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	state := s.traderManager.FeatureFlags().Apply(payload)
+	metrics.SetFeatureFlags(state.Map())
+	c.JSON(http.StatusOK, gin.H{"flags": state})
 }
 
 // handleCompetition 竞赛总览（对比所有trader）
@@ -388,9 +441,8 @@ func (s *Server) handlePerformance(c *gin.Context) {
 		return
 	}
 
-	// 分析最近100个周期的交易表现（避免长期持仓的交易记录丢失）
-	// 假设每3分钟一个周期，100个周期 = 5小时，足够覆盖大部分交易
-	performance, err := trader.GetDecisionLogger().AnalyzePerformance(100)
+	// 分析最近20个周期的交易表现
+	performance, err := trader.GetDecisionLogger().AnalyzePerformance(20)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("分析历史表现失败: %v", err),
@@ -416,6 +468,7 @@ func (s *Server) Start() error {
 	log.Printf("  • GET  /api/statistics?trader_id=xxx - 指定trader的统计信息")
 	log.Printf("  • GET  /api/equity-history?trader_id=xxx - 指定trader的收益率历史数据")
 	log.Printf("  • GET  /api/performance?trader_id=xxx - 指定trader的AI学习表现分析")
+	log.Printf("  • POST /admin/feature-flags   - 更新运行时功能开关")
 	log.Printf("  • GET  /health               - 健康检查")
 	log.Println()
 

@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
+
+	"nofx/featureflag"
 )
 
 // TraderConfig 单个trader的配置
 type TraderConfig struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"` // 是否启用该trader
 	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
@@ -23,7 +25,6 @@ type TraderConfig struct {
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`
-	HyperliquidWalletAddr string `json:"hyperliquid_wallet_addr,omitempty"`
 	HyperliquidTestnet    bool   `json:"hyperliquid_testnet,omitempty"`
 
 	// Aster配置
@@ -52,16 +53,19 @@ type LeverageConfig struct {
 
 // Config 总配置
 type Config struct {
-	Traders            []TraderConfig `json:"traders"`
-	UseDefaultCoins    bool           `json:"use_default_coins"` // 是否使用默认主流币种列表
-	DefaultCoins       []string       `json:"default_coins"`     // 默认主流币种池
-	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
-	OITopAPIURL        string         `json:"oi_top_api_url"`
-	APIServerPort      int            `json:"api_server_port"`
-	MaxDailyLoss       float64        `json:"max_daily_loss"`
-	MaxDrawdown        float64        `json:"max_drawdown"`
-	StopTradingMinutes int            `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+	Traders            []TraderConfig    `json:"traders"`
+	UseDefaultCoins    bool              `json:"use_default_coins"` // 是否使用默认主流币种列表
+	CoinPoolAPIURL     string            `json:"coin_pool_api_url"`
+	OITopAPIURL        string            `json:"oi_top_api_url"`
+	APIServerPort      int               `json:"api_server_port"`
+	MaxDailyLoss       float64           `json:"max_daily_loss"`
+	MaxDrawdown        float64           `json:"max_drawdown"`
+	StopTradingMinutes int               `json:"stop_trading_minutes"`
+	Leverage           LeverageConfig    `json:"leverage"` // 杠杆配置
+	FeatureFlags       featureflag.State `json:"feature_flags"`
+	PostgresURL        string            `json:"postgres_url"`        // PostgreSQL connection URL
+	PostgresSSLMode    string            `json:"postgres_sslmode"`    // SSL mode (disable, require, verify-full)
+	PersistenceBackend string            `json:"persistence_backend"` // "postgres" or "memory"
 }
 
 // LoadConfig 从文件加载配置
@@ -71,28 +75,42 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config Config
+	config := Config{
+		FeatureFlags: featureflag.DefaultState(),
+	}
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	config.FeatureFlags = featureflag.WithEnvOverrides(config.FeatureFlags)
+
+	// Apply environment overrides for persistence configuration
+	if postgresURL, ok := os.LookupEnv("POSTGRES_URL"); ok && postgresURL != "" {
+		config.PostgresURL = postgresURL
+	}
+	if backend, ok := os.LookupEnv("PERSISTENCE_BACKEND"); ok && backend != "" {
+		config.PersistenceBackend = strings.ToLower(strings.TrimSpace(backend))
+	}
+	if sslmode, ok := os.LookupEnv("POSTGRES_SSLMODE"); ok && sslmode != "" {
+		config.PostgresSSLMode = strings.ToLower(strings.TrimSpace(sslmode))
+	}
+
+	// Default backend and SSL mode
+	if config.PostgresURL != "" && strings.TrimSpace(config.PersistenceBackend) == "" {
+		config.PersistenceBackend = "postgres"
+	}
+	if strings.TrimSpace(config.PersistenceBackend) == "" {
+		config.PersistenceBackend = "memory"
+	} else {
+		config.PersistenceBackend = strings.ToLower(strings.TrimSpace(config.PersistenceBackend))
+	}
+	if config.PostgresSSLMode == "" {
+		config.PostgresSSLMode = "disable"
 	}
 
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
 		config.UseDefaultCoins = true
-	}
-
-	// 设置默认币种池
-	if len(config.DefaultCoins) == 0 {
-		config.DefaultCoins = []string{
-			"BTCUSDT",
-			"ETHUSDT",
-			"SOLUSDT",
-			"BNBUSDT",
-			"XRPUSDT",
-			"DOGEUSDT",
-			"ADAUSDT",
-			"HYPEUSDT",
-		}
 	}
 
 	// 验证配置
