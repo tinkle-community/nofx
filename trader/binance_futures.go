@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -435,12 +436,15 @@ func (t *FuturesTrader) GetMarketPrice(symbol string) (float64, error) {
 	return price, nil
 }
 
-// CalculatePositionSize 计算仓位大小
-func (t *FuturesTrader) CalculatePositionSize(balance, riskPercent, price float64, leverage int) float64 {
-	riskAmount := balance * (riskPercent / 100.0)
-	positionValue := riskAmount * float64(leverage)
-	quantity := positionValue / price
-	return quantity
+// CalculatePositionSize 计算仓位大小（基于风险百分比和止损价格）
+func (t *FuturesTrader) CalculatePositionSize(accountEquity, riskPercent, entryPrice, stopLossPrice float64, leverage int) float64 {
+	riskAmount := accountEquity * riskPercent // 单笔风险金额
+	priceRisk := math.Abs(entryPrice-stopLossPrice) / entryPrice // 价格风险百分比
+	positionValue := riskAmount / priceRisk // 仓位价值
+
+	// 杠杆限制
+	maxPositionByLeverage := accountEquity * float64(leverage)
+	return math.Min(positionValue, maxPositionByLeverage)
 }
 
 // SetStopLoss 设置止损单
