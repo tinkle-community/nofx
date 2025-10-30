@@ -1,7 +1,10 @@
 package trader
 
 import (
+	"bytes"
 	"fmt"
+	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -91,6 +94,11 @@ func newTestAutoTrader(t *testing.T, flags *featureflag.RuntimeFlags) *AutoTrade
 }
 
 func TestAutoTraderRiskEnforcement(t *testing.T) {
+	var logBuf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origWriter)
+
 	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true})
 	at := newTestAutoTrader(t, flags)
 
@@ -111,6 +119,11 @@ func TestAutoTraderRiskEnforcement(t *testing.T) {
 	if until.IsZero() {
 		t.Fatalf("expected non-zero pause deadline")
 	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "RISK LIMIT BREACHED") {
+		t.Logf("Expected 'RISK LIMIT BREACHED' log, got: %s", logOutput)
+	}
 }
 
 func TestUpdateDailyPnLConcurrent(t *testing.T) {
@@ -118,8 +131,8 @@ func TestUpdateDailyPnLConcurrent(t *testing.T) {
 	at := newTestAutoTrader(t, flags)
 
 	var wg sync.WaitGroup
-	workers := 8
-	iterations := 500
+	workers := 16
+	iterations := 1000
 
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
@@ -136,6 +149,55 @@ func TestUpdateDailyPnLConcurrent(t *testing.T) {
 	expected := float64(workers * iterations)
 	if snapshot.DailyPnL != expected {
 		t.Fatalf("expected daily pnl %.0f, got %.0f", expected, snapshot.DailyPnL)
+	}
+}
+
+func TestSetStopUntilConcurrent(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: false, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+
+	var wg sync.WaitGroup
+	workers := 32
+	iterations := 500
+
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(worker int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				until := time.Now().Add(time.Duration(worker*j) * time.Millisecond)
+				at.SetStopUntil(until)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	final := at.GetStopUntil()
+	if final.IsZero() {
+		t.Fatal("expected non-zero stopUntil after concurrent updates")
+	}
+}
+
+func TestAutoTraderRiskEnforcementToggleRestoresTrading(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{EnableRiskEnforcement: true, EnableMutexProtection: true})
+	at := newTestAutoTrader(t, flags)
+
+	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
+	loss := baselineLoss + 10
+	at.UpdateDailyPnL(-loss)
+	at.setCurrentBalance(at.initialBalance - loss)
+
+	canTrade, _ := at.CanTrade()
+	if canTrade {
+		t.Fatalf("expected trading to be halted after breach")
+	}
+
+	at.SetStopUntil(time.Time{})
+	flags.SetRiskEnforcement(false)
+
+	canTrade, reason := at.CanTrade()
+	if !canTrade {
+		t.Fatalf("expected trading to resume after disabling enforcement, got reason: %s", reason)
 	}
 }
 
