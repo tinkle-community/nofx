@@ -239,11 +239,16 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 	}
 
 	var result []map[string]interface{}
+	log.Printf("📊 OKX API 返回 %d 个持仓记录", len(positions))
+
 	for _, pos := range positions {
 		posAmt, _ := strconv.ParseFloat(pos.Pos, 64)
 		if posAmt == 0 {
 			continue // 跳过无持仓的
 		}
+
+		// 📝 记录原始的 instId 和 posSide，帮助调试
+		log.Printf("  ├─ 原始持仓: instId=%s, posSide=%s, pos=%s", pos.InstId, pos.PosSide, pos.Pos)
 
 		posMap := make(map[string]interface{})
 		posMap["symbol"] = pos.InstId
@@ -255,11 +260,30 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		posMap["liquidationPrice"], _ = strconv.ParseFloat(pos.LiqPx, 64)
 
 		// 判断方向
+		// OKX有两种持仓模式：
+		// 1. 双向持仓：posSide = "long" 或 "short"
+		// 2. 单向持仓：posSide = "net"，通过pos数量正负判断方向
+		var side string
 		if pos.PosSide == "long" {
-			posMap["side"] = "long"
+			side = "long"
 		} else if pos.PosSide == "short" {
-			posMap["side"] = "short"
+			side = "short"
+		} else if pos.PosSide == "net" || pos.PosSide == "" {
+			// 单向持仓模式：正数=多仓，负数=空仓
+			if posAmt > 0 {
+				side = "long"
+			} else {
+				side = "short"
+				posAmt = -posAmt // 转为正数
+				posMap["positionAmt"] = posAmt
+			}
+		} else {
+			log.Printf("  └─ ❌ 未知的持仓方向: %s (symbol=%s), 跳过该持仓", pos.PosSide, pos.InstId)
+			continue
 		}
+
+		posMap["side"] = side
+		log.Printf("  └─ ✓ 解析成功: symbol=%s, side=%s, amount=%.4f", pos.InstId, side, posAmt)
 
 		result = append(result, posMap)
 	}
