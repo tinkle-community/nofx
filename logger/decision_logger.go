@@ -269,16 +269,20 @@ type Statistics struct {
 
 // TradeOutcome 单笔交易结果
 type TradeOutcome struct {
-	Symbol      string    `json:"symbol"`        // 币种
-	Side        string    `json:"side"`          // long/short
-	OpenPrice   float64   `json:"open_price"`    // 开仓价
-	ClosePrice  float64   `json:"close_price"`   // 平仓价
-	PnL         float64   `json:"pn_l"`          // 盈亏（USDT）
-	PnLPct      float64   `json:"pn_l_pct"`      // 盈亏百分比
-	Duration    string    `json:"duration"`      // 持仓时长
-	OpenTime    time.Time `json:"open_time"`     // 开仓时间
-	CloseTime   time.Time `json:"close_time"`    // 平仓时间
-	WasStopLoss bool      `json:"was_stop_loss"` // 是否止损
+	Symbol        string    `json:"symbol"`         // 币种
+	Side          string    `json:"side"`           // long/short
+	Quantity      float64   `json:"quantity"`       // 仓位数量
+	Leverage      int       `json:"leverage"`       // 杠杆倍数
+	OpenPrice     float64   `json:"open_price"`     // 开仓价
+	ClosePrice    float64   `json:"close_price"`    // 平仓价
+	PositionValue float64   `json:"position_value"` // 仓位价值（quantity × openPrice）
+	MarginUsed    float64   `json:"margin_used"`    // 保证金使用（positionValue / leverage）
+	PnL           float64   `json:"pn_l"`           // 盈亏（USDT）
+	PnLPct        float64   `json:"pn_l_pct"`       // 盈亏百分比（相对保证金）
+	Duration      string    `json:"duration"`       // 持仓时长
+	OpenTime      time.Time `json:"open_time"`      // 开仓时间
+	CloseTime     time.Time `json:"close_time"`     // 平仓时间
+	WasStopLoss   bool      `json:"was_stop_loss"`  // 是否止损
 }
 
 // PerformanceAnalysis 交易表现分析
@@ -424,15 +428,19 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 
 					// 记录交易结果
 					outcome := TradeOutcome{
-						Symbol:     symbol,
-						Side:       side,
-						OpenPrice:  openPrice,
-						ClosePrice: action.Price,
-						PnL:        pnl,
-						PnLPct:     pnlPct,
-						Duration:   action.Timestamp.Sub(openTime).String(),
-						OpenTime:   openTime,
-						CloseTime:  action.Timestamp,
+						Symbol:        symbol,
+						Side:          side,
+						Quantity:      quantity,
+						Leverage:      leverage,
+						OpenPrice:     openPrice,
+						ClosePrice:    action.Price,
+						PositionValue: positionValue,
+						MarginUsed:    marginUsed,
+						PnL:           pnl,
+						PnLPct:        pnlPct,
+						Duration:      action.Timestamp.Sub(openTime).String(),
+						OpenTime:      openTime,
+						CloseTime:     action.Timestamp,
 					}
 
 					analysis.RecentTrades = append(analysis.RecentTrades, outcome)
