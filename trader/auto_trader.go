@@ -133,27 +133,34 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	var trader Trader
 	var err error
 
-	switch config.Exchange {
-	case "binance":
-		log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
-	case "hyperliquid":
-		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
-		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
-		if err != nil {
-			return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+	// 如果启用了模拟交易模式
+	if config.PaperTrading {
+		log.Printf("🎮 [%s] 使用模拟交易器 (Paper Trading) - 无需API Key", config.Name)
+		trader = NewMockTrader(config.Exchange, config.InitialBalance)
+	} else {
+		// 真实交易模式
+		switch config.Exchange {
+		case "binance":
+			log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
+			trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
+		case "hyperliquid":
+			log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
+			trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			}
+		case "aster":
+			log.Printf("🏦 [%s] 使用Aster交易", config.Name)
+			trader, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
+			}
+		case "okx":
+			log.Printf("🏦 [%s] 使用OKX交易", config.Name)
+			trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
+		default:
+			return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 		}
-	case "aster":
-		log.Printf("🏦 [%s] 使用Aster交易", config.Name)
-		trader, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
-		if err != nil {
-			return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
-		}
-	case "okx":
-		log.Printf("🏦 [%s] 使用OKX交易", config.Name)
-		trader = NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
-	default:
-		return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 	}
 
 	// 验证初始金额配置

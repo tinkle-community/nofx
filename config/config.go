@@ -13,6 +13,9 @@ type TraderConfig struct {
 	Name    string `json:"name"`
 	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
+	// 交易模式
+	PaperTrading bool `json:"paper_trading,omitempty"` // true=模拟交易(无需API Key), false=真实交易
+
 	// 交易平台选择（二选一）
 	Exchange string `json:"exchange"` // "binance" or "hyperliquid"
 
@@ -136,6 +139,12 @@ func (c *Config) Validate() error {
 		}
 		if trader.Exchange != "binance" && trader.Exchange != "hyperliquid" && trader.Exchange != "aster" && trader.Exchange != "okx" {
 			return fmt.Errorf("trader[%d]: exchange必须是 'binance', 'hyperliquid', 'aster' 或 'okx'", i)
+		}
+
+		// 如果是模拟交易模式，跳过API Key验证
+		if trader.PaperTrading {
+			fmt.Printf("🎮 [%s] 模拟交易模式已启用 (Paper Trading)\n", trader.Name)
+			continue
 		}
 
 		// 根据平台验证对应的密钥

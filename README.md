@@ -23,6 +23,35 @@ Join our Telegram developer community to discuss, share ideas, and get support:
 
 ## 🆕 What's New (Latest Update)
 
+### 🎮 Paper Trading Mode (Simulation) - NEW!
+
+**Test AI strategies without risking real money!**
+
+NOFX now includes a **Paper Trading Mode** that lets you:
+- ✅ **No API Keys Required** - Run without exchange API credentials
+- ✅ **Real Market Data** - Uses live prices from public APIs
+- ✅ **Virtual Account** - Simulates balance, positions, and P&L
+- ✅ **Full AI Decision Making** - Same AI analysis and trading logic
+- ✅ **Zero Risk Testing** - Perfect for learning and strategy testing
+- ✅ **Easy Switch** - Just set `"paper_trading": true` in config
+
+**Quick Start Paper Trading:**
+```json
+{
+  "traders": [{
+    "id": "test_trader",
+    "name": "My Test Trader",
+    "ai_model": "deepseek",
+    "paper_trading": true,           // Enable Paper Trading!
+    "exchange": "binance",           // Simulate Binance
+    "deepseek_key": "your_ai_key",   // Only AI key needed
+    "initial_balance": 10000         // Virtual starting balance
+  }]
+}
+```
+
+See [Paper Trading Guide](#-paper-trading-mode-simulation) for details.
+
 ### 🚀 Multi-Exchange Support!
 
 NOFX now supports **four major exchanges**: Binance, OKX, Hyperliquid, and Aster DEX!
@@ -629,6 +658,92 @@ cp config.json.example config.json
 - API wallet is separate from your main wallet (extra security layer)
 - Never share your API private key
 - You can revoke API wallet access anytime at [asterdex.com](https://www.asterdex.com/en/api-wallet)
+
+---
+
+#### 🎮 Paper Trading Mode (Simulation)
+
+**Perfect for beginners! Test AI strategies without any risk or API keys.**
+
+**What is Paper Trading?**
+- Simulated trading with virtual money
+- Uses real market data from public APIs
+- No exchange API keys required (only AI key needed)
+- Full AI decision-making experience
+- Zero financial risk
+
+**Step 1**: Create Paper Trading configuration
+
+```bash
+cp config-paper-trading.json.example config.json
+```
+
+**Step 2**: Edit `config.json` - Only AI key needed!
+
+```json
+{
+  "traders": [
+    {
+      "id": "paper_trader",
+      "name": "My Paper Trader",
+      "ai_model": "deepseek",
+      "paper_trading": true,        // ✅ Enable Paper Trading!
+      "exchange": "binance",        // Simulate Binance (can be okx, etc.)
+      "deepseek_key": "sk-xxxxx",   // ✅ Only need AI key!
+      "initial_balance": 10000,     // Virtual starting balance (USDT)
+      "scan_interval_minutes": 3
+    }
+  ],
+  "use_default_coins": true,
+  "api_server_port": 8080
+}
+```
+
+**Step 3**: Start Paper Trading
+
+```bash
+./nofx
+```
+
+**What You'll See:**
+- 🎮 "Paper Trading" mode indicator
+- 💰 Virtual account balance
+- 📈 Simulated positions and P&L
+- 🤖 Real AI analysis and decisions
+- 📊 Full trading statistics
+
+**Features:**
+- ✅ Simulates balance, margin, and positions
+- ✅ Uses live market prices (Binance public API)
+- ✅ Tracks all trades and calculates P&L
+- ✅ Shows win rate, ROI, and statistics
+- ✅ Same AI decision engine as real trading
+- ✅ Can test multiple AI models simultaneously
+
+**When to Use Paper Trading:**
+1. 🎓 **Learning**: Understand how the system works
+2. 🧪 **Testing**: Validate AI strategies before risking real money
+3. 🔬 **Experimentation**: Try different settings and parameters
+4. 🏋️ **Practice**: Get comfortable with the interface
+5. 📊 **Analysis**: Evaluate AI performance over time
+
+**Switching to Real Trading:**
+
+When ready, just change `"paper_trading": false` and add your exchange API keys:
+
+```json
+{
+  "paper_trading": false,           // Switch to real trading
+  "binance_api_key": "YOUR_KEY",    // Add real API keys
+  "binance_secret_key": "YOUR_SECRET"
+}
+```
+
+**⚠️ Important Notes:**
+- Paper trading P&L may differ slightly from real trading (no slippage simulation)
+- Market orders filled at current price (instant execution)
+- Does NOT account for exchange fees in calculations
+- Great for learning but not 100% realistic
 
 ---
 

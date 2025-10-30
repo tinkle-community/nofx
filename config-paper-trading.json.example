@@ -1,0 +1,45 @@
+{
+  "traders": [
+    {
+      "id": "paper_qwen",
+      "name": "Paper Trading Qwen",
+      "ai_model": "qwen",
+      "paper_trading": true,
+      "exchange": "binance",
+      "qwen_key": "your_qwen_api_key",
+      "initial_balance": 10000,
+      "scan_interval_minutes": 3
+    },
+    {
+      "id": "paper_deepseek",
+      "name": "Paper Trading DeepSeek",
+      "ai_model": "deepseek",
+      "paper_trading": true,
+      "exchange": "binance",
+      "deepseek_key": "your_deepseek_api_key",
+      "initial_balance": 10000,
+      "scan_interval_minutes": 3
+    }
+  ],
+  "leverage": {
+    "btc_eth_leverage": 5,
+    "altcoin_leverage": 5
+  },
+  "use_default_coins": true,
+  "default_coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "HYPEUSDT"
+  ],
+  "coin_pool_api_url": "",
+  "oi_top_api_url": "",
+  "api_server_port": 8080,
+  "max_daily_loss": 10.0,
+  "max_drawdown": 20.0,
+  "stop_trading_minutes": 60
+}
