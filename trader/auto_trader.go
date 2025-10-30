@@ -517,6 +517,17 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		}
 	}
 
+	// 📊 显示当前持仓概况
+	if len(positionInfos) > 0 {
+		log.Printf("📊 当前持仓 %d 个:", len(positionInfos))
+		for i, pos := range positionInfos {
+			log.Printf("  %d. %s %s: 数量=%.4f, 入场=%.4f, 标记=%.4f, 盈亏=%.2f%%",
+				i+1, pos.Symbol, pos.Side, pos.Quantity, pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct)
+		}
+	} else {
+		log.Printf("📊 当前无持仓")
+	}
+
 	// 3. 获取合并的候选币种池（AI500 + OI Top，去重）
 	// 无论有没有持仓，都分析相同数量的币种（让AI看到所有好机会）
 	// AI会根据保证金使用率和现有持仓情况，自己决定是否要换仓
@@ -540,6 +551,21 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种",
 		ai500Limit, len(candidateCoins))
+
+	// 显示前10个候选币种，帮助确认格式
+	displayCount := len(candidateCoins)
+	if displayCount > 10 {
+		displayCount = 10
+	}
+	if displayCount > 0 {
+		log.Printf("  候选币种示例 (前%d个):", displayCount)
+		for i := 0; i < displayCount; i++ {
+			log.Printf("    %d. %s (来源: %v)", i+1, candidateCoins[i].Symbol, candidateCoins[i].Sources)
+		}
+		if len(candidateCoins) > 10 {
+			log.Printf("    ... 还有 %d 个币种", len(candidateCoins)-10)
+		}
+	}
 
 	// 4. 计算总盈亏
 	totalPnL := totalEquity - at.initialBalance
