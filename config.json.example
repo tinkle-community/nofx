@@ -6,6 +6,7 @@
       "ai_model": "deepseek",
       "exchange": "hyperliquid",
       "hyperliquid_private_key": "your_ethereum_private_key_without_0x_prefix",
+      "hyperliquid_wallet_addr": "your_ethereum_address",
       "hyperliquid_testnet": false,
       "deepseek_key": "your_deepseek_api_key",
       "initial_balance": 1000,

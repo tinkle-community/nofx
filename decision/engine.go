@@ -90,7 +90,7 @@ type FullDecision struct {
 }
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
-func GetFullDecision(ctx *Context) (*FullDecision, error) {
+func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
 	// 1. 为所有币种获取市场数据
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
@@ -101,7 +101,7 @@ func GetFullDecision(ctx *Context) (*FullDecision, error) {
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
-	aiResponse, err := mcp.CallWithMessages(systemPrompt, userPrompt)
+	aiResponse, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("调用AI API失败: %w", err)
 	}

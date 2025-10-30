@@ -29,6 +29,7 @@ type AutoTraderConfig struct {
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string
+	HyperliquidWalletAddr string
 	HyperliquidTestnet    bool
 
 	// Aster配置
@@ -71,7 +72,8 @@ type AutoTrader struct {
 	aiModel               string // AI模型名称
 	exchange              string // 交易平台名称
 	config                AutoTraderConfig
-	trader                Trader                 // 使用Trader接口（支持多平台）
+	trader                Trader // 使用Trader接口（支持多平台）
+	mcpClient             *mcp.Client
 	decisionLogger        *logger.DecisionLogger // 决策日志记录器
 	initialBalance        float64
 	dailyPnL              float64
@@ -100,18 +102,20 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		}
 	}
 
+	mcpClient := mcp.New()
+
 	// 初始化AI
 	if config.AIModel == "custom" {
 		// 使用自定义API
-		mcp.SetCustomAPI(config.CustomAPIURL, config.CustomAPIKey, config.CustomModelName)
+		mcpClient.SetCustomAPI(config.CustomAPIURL, config.CustomAPIKey, config.CustomModelName)
 		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 	} else if config.UseQwen || config.AIModel == "qwen" {
 		// 使用Qwen
-		mcp.SetQwenAPIKey(config.QwenKey, "")
+		mcpClient.SetQwenAPIKey(config.QwenKey, "")
 		log.Printf("🤖 [%s] 使用阿里云Qwen AI", config.Name)
 	} else {
 		// 默认使用DeepSeek
-		mcp.SetDeepSeekAPIKey(config.DeepSeekKey)
+		mcpClient.SetDeepSeekAPIKey(config.DeepSeekKey)
 		log.Printf("🤖 [%s] 使用DeepSeek AI", config.Name)
 	}
 
@@ -135,7 +139,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
 	case "hyperliquid":
 		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
-		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
+		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
 		if err != nil {
 			return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
 		}
@@ -165,6 +169,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		exchange:              config.Exchange,
 		config:                config,
 		trader:                trader,
+		mcpClient:             mcpClient,
 		decisionLogger:        decisionLogger,
 		initialBalance:        config.InitialBalance,
 		lastResetTime:         time.Now(),
@@ -282,7 +287,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
-	decision, err := decision.GetFullDecision(ctx)
+	decision, err := decision.GetFullDecision(ctx, at.mcpClient)
 
 	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
 	if decision != nil {
@@ -505,8 +510,9 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		marginUsedPct = (totalMarginUsed / totalEquity) * 100
 	}
 
-	// 5. 分析历史表现（最近20个周期）
-	performance, err := at.decisionLogger.AnalyzePerformance(20)
+	// 5. 分析历史表现（最近100个周期，避免长期持仓的交易记录丢失）
+	// 假设每3分钟一个周期，100个周期 = 5小时，足够覆盖大部分交易
+	performance, err := at.decisionLogger.AnalyzePerformance(100)
 	if err != nil {
 		log.Printf("⚠️  分析历史表现失败: %v", err)
 		// 不影响主流程，继续执行（但设置performance为nil以避免传递错误数据）

@@ -22,6 +22,7 @@ type TraderConfig struct {
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`
+	HyperliquidWalletAddr string `json:"hyperliquid_wallet_addr,omitempty"`
 	HyperliquidTestnet    bool   `json:"hyperliquid_testnet,omitempty"`
 
 	// Aster配置
