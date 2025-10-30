@@ -10,25 +10,27 @@ jobs:
   test-with-docker:
     name: Tests (with Docker/PostgreSQL)
     runs-on: ubuntu-latest
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
 
       - name: Install dependencies
         run: go mod download
@@ -58,25 +60,30 @@ jobs:
     name: Tests (without Docker, skip DB tests)
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
+      GOFLAGS: -tags=nodocker
+      DISABLE_DB_TESTS: 1
+      SKIP_DOCKER_TESTS: 1
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
 
       - name: Install dependencies
         run: go mod download
@@ -104,25 +111,27 @@ jobs:
     name: Race Detector Stress Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.cache/gomod-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare Go module cache
+        run: |
+          rm -rf "$GOMODCACHE"
+          mkdir -p "$GOMODCACHE"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Show Go cache info
+        run: go env GOMODCACHE GOCACHE
 
       - name: Install dependencies
         run: go mod download
