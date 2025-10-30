@@ -3,6 +3,8 @@ package manager
 import (
 	"fmt"
 	"log"
+	"os"
+
 	"nofx/config"
 	"nofx/featureflag"
 	"nofx/risk"
@@ -71,8 +73,16 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		FeatureFlags:          tm.featureFlags,
 	}
 
-	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig, tm.riskStore, tm.featureFlags)
+	var at *trader.AutoTrader
+	var err error
+
+	if tm.featureFlags.PersistenceEnabled() {
+		dbPath := tm.buildDBPath(cfg.ID)
+		at, err = trader.NewAutoTraderWithPersistence(traderConfig, dbPath, tm.featureFlags)
+	} else {
+		at, err = trader.NewAutoTrader(traderConfig, tm.riskStore, tm.featureFlags)
+	}
+
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
@@ -80,6 +90,22 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 	tm.traders[cfg.ID] = at
 	log.Printf("✓ Trader '%s' (%s) 已添加", cfg.Name, cfg.AIModel)
 	return nil
+}
+
+func (tm *TraderManager) buildDBPath(traderID string) string {
+	dbHost := getEnvOrDefault("DB_HOST", "localhost")
+	dbPort := getEnvOrDefault("DB_PORT", "5432")
+	dbUser := getEnvOrDefault("DB_USER", "postgres")
+	dbPass := getEnvOrDefault("DB_PASSWORD", "postgres")
+	dbName := getEnvOrDefault("DB_NAME", "nofx_risk")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 // GetTrader 获取指定ID的trader

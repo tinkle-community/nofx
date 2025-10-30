@@ -97,10 +97,11 @@ func TestAutoTraderRiskEnforcement(t *testing.T) {
 	baselineLoss := at.initialBalance * at.config.MaxDailyLoss / 100
 	loss := baselineLoss + 25
 	at.UpdateDailyPnL(-loss)
+	at.setCurrentBalance(at.initialBalance - loss)
 
-	riskDecision := at.riskEngine.Assess(at.initialBalance - loss)
-	if !riskDecision.TradingPaused {
-		t.Fatalf("expected trading to pause after breaching risk limits")
+	canTrade, reason := at.CanTrade()
+	if canTrade {
+		t.Fatalf("expected trading to pause after breaching risk limits, reason: %s", reason)
 	}
 
 	paused, until := at.riskEngine.TradingStatus()

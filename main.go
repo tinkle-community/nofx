@@ -36,6 +36,10 @@ func main() {
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))
 	fmt.Println()
 
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Printf("⚠️  无法创建数据目录: %v", err)
+	}
+
 	runtimeFlags := featureflag.NewRuntimeFlags(cfg.FeatureFlags)
 
 	flagsSnapshot := runtimeFlags.Snapshot()

@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  # PostgreSQL + TimescaleDB for risk state persistence
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nofx-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=nofx_risk
+    networks:
+      - nofx-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # NOFX Trading Backend
   nofx:
     build:
@@ -13,12 +34,21 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./decision_logs:/app/decision_logs
+      - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro  # 同步主机时间
       - frontend-dist:/app/web/dist-shared:rw  # 共享前端文件
     environment:
       - TZ=Asia/Shanghai  # 使用中国时区
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=nofx_risk
     networks:
       - nofx-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
