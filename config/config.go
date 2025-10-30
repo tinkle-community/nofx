@@ -9,16 +9,16 @@ import (
 
 // TraderConfig 单个trader的配置
 type TraderConfig struct {
-	ID                  string  `json:"id"`
-	Name                string  `json:"name"`
-	AIModel             string  `json:"ai_model"` // "qwen" or "deepseek"
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
-	Exchange             string  `json:"exchange"` // "binance" or "hyperliquid"
+	Exchange string `json:"exchange"` // "binance" or "hyperliquid"
 
 	// 币安配置
-	BinanceAPIKey       string  `json:"binance_api_key,omitempty"`
-	BinanceSecretKey    string  `json:"binance_secret_key,omitempty"`
+	BinanceAPIKey    string `json:"binance_api_key,omitempty"`
+	BinanceSecretKey string `json:"binance_secret_key,omitempty"`
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`
@@ -30,13 +30,13 @@ type TraderConfig struct {
 	AsterPrivateKey string `json:"aster_private_key,omitempty"` // Aster API钱包私钥
 
 	// AI配置
-	QwenKey             string  `json:"qwen_key,omitempty"`
-	DeepSeekKey         string  `json:"deepseek_key,omitempty"`
+	QwenKey     string `json:"qwen_key,omitempty"`
+	DeepSeekKey string `json:"deepseek_key,omitempty"`
 
 	// 自定义AI API配置（支持任何OpenAI格式的API）
-	CustomAPIURL        string  `json:"custom_api_url,omitempty"`
-	CustomAPIKey        string  `json:"custom_api_key,omitempty"`
-	CustomModelName     string  `json:"custom_model_name,omitempty"`
+	CustomAPIURL    string `json:"custom_api_url,omitempty"`
+	CustomAPIKey    string `json:"custom_api_key,omitempty"`
+	CustomModelName string `json:"custom_model_name,omitempty"`
 
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
@@ -44,29 +44,33 @@ type TraderConfig struct {
 
 // LeverageConfig 杠杆配置
 type LeverageConfig struct {
-	BTCETHLeverage  int `json:"btc_eth_leverage"`  // BTC和ETH的杠杆倍数（主账户建议5-50，子账户≤5）
-	AltcoinLeverage int `json:"altcoin_leverage"`  // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
-}
-
-// CoinWhitelistConfig 币种白名单配置
-type CoinWhitelistConfig struct {
-	Enabled bool     `json:"enabled"` // 是否启用白名单
-	Coins   []string `json:"coins"`   // 白名单币种列表
+	BTCETHLeverage  int `json:"btc_eth_leverage"` // BTC和ETH的杠杆倍数（主账户建议5-50，子账户≤5）
+	AltcoinLeverage int `json:"altcoin_leverage"` // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
 }
 
 // Config 总配置
 type Config struct {
-	Traders            []TraderConfig      `json:"traders"`
-	UseDefaultCoins    bool                `json:"use_default_coins"`     // 是否使用默认主流币种列表
-	DefaultCoins       []string            `json:"default_coins"`         // 默认主流币种池
-	CoinPoolAPIURL     string              `json:"coin_pool_api_url"`
-	OITopAPIURL        string              `json:"oi_top_api_url"`
-	APIServerPort      int                 `json:"api_server_port"`
-	MaxDailyLoss       float64             `json:"max_daily_loss"`
-	MaxDrawdown        float64             `json:"max_drawdown"`
-	StopTradingMinutes int                 `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig      `json:"leverage"`           // 杠杆配置
-	CoinWhitelist      CoinWhitelistConfig `json:"coin_whitelist"`     // 币种白名单配置
+	Traders            []TraderConfig `json:"traders"`
+	UseDefaultCoins    bool           `json:"use_default_coins"` // 是否使用默认主流币种列表
+	DefaultCoins       []string       `json:"default_coins"`     // 默认主流币种池（同时也是白名单，当不为空时自动启用白名单过滤）
+	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
+	OITopAPIURL        string         `json:"oi_top_api_url"`
+	APIServerPort      int            `json:"api_server_port"`
+	MaxDailyLoss       float64        `json:"max_daily_loss"`
+	MaxDrawdown        float64        `json:"max_drawdown"`
+	StopTradingMinutes int            `json:"stop_trading_minutes"`
+	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+}
+
+// legacyCoinWhitelistConfig 用于向后兼容的旧配置结构
+type legacyCoinWhitelistConfig struct {
+	Enabled bool     `json:"enabled"`
+	Coins   []string `json:"coins"`
+}
+
+// legacyConfig 用于向后兼容的旧配置结构
+type legacyConfig struct {
+	CoinWhitelist legacyCoinWhitelistConfig `json:"coin_whitelist"`
 }
 
 // LoadConfig 从文件加载配置
@@ -81,22 +85,45 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	// 向后兼容：如果配置文件中存在旧的 coin_whitelist，并且启用了白名单，则合并到 DefaultCoins
+	var legacyCfg legacyConfig
+	if err := json.Unmarshal(data, &legacyCfg); err == nil {
+		if legacyCfg.CoinWhitelist.Enabled && len(legacyCfg.CoinWhitelist.Coins) > 0 {
+			// 如果 DefaultCoins 为空，直接使用 coin_whitelist.coins
+			if len(config.DefaultCoins) == 0 {
+				config.DefaultCoins = legacyCfg.CoinWhitelist.Coins
+			} else {
+				// 如果两者都存在，合并去重（保留 DefaultCoins 的顺序，添加 coin_whitelist 中不存在的币种）
+				coinMap := make(map[string]bool)
+				for _, coin := range config.DefaultCoins {
+					coinMap[coin] = true
+				}
+				for _, coin := range legacyCfg.CoinWhitelist.Coins {
+					if !coinMap[coin] {
+						config.DefaultCoins = append(config.DefaultCoins, coin)
+						coinMap[coin] = true
+					}
+				}
+			}
+		}
+	}
+
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
 		config.UseDefaultCoins = true
 	}
 
-	// 设置默认币种池
+	// 设置默认币种池（如果 DefaultCoins 仍然为空）
 	if len(config.DefaultCoins) == 0 {
 		config.DefaultCoins = []string{
 			"BTCUSDT",
-            "ETHUSDT",
-            "SOLUSDT",
-            "BNBUSDT",
-            "XRPUSDT",
-            "DOGEUSDT",
-            "ADAUSDT",
-            "HYPEUSDT",
+			"ETHUSDT",
+			"SOLUSDT",
+			"BNBUSDT",
+			"XRPUSDT",
+			"DOGEUSDT",
+			"ADAUSDT",
+			"HYPEUSDT",
 		}
 	}
 
@@ -197,11 +224,6 @@ func (c *Config) Validate() error {
 		fmt.Printf("⚠️  警告: 山寨币杠杆设置为%dx，如果使用子账户可能会失败（子账户限制≤5x）\n", c.Leverage.AltcoinLeverage)
 	}
 
-	// 验证币种白名单配置
-	if c.CoinWhitelist.Enabled && len(c.CoinWhitelist.Coins) == 0 {
-		return fmt.Errorf("启用币种白名单时，必须配置至少一个币种")
-	}
-
 	return nil
 }
 
@@ -211,15 +233,28 @@ func (tc *TraderConfig) GetScanInterval() time.Duration {
 }
 
 // IsCoinInWhitelist 检查币种是否在白名单中
+// 如果 DefaultCoins 不为空，则使用 DefaultCoins 作为白名单；否则允许所有币种
 func (c *Config) IsCoinInWhitelist(coin string) bool {
-	if !c.CoinWhitelist.Enabled {
-		return true // 如果未启用白名单，则允许所有币种
+	// 如果 DefaultCoins 为空，则允许所有币种
+	if len(c.DefaultCoins) == 0 {
+		return true
 	}
-	
-	for _, whitelistCoin := range c.CoinWhitelist.Coins {
+
+	// 使用 DefaultCoins 作为白名单
+	for _, whitelistCoin := range c.DefaultCoins {
 		if whitelistCoin == coin {
 			return true
 		}
 	}
 	return false
+}
+
+// IsWhitelistEnabled 检查是否启用了白名单（DefaultCoins 不为空时自动启用）
+func (c *Config) IsWhitelistEnabled() bool {
+	return len(c.DefaultCoins) > 0
+}
+
+// GetWhitelistCoins 获取白名单币种列表（返回 DefaultCoins）
+func (c *Config) GetWhitelistCoins() []string {
+	return c.DefaultCoins
 }
