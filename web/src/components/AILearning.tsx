@@ -50,7 +50,11 @@ export default function AILearning({ traderId }: AILearningProps) {
   const { data: performance, error } = useSWR<PerformanceAnalysis>(
     traderId ? `performance-${traderId}` : 'performance',
     () => api.getPerformance(traderId),
-    { refreshInterval: 10000 }
+    {
+      refreshInterval: 30000, // 30秒刷新（AI学习分析数据更新频率较低）
+      revalidateOnFocus: false,
+      dedupingInterval: 20000,
+    }
   );
 
   if (error) {

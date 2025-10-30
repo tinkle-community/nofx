@@ -58,6 +58,7 @@ type CoinWhitelistConfig struct {
 type Config struct {
 	Traders            []TraderConfig      `json:"traders"`
 	UseDefaultCoins    bool                `json:"use_default_coins"`     // 是否使用默认主流币种列表
+	DefaultCoins       []string            `json:"default_coins"`         // 默认主流币种池
 	CoinPoolAPIURL     string              `json:"coin_pool_api_url"`
 	OITopAPIURL        string              `json:"oi_top_api_url"`
 	APIServerPort      int                 `json:"api_server_port"`
@@ -83,6 +84,20 @@ func LoadConfig(filename string) (*Config, error) {
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
 		config.UseDefaultCoins = true
+	}
+
+	// 设置默认币种池
+	if len(config.DefaultCoins) == 0 {
+		config.DefaultCoins = []string{
+			"BTCUSDT",
+            "ETHUSDT",
+            "SOLUSDT",
+            "BNBUSDT",
+            "XRPUSDT",
+            "DOGEUSDT",
+            "ADAUSDT",
+            "HYPEUSDT",
+		}
 	}
 
 	// 验证配置

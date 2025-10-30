@@ -60,6 +60,16 @@
     "altcoin_leverage": 5
   },
   "use_default_coins": true,
+  "default_coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "HYPEUSDT",
+  ],
   "coin_pool_api_url": "",
   "oi_top_api_url": "",
   "api_server_port": 8080,

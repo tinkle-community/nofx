@@ -1,8 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
 
 # Build output (will be regenerated)
 dist/

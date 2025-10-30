@@ -260,8 +260,14 @@ nano config.json  # or use any editor
 chmod +x start.sh
 ./start.sh start --build
 
-# Option 2: Use docker-compose directly
-docker-compose up -d --build
+> #### Docker Compose Version Notes
+>
+> **This project uses Docker Compose V2 syntax (with spaces)**
+>
+> If you have the older standalone `docker-compose` installed, please upgrade to Docker Desktop or Docker 20.10+
+
+# Option 2: Use docker compose directly
+docker compose up -d --build
 ```
 
 #### Step 3: Access Dashboard

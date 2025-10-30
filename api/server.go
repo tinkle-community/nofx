@@ -57,7 +57,7 @@ func corsMiddleware() gin.HandlerFunc {
 // setupRoutes 设置路由
 func (s *Server) setupRoutes() {
 	// 健康检查
-	s.router.GET("/health", s.handleHealth)
+	s.router.Any("/health", s.handleHealth)
 
 	// API路由组
 	api := s.router.Group("/api")

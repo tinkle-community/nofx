@@ -33,8 +33,9 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
       return Promise.all(promises);
     },
     {
-      refreshInterval: 10000,
+      refreshInterval: 30000, // 30秒刷新（对比图表数据更新频率较低）
       revalidateOnFocus: false,
+      dedupingInterval: 20000,
     }
   );
 

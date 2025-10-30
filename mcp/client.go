@@ -27,6 +27,7 @@ type Config struct {
 	BaseURL   string
 	Model     string
 	Timeout   time.Duration
+	UseFullURL bool // 是否使用完整URL（不添加/chat/completions）
 }
 
 // 默认配置
@@ -58,7 +59,16 @@ func SetQwenAPIKey(apiKey, secretKey string) {
 func SetCustomAPI(apiURL, apiKey, modelName string) {
 	defaultConfig.Provider = ProviderCustom
 	defaultConfig.APIKey = apiKey
-	defaultConfig.BaseURL = apiURL
+
+	// 检查URL是否以#结尾，如果是则使用完整URL（不添加/chat/completions）
+	if strings.HasSuffix(apiURL, "#") {
+		defaultConfig.BaseURL = strings.TrimSuffix(apiURL, "#")
+		defaultConfig.UseFullURL = true
+	} else {
+		defaultConfig.BaseURL = apiURL
+		defaultConfig.UseFullURL = false
+	}
+
 	defaultConfig.Model = modelName
 	defaultConfig.Timeout = 120 * time.Second
 }
@@ -147,7 +157,14 @@ func callOnce(systemPrompt, userPrompt string) (string, error) {
 	}
 
 	// 创建HTTP请求
-	url := fmt.Sprintf("%s/chat/completions", defaultConfig.BaseURL)
+	var url string
+	if defaultConfig.UseFullURL {
+		// 使用完整URL，不添加/chat/completions
+		url = defaultConfig.BaseURL
+	} else {
+		// 默认行为：添加/chat/completions
+		url = fmt.Sprintf("%s/chat/completions", defaultConfig.BaseURL)
+	}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("创建请求失败: %w", err)
