@@ -11,26 +11,42 @@
 
 ### 安装 Docker
 
+> #### 提示：Docker Compose 版本说明
+> 
+> **新用户建议**：
+> - **推荐使用 Docker Desktop**：自动包含最新 Docker Compose，无需单独安装
+> - 安装简单，一键搞定，提供图形界面管理
+> - 支持 macOS、Windows、部分 Linux 发行版
+> 
+> **旧用户提醒**：
+> - **弃用独立 docker-compose**：不再推荐下载独立的 Docker Compose 二进制文件
+> - **使用内置版**：Docker 20.10+ 自带 `docker compose` 命令（注意是空格）
+> - 如果还在使用旧的 `docker-compose`，请升级到新语法
+
 #### macOS / Windows
 下载并安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
-#### Linux (Ubuntu/Debian)
+**安装后验证：**
 ```bash
-# 安装 Docker
+docker --version
+docker compose --version  # 注意：使用空格，不再是连字符
+```
+
+#### Linux (Ubuntu/Debian)
+**推荐方式：使用 Docker Desktop（如果可用）或 Docker CE**
+
+```bash
+# 安装 Docker (自动包含 compose)
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
-
-# 安装 Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
 
 # 将当前用户加入 docker 组
 sudo usermod -aG docker $USER
 newgrp docker
 
-# 验证安装
+# 验证安装（新命令）
 docker --version
-docker-compose --version
+docker compose --version  # Docker 24+ 自带，无需单独安装
 ```
 
 ## 🚀 快速开始（3步完成部署）
@@ -69,10 +85,10 @@ nano config.json  # 或使用其他编辑器
 
 ```bash
 # 构建并启动所有服务（首次运行）
-docker-compose up -d --build
+docker compose up -d --build
 
 # 后续启动（不重新构建）
-docker-compose up -d
+docker compose up -d
 ```
 
 **启动过程说明：**
@@ -91,49 +107,49 @@ docker-compose up -d
 ### 查看运行状态
 ```bash
 # 查看所有容器状态
-docker-compose ps
+docker compose ps
 
 # 查看服务健康状态
-docker-compose ps --format json | jq
+docker compose ps --format json | jq
 ```
 
 ### 查看日志
 ```bash
 # 查看所有服务日志
-docker-compose logs -f
+docker compose logs -f
 
 # 只查看后端日志
-docker-compose logs -f backend
+docker compose logs -f backend
 
 # 只查看前端日志
-docker-compose logs -f frontend
+docker compose logs -f frontend
 
 # 查看最近 100 行日志
-docker-compose logs --tail=100
+docker compose logs --tail=100
 ```
 
 ### 停止服务
 ```bash
 # 停止所有服务（保留数据）
-docker-compose stop
+docker compose stop
 
 # 停止并删除容器（保留数据）
-docker-compose down
+docker compose down
 
 # 停止并删除容器和卷（清除所有数据）
-docker-compose down -v
+docker compose down -v
 ```
 
 ### 重启服务
 ```bash
 # 重启所有服务
-docker-compose restart
+docker compose restart
 
 # 只重启后端
-docker-compose restart backend
+docker compose restart backend
 
 # 只重启前端
-docker-compose restart frontend
+docker compose restart frontend
 ```
 
 ### 更新服务
@@ -142,7 +158,7 @@ docker-compose restart frontend
 git pull
 
 # 重新构建并重启
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ## 🔧 高级配置
@@ -226,14 +242,14 @@ tar -xzf backup_20241029.tar.gz
 
 ```bash
 # 查看详细错误信息
-docker-compose logs backend
-docker-compose logs frontend
+docker compose logs backend
+docker compose logs frontend
 
 # 检查容器状态
-docker-compose ps -a
+docker compose ps -a
 
 # 重新构建（清除缓存）
-docker-compose build --no-cache
+docker compose build --no-cache
 ```
 
 ### 端口被占用
@@ -273,10 +289,10 @@ curl http://localhost:3000/health
 
 ```bash
 # 检查网络连接
-docker-compose exec frontend ping backend
+docker compose exec frontend ping backend
 
 # 检查后端服务是否正常
-docker-compose exec frontend wget -O- http://backend:8080/health
+docker compose exec frontend wget -O- http://backend:8080/health
 ```
 
 ### 清理 Docker 资源
@@ -321,8 +337,8 @@ docker system prune -a --volumes
 
 4. **定期更新镜像**
    ```bash
-   docker-compose pull
-   docker-compose up -d
+   docker compose pull
+   docker compose up -d
    ```
 
 ## 🌐 生产环境部署
@@ -391,7 +407,7 @@ logging:
     max-file: "3"
 
 # 查看日志统计
-docker-compose logs --timestamps | wc -l
+docker compose logs --timestamps | wc -l
 ```
 
 ### 监控工具集成
@@ -424,28 +440,28 @@ services:
 
 ```bash
 # 启动
-docker-compose up -d --build       # 构建并启动
-docker-compose up -d               # 启动（不重新构建）
+docker compose up -d --build       # 构建并启动
+docker compose up -d               # 启动（不重新构建）
 
 # 停止
-docker-compose stop                # 停止服务
-docker-compose down                # 停止并删除容器
-docker-compose down -v             # 停止并删除容器和数据
+docker compose stop                # 停止服务
+docker compose down                # 停止并删除容器
+docker compose down -v             # 停止并删除容器和数据
 
 # 查看
-docker-compose ps                  # 查看状态
-docker-compose logs -f             # 查看日志
-docker-compose top                 # 查看进程
+docker compose ps                  # 查看状态
+docker compose logs -f             # 查看日志
+docker compose top                 # 查看进程
 
 # 重启
-docker-compose restart             # 重启所有服务
-docker-compose restart backend     # 重启后端
+docker compose restart             # 重启所有服务
+docker compose restart backend     # 重启后端
 
 # 更新
-git pull && docker-compose up -d --build
+git pull && docker compose up -d --build
 
 # 清理
-docker-compose down -v             # 清除所有数据
+docker compose down -v             # 清除所有数据
 docker system prune -a             # 清理 Docker 资源
 ```
 

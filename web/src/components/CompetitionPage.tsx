@@ -11,8 +11,9 @@ export function CompetitionPage() {
     'competition',
     api.getCompetition,
     {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
+      refreshInterval: 15000, // 15秒刷新（竞赛数据不需要太频繁更新）
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
     }
   );
 

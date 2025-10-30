@@ -42,9 +42,9 @@ function App() {
       : null,
     () => api.getStatus(selectedTraderId),
     {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
-      dedupingInterval: 0,
+      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
+      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
+      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
     }
   );
 
@@ -54,9 +54,9 @@ function App() {
       : null,
     () => api.getAccount(selectedTraderId),
     {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
-      dedupingInterval: 0,
+      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
+      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
+      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
     }
   );
 
@@ -66,9 +66,9 @@ function App() {
       : null,
     () => api.getPositions(selectedTraderId),
     {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
-      dedupingInterval: 0,
+      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
+      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
+      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
     }
   );
 
@@ -77,7 +77,11 @@ function App() {
       ? `decisions/latest-${selectedTraderId}`
       : null,
     () => api.getLatestDecisions(selectedTraderId),
-    { refreshInterval: 10000 }
+    {
+      refreshInterval: 30000, // 30秒刷新（决策更新频率较低）
+      revalidateOnFocus: false,
+      dedupingInterval: 20000,
+    }
   );
 
   const { data: stats } = useSWR<Statistics>(
@@ -85,7 +89,11 @@ function App() {
       ? `statistics-${selectedTraderId}`
       : null,
     () => api.getStatistics(selectedTraderId),
-    { refreshInterval: 10000 }
+    {
+      refreshInterval: 30000, // 30秒刷新（统计数据更新频率较低）
+      revalidateOnFocus: false,
+      dedupingInterval: 20000,
+    }
   );
 
   useEffect(() => {

@@ -260,8 +260,10 @@ nano config.json  # 或使用其他编辑器
 chmod +x start.sh
 ./start.sh start --build
 
-# 方式2：直接使用docker-compose
-docker-compose up -d --build
+
+# 方式2：直接使用docker compose
+# 如果您还在使用旧的独立 `docker-compose`，请升级到 Docker Desktop 或 Docker 20.10+
+docker compose up -d --build
 ```
 
 #### 步骤3：访问控制台

@@ -34,7 +34,9 @@ export function EquityChart({ traderId }: EquityChartProps) {
     traderId ? `equity-history-${traderId}` : 'equity-history',
     () => api.getEquityHistory(traderId),
     {
-      refreshInterval: 10000, // 每10秒刷新
+      refreshInterval: 30000, // 30秒刷新（历史数据更新频率较低）
+      revalidateOnFocus: false,
+      dedupingInterval: 20000,
     }
   );
 
@@ -42,7 +44,9 @@ export function EquityChart({ traderId }: EquityChartProps) {
     traderId ? `account-${traderId}` : 'account',
     () => api.getAccount(traderId),
     {
-      refreshInterval: 5000,
+      refreshInterval: 15000, // 15秒刷新（配合后端缓存）
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
     }
   );
 

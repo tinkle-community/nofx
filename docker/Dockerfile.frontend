@@ -1,0 +1,36 @@
+# docker/frontend/Dockerfile
+
+# ═══════════════════════════════════════════════════════════════
+# NOFX Frontend Dockerfile (Node Build → Nginx Runtime)
+# Versions extracted as ARGs for consistency
+# ═══════════════════════════════════════════════════════════════
+
+ARG NODE_VERSION=20-alpine
+ARG NGINX_VERSION=alpine
+
+# ──────────────────────────────────────────────────────────────
+# Build Stage (Node)
+# ──────────────────────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS builder
+WORKDIR /build
+
+COPY web/package*.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+# ──────────────────────────────────────────────────────────────
+# Runtime Stage (Nginx)
+# ──────────────────────────────────────────────────────────────
+FROM nginx:${NGINX_VERSION}
+
+COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
