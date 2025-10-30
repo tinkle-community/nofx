@@ -1,8 +1,11 @@
 # Dependencies
 node_modules/
+<<<<<<< HEAD
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+=======
+>>>>>>> upstream/main
 
 # Build output (will be regenerated)
 dist/

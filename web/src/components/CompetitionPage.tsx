@@ -4,6 +4,10 @@ import type { CompetitionData } from '../types';
 import { ComparisonChart } from './ComparisonChart';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
+<<<<<<< HEAD
+=======
+import { getTraderColor } from '../utils/traderColors';
+>>>>>>> upstream/main
 
 export function CompetitionPage() {
   const { language } = useLanguage();
@@ -11,8 +15,14 @@ export function CompetitionPage() {
     'competition',
     api.getCompetition,
     {
+<<<<<<< HEAD
       refreshInterval: 5000,
       revalidateOnFocus: true,
+=======
+      refreshInterval: 15000, // 15秒刷新（竞赛数据不需要太频繁更新）
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+>>>>>>> upstream/main
     }
   );
 
@@ -107,7 +117,11 @@ export function CompetitionPage() {
           <div className="space-y-2">
             {sortedTraders.map((trader, index) => {
               const isLeader = index === 0;
+<<<<<<< HEAD
               const aiModelColor = trader.ai_model === 'qwen' ? '#c084fc' : '#60a5fa';
+=======
+              const traderColor = getTraderColor(sortedTraders, trader.trader_id);
+>>>>>>> upstream/main
 
               return (
                 <div
@@ -127,7 +141,11 @@ export function CompetitionPage() {
                       </div>
                       <div>
                         <div className="font-bold text-sm" style={{ color: '#EAECEF' }}>{trader.trader_name}</div>
+<<<<<<< HEAD
                         <div className="text-xs mono font-semibold" style={{ color: aiModelColor }}>
+=======
+                        <div className="text-xs mono font-semibold" style={{ color: traderColor }}>
+>>>>>>> upstream/main
                           {trader.ai_model.toUpperCase()}
                         </div>
                       </div>
@@ -222,7 +240,11 @@ export function CompetitionPage() {
                   <div className="text-center">
                     <div
                       className="text-base font-bold mb-2"
+<<<<<<< HEAD
                       style={{ color: trader.ai_model === 'qwen' ? '#c084fc' : '#60a5fa' }}
+=======
+                      style={{ color: getTraderColor(sortedTraders, trader.trader_id) }}
+>>>>>>> upstream/main
                     >
                       {trader.trader_name}
                     </div>

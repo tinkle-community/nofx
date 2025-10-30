@@ -12,7 +12,11 @@ import (
 	"time"
 )
 
+<<<<<<< HEAD
 // defaultMainstreamCoins 默认主流币种池（当AI500和OI Top都失败时使用）
+=======
+// defaultMainstreamCoins 默认主流币种池（从配置文件读取）
+>>>>>>> upstream/main
 var defaultMainstreamCoins = []string{
 	"BTCUSDT",
 	"ETHUSDT",
@@ -83,6 +87,17 @@ func SetUseDefaultCoins(useDefault bool) {
 	coinPoolConfig.UseDefaultCoins = useDefault
 }
 
+<<<<<<< HEAD
+=======
+// SetDefaultCoins 设置默认主流币种列表
+func SetDefaultCoins(coins []string) {
+	if len(coins) > 0 {
+		defaultMainstreamCoins = coins
+		log.Printf("✓ 已设置默认币种池（共%d个币种）: %v", len(coins), coins)
+	}
+}
+
+>>>>>>> upstream/main
 // GetCoinPool 获取币种池列表（带重试和缓存机制）
 func GetCoinPool() ([]CoinInfo, error) {
 	// 优先检查是否启用默认币种列表

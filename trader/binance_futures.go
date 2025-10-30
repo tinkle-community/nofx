@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+<<<<<<< HEAD
+=======
+	"sync"
+>>>>>>> upstream/main
 	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
@@ -13,12 +17,29 @@ import (
 // FuturesTrader 币安合约交易器
 type FuturesTrader struct {
 	client *futures.Client
+<<<<<<< HEAD
+=======
+
+	// 余额缓存
+	cachedBalance     map[string]interface{}
+	balanceCacheTime  time.Time
+	balanceCacheMutex sync.RWMutex
+
+	// 持仓缓存
+	cachedPositions     []map[string]interface{}
+	positionsCacheTime  time.Time
+	positionsCacheMutex sync.RWMutex
+
+	// 缓存有效期（15秒）
+	cacheDuration time.Duration
+>>>>>>> upstream/main
 }
 
 // NewFuturesTrader 创建合约交易器
 func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
 	return &FuturesTrader{
+<<<<<<< HEAD
 		client: client,
 	}
 }
@@ -26,6 +47,27 @@ func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
 // GetBalance 获取账户余额
 func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
 	log.Printf("🔄 正在调用币安API获取账户余额...")
+=======
+		client:        client,
+		cacheDuration: 15 * time.Second, // 15秒缓存
+	}
+}
+
+// GetBalance 获取账户余额（带缓存）
+func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
+	// 先检查缓存是否有效
+	t.balanceCacheMutex.RLock()
+	if t.cachedBalance != nil && time.Since(t.balanceCacheTime) < t.cacheDuration {
+		cacheAge := time.Since(t.balanceCacheTime)
+		t.balanceCacheMutex.RUnlock()
+		log.Printf("✓ 使用缓存的账户余额（缓存时间: %.1f秒前）", cacheAge.Seconds())
+		return t.cachedBalance, nil
+	}
+	t.balanceCacheMutex.RUnlock()
+
+	// 缓存过期或不存在，调用API
+	log.Printf("🔄 缓存过期，正在调用币安API获取账户余额...")
+>>>>>>> upstream/main
 	account, err := t.client.NewGetAccountService().Do(context.Background())
 	if err != nil {
 		log.Printf("❌ 币安API调用失败: %v", err)
@@ -42,11 +84,37 @@ func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
 		account.AvailableBalance,
 		account.TotalUnrealizedProfit)
 
+<<<<<<< HEAD
 	return result, nil
 }
 
 // GetPositions 获取所有持仓
 func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
+=======
+	// 更新缓存
+	t.balanceCacheMutex.Lock()
+	t.cachedBalance = result
+	t.balanceCacheTime = time.Now()
+	t.balanceCacheMutex.Unlock()
+
+	return result, nil
+}
+
+// GetPositions 获取所有持仓（带缓存）
+func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
+	// 先检查缓存是否有效
+	t.positionsCacheMutex.RLock()
+	if t.cachedPositions != nil && time.Since(t.positionsCacheTime) < t.cacheDuration {
+		cacheAge := time.Since(t.positionsCacheTime)
+		t.positionsCacheMutex.RUnlock()
+		log.Printf("✓ 使用缓存的持仓信息（缓存时间: %.1f秒前）", cacheAge.Seconds())
+		return t.cachedPositions, nil
+	}
+	t.positionsCacheMutex.RUnlock()
+
+	// 缓存过期或不存在，调用API
+	log.Printf("🔄 缓存过期，正在调用币安API获取持仓信息...")
+>>>>>>> upstream/main
 	positions, err := t.client.NewGetPositionRiskService().Do(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("获取持仓失败: %w", err)
@@ -78,6 +146,15 @@ func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
 		result = append(result, posMap)
 	}
 
+<<<<<<< HEAD
+=======
+	// 更新缓存
+	t.positionsCacheMutex.Lock()
+	t.cachedPositions = result
+	t.positionsCacheTime = time.Now()
+	t.positionsCacheMutex.Unlock()
+
+>>>>>>> upstream/main
 	return result, nil
 }
 
