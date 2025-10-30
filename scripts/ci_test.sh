@@ -54,11 +54,36 @@ if [ "$SKIP_DB_PACKAGES" = "1" ]; then
   echo "⚠️  Database packages excluded from coverage (DISABLE_DB_TESTS mode)"
 fi
 
+COVERAGE_PACKAGES=("${PACKAGES[@]}")
+
+if [ "$SKIP_DB_PACKAGES" = "1" ]; then
+  DEFAULT_COVERAGE_FOCUS="nofx/risk nofx/featureflag"
+  read -ra REQUESTED_COVERAGE <<< "${COVERAGE_FOCUS_PACKAGES:-$DEFAULT_COVERAGE_FOCUS}"
+  tmp=()
+  for pkg in "${REQUESTED_COVERAGE[@]}"; do
+    if go list "$pkg" >/dev/null 2>&1; then
+      tmp+=("$pkg")
+    else
+      echo "⚠️  Skipping requested coverage package '$pkg' (not found)"
+    fi
+  done
+  if [ ${#tmp[@]} -gt 0 ]; then
+    COVERAGE_PACKAGES=("${tmp[@]}")
+  fi
+fi
+
+if [ ${#COVERAGE_PACKAGES[@]} -eq 0 ]; then
+  echo "❌ No packages selected for coverage measurement"
+  exit 1
+fi
+
 echo "✓ Selected ${#PACKAGES[@]} packages for testing"
+echo "✓ Measuring coverage across ${#COVERAGE_PACKAGES[@]} packages:"
+for pkg in "${COVERAGE_PACKAGES[@]}"; do
+  echo "   • ${pkg}"
+done
 
-COVERPKG="./..."
-
-echo "✓ Using coverpkg ${COVERPKG}"
+COVERPKG=$(IFS=','; echo "${COVERAGE_PACKAGES[*]}")
 
 echo
 echo "─────────────────────────────────────────────────────────────"
@@ -76,7 +101,30 @@ go test $RACE_FLAG \
   -covermode=atomic \
   -count=1 \
   -v \
-  "${PACKAGES[@]}"
+  "${COVERAGE_PACKAGES[@]}"
+
+REMAINING_PACKAGES=()
+for pkg in "${PACKAGES[@]}"; do
+  skip=0
+  for covered in "${COVERAGE_PACKAGES[@]}"; do
+    if [ "$pkg" = "$covered" ]; then
+      skip=1
+      break
+    fi
+  done
+  if [ "$skip" -eq 0 ]; then
+    REMAINING_PACKAGES+=("$pkg")
+  fi
+done
+
+if [ ${#REMAINING_PACKAGES[@]} -gt 0 ]; then
+  echo
+  echo "─────────────────────────────────────────────────────────────"
+  echo "  Running tests without coverage for ${#REMAINING_PACKAGES[@]} additional packages"
+  echo "─────────────────────────────────────────────────────────────"
+  echo
+  go test $RACE_FLAG -count=1 -v "${REMAINING_PACKAGES[@]}"
+fi
 
 echo
 echo "─────────────────────────────────────────────────────────────"

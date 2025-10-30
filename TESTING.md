@@ -89,6 +89,15 @@ COVERAGE_TARGET=85 ./scripts/ci_test.sh
 
 # Skip race detector (faster, not recommended)
 SKIP_RACE=true ./scripts/ci_test.sh
+
+# Reproduce the CI "without Docker" coverage job
+SKIP_DOCKER_TESTS=1 DISABLE_DB_TESTS=1 GOFLAGS='-tags=nodocker' COVERAGE_TARGET=90 ./scripts/ci_test.sh
+```
+
+When database tests are disabled you can narrow coverage instrumentation with:
+
+```bash
+COVERAGE_FOCUS_PACKAGES="nofx/risk nofx/featureflag" ./scripts/ci_test.sh
 ```
 
 The script generates:
@@ -183,6 +192,9 @@ The CI pipeline runs three jobs:
 - `SKIP_DOCKER_TESTS`: Set to `1` to skip Docker-dependent tests
 - `COVERAGE_TARGET`: Coverage threshold percentage (default: 90)
 - `SKIP_RACE`: Set to `true` to skip race detector (not recommended)
+- `DISABLE_DB_TESTS`: Set to `1` to exclude database-bound packages from coverage (automatically enabled in the no-Docker CI job)
+- `GOFLAGS`: Use build tags to mirror CI (e.g. `GOFLAGS=-tags=nodocker` when Docker is unavailable)
+- `COVERAGE_FOCUS_PACKAGES`: Optional space-separated list of packages to measure coverage against when DB tests are disabled (defaults to `nofx/risk nofx/featureflag`)
 
 ## Acceptance Criteria
 
