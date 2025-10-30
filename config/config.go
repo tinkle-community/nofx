@@ -36,9 +36,9 @@ type TraderConfig struct {
 	DeepSeekKey string `json:"deepseek_key,omitempty"`
 
 	// 自定义AI API配置（支持任何OpenAI格式的API）
-	CustomAPIURL        string  `json:"custom_api_url,omitempty"`
-	CustomAPIKey        string  `json:"custom_api_key,omitempty"`
-	CustomModelName     string  `json:"custom_model_name,omitempty"`
+	CustomAPIURL    string `json:"custom_api_url,omitempty"`
+	CustomAPIKey    string `json:"custom_api_key,omitempty"`
+	CustomModelName string `json:"custom_model_name,omitempty"`
 
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
