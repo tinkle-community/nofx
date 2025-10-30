@@ -264,15 +264,39 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n")
 	sb.WriteString("5. **清算风险**: 确保清算价格距离入场价 >15%\n\n")
 
-	sb.WriteString("**⚠️ 保证金计算规则（极其重要！）**:\n")
+	sb.WriteString("**⚠️ 保证金计算规则（极其重要！！！）**:\n")
 	sb.WriteString("- `position_size_usd` 是**仓位价值**（持仓价值），不是保证金！\n")
 	sb.WriteString("- 实际所需保证金 = `position_size_usd / leverage`\n")
-	sb.WriteString("- **必须确保**: 所需保证金 ≤ 可用余额（available_balance）\n")
-	sb.WriteString("- 示例: 开1000U仓位用5x杠杆 → 需要200U保证金 → 账户必须有≥200U可用余额\n\n")
-	sb.WriteString("**开仓前必做检查**:\n")
-	sb.WriteString("1. 计算所需保证金 = position_size_usd / leverage\n")
-	sb.WriteString("2. 检查 available_balance 是否 ≥ 所需保证金\n")
-	sb.WriteString("3. 如果不足，必须减小 position_size_usd 或放弃开仓\n\n")
+	sb.WriteString("- **硬性约束**: 所需保证金 **必须** ≤ 可用余额（available_balance）\n")
+	sb.WriteString("- 如果违反此约束，交易所会拒绝订单，返回 \"Margin is insufficient\" 错误\n\n")
+	sb.WriteString("**计算公式（反向计算）**:\n")
+	sb.WriteString("- 最大仓位价值 = available_balance × leverage\n")
+	sb.WriteString("- position_size_usd ≤ available_balance × leverage\n\n")
+	sb.WriteString("**计算示例**:\n")
+	sb.WriteString("- 可用余额200U，杠杆5x → 最大仓位价值 = 200 × 5 = 1000U ✓\n")
+	sb.WriteString("- 可用余额146U，杠杆5x → 最大仓位价值 = 146 × 5 = 730U ✓\n")
+	sb.WriteString("- 可用余额146U，开1057U仓位5x杠杆 → 需要211U保证金 → ❌ 失败！\n\n")
+	sb.WriteString("**保证金总使用率约束（≤90%）**:\n")
+	sb.WriteString("- 账户净值 = total_equity\n")
+	sb.WriteString("- 当前已用保证金比例 = margin_used_pct（从账户信息获取）\n")
+	sb.WriteString("- 新开仓所需保证金 = position_size_usd / leverage\n")
+	sb.WriteString("- **硬性约束**: (已用保证金 + 新开仓保证金) / total_equity ≤ 90%\n\n")
+	sb.WriteString("**保证金使用率计算示例**:\n")
+	sb.WriteString("- 账户净值1000U，当前已用保证金40%（400U），想开500U仓位5x杠杆\n")
+	sb.WriteString("- 新开仓需要保证金 = 500 ÷ 5 = 100U\n")
+	sb.WriteString("- 开仓后总保证金 = 400 + 100 = 500U\n")
+	sb.WriteString("- 开仓后使用率 = 500 ÷ 1000 = 50% ✓（≤ 90%，可以开仓）\n\n")
+	sb.WriteString("- 账户净值1000U，当前已用保证金85%（850U），想开300U仓位5x杠杆\n")
+	sb.WriteString("- 新开仓需要保证金 = 300 ÷ 5 = 60U\n")
+	sb.WriteString("- 开仓后总保证金 = 850 + 60 = 910U\n")
+	sb.WriteString("- 开仓后使用率 = 910 ÷ 1000 = 91% ❌（> 90%，必须减小仓位或放弃）\n\n")
+	sb.WriteString("**开仓前必做计算**:\n")
+	sb.WriteString("1. 查看 available_balance 和 margin_used_pct（从账户信息中获取）\n")
+	sb.WriteString("2. 计算新开仓所需保证金 = position_size_usd / leverage\n")
+	sb.WriteString("3. 确保 position_size_usd / leverage ≤ available_balance（第一层约束）\n")
+	sb.WriteString("4. 计算开仓后总使用率 = (current_margin_used + new_margin) / total_equity\n")
+	sb.WriteString("5. 确保开仓后总使用率 ≤ 90%（第二层约束）\n")
+	sb.WriteString("6. 否则系统会拒绝开仓，浪费一次决策机会\n\n")
 
 	sb.WriteString("**每笔交易必须明确指定**:\n")
 	sb.WriteString("- `stop_loss`: 精确止损价格（限制单笔损失1-3%账户价值）\n")
@@ -372,10 +396,17 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 
 	// === 决策流程 ===
 	sb.WriteString("# 📋 决策流程\n\n")
-	sb.WriteString("1. **分析夏普比率**: 当前策略是否有效？需要调整吗？\n")
-	sb.WriteString("2. **评估持仓**: 趋势是否改变？是否该止盈/止损？\n")
-	sb.WriteString("3. **寻找新机会**: 有强信号吗？多空机会？\n")
-	sb.WriteString("4. **输出决策**: 思维链分析 + JSON\n\n")
+	sb.WriteString("1. **检查保证金约束**: \n")
+	sb.WriteString("   - 查看 available_balance 和 margin_used_pct\n")
+	sb.WriteString("   - 计算90%上限剩余空间 = total_equity × 0.9 - 已用保证金\n")
+	sb.WriteString("2. **分析夏普比率**: 当前策略是否有效？需要调整吗？\n")
+	sb.WriteString("3. **评估持仓**: 趋势是否改变？是否该止盈/止损？\n")
+	sb.WriteString("4. **寻找新机会**: 有强信号吗？多空机会？\n")
+	sb.WriteString("5. **计算仓位大小**: 确保同时满足两个硬性约束：\n")
+	sb.WriteString("   - 约束1: position_size_usd ÷ leverage ≤ available_balance\n")
+	sb.WriteString("   - 约束2: position_size_usd ÷ leverage ≤ 90%上限剩余空间\n")
+	sb.WriteString("   - 取两者的**最小值**作为实际可用保证金\n")
+	sb.WriteString("6. **输出决策**: 思维链分析 + JSON\n\n")
 
 	// === 操作约束 ===
 	sb.WriteString("# 🚫 OPERATIONAL CONSTRAINTS\n\n")
@@ -419,17 +450,25 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("- 做多时: profit_target > 入场价, stop_loss < 入场价\n")
 	sb.WriteString("- 做空时: profit_target < 入场价, stop_loss > 入场价\n\n")
 
+	sb.WriteString("**⚠️ position_size_usd 计算示例（极其重要！）**:\n")
+	sb.WriteString("假设账户信息显示: available_balance = 146.09 U\n")
+	sb.WriteString("- ✓ 正确: leverage=5x, position_size_usd=700 → 需要保证金=700÷5=140U ≤ 146U ✓\n")
+	sb.WriteString("- ❌ 错误: leverage=5x, position_size_usd=1057 → 需要保证金=1057÷5=211U > 146U ❌\n")
+	sb.WriteString("**必须先计算**: position_size_usd ÷ leverage ≤ available_balance\n\n")
+
 	// === 最终指示 ===
 	sb.WriteString("# 🎯 FINAL INSTRUCTIONS\n\n")
-	sb.WriteString("1. 仔细阅读完整的用户提示词后再决策\n")
-	sb.WriteString("2. 验证你的仓位计算（二次检查数学）\n")
-	sb.WriteString("3. 确保JSON输出有效且完整\n")
-	sb.WriteString("4. 提供诚实的信心度评分（不要夸大信心）\n")
-	sb.WriteString("5. 坚持你的退出计划（不要随意移动止损）\n\n")
+	sb.WriteString("1. **首先检查 available_balance**: 这是决定最大仓位的硬约束\n")
+	sb.WriteString("2. 仔细阅读完整的用户提示词后再决策\n")
+	sb.WriteString("3. **验证保证金计算**: position_size_usd ÷ leverage ≤ available_balance（必须！）\n")
+	sb.WriteString("4. 确保JSON输出有效且完整\n")
+	sb.WriteString("5. 提供诚实的信心度评分（不要夸大信心）\n")
+	sb.WriteString("6. 坚持你的退出计划（不要随意移动止损）\n\n")
 
 	sb.WriteString("---\n\n")
 	sb.WriteString("**核心原则**: \n")
 	sb.WriteString("- 你在真实市场中用真实资金交易，每个决策都有后果\n")
+	sb.WriteString("- **保证金约束是硬性的**: 违反会导致订单被拒绝\n")
 	sb.WriteString("- 系统化交易、严格风控、让概率长期发挥作用\n")
 	sb.WriteString("- 目标是夏普比率，不是交易频率\n")
 	sb.WriteString("- 做空 = 做多，都是赚钱工具\n")
@@ -467,15 +506,26 @@ func buildUserPrompt(ctx *Context) string {
 	}
 
 	// 账户
-	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | **可用保证金%.2f** (%.1f%%) | 盈亏%+.2f%% | 已用保证金%.1f%% | 持仓%d个\n\n",
+	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | **可用保证金%.2f** (%.1f%%) | 盈亏%+.2f%% | **已用保证金%.1f%%** | 持仓%d个\n\n",
 		ctx.Account.TotalEquity,
 		ctx.Account.AvailableBalance,
 		(ctx.Account.AvailableBalance/ctx.Account.TotalEquity)*100,
 		ctx.Account.TotalPnLPct,
 		ctx.Account.MarginUsedPct,
 		ctx.Account.PositionCount))
-	sb.WriteString(fmt.Sprintf("⚠️ **开仓提醒**: 可用保证金为%.2f U，开仓时所需保证金 = position_size_usd / leverage，必须≤%.2f U\n\n",
-		ctx.Account.AvailableBalance, ctx.Account.AvailableBalance))
+
+	// 计算可用空间
+	marginUsed := ctx.Account.TotalEquity * ctx.Account.MarginUsedPct / 100
+	maxNewMargin := ctx.Account.TotalEquity*0.9 - marginUsed // 90%上限 - 已用保证金
+	if maxNewMargin < 0 {
+		maxNewMargin = 0
+	}
+
+	sb.WriteString(fmt.Sprintf("⚠️ **保证金约束（必须遵守）**:\n"))
+	sb.WriteString(fmt.Sprintf("- 可用保证金: %.2f U（开仓所需保证金必须≤此值）\n", ctx.Account.AvailableBalance))
+	sb.WriteString(fmt.Sprintf("- 当前已用保证金: %.1f%% (%.2f U)\n", ctx.Account.MarginUsedPct, marginUsed))
+	sb.WriteString(fmt.Sprintf("- **90%%上限剩余空间**: %.2f U（新开仓保证金必须≤此值）\n", maxNewMargin))
+	sb.WriteString(fmt.Sprintf("- 最大可开仓位价值（考虑90%%上限）: %.2f U × 杠杆\n\n", maxNewMargin))
 
 	// === 当前持仓 ===
 	if len(ctx.Positions) > 0 {
