@@ -56,8 +56,16 @@ func main() {
 	// 创建TraderManager
 	traderManager := manager.NewTraderManager()
 
-	// 添加所有trader
+	// 添加所有启用的trader
+	enabledCount := 0
 	for i, traderCfg := range cfg.Traders {
+		// 跳过未启用的trader
+		if !traderCfg.Enabled {
+			log.Printf("⏭️  [%d/%d] 跳过未启用的 %s", i+1, len(cfg.Traders), traderCfg.Name)
+			continue
+		}
+
+		enabledCount++
 		log.Printf("📦 [%d/%d] 初始化 %s (%s模型)...",
 			i+1, len(cfg.Traders), traderCfg.Name, strings.ToUpper(traderCfg.AIModel))
 
@@ -74,9 +82,18 @@ func main() {
 		}
 	}
 
+	// 检查是否至少有一个启用的trader
+	if enabledCount == 0 {
+		log.Fatalf("❌ 没有启用的trader，请在config.json中设置至少一个trader的enabled=true")
+	}
+
 	fmt.Println()
 	fmt.Println("🏁 竞赛参赛者:")
 	for _, traderCfg := range cfg.Traders {
+		// 只显示启用的trader
+		if !traderCfg.Enabled {
+			continue
+		}
 		fmt.Printf("  • %s (%s) - 初始资金: %.0f USDT\n",
 			traderCfg.Name, strings.ToUpper(traderCfg.AIModel), traderCfg.InitialBalance)
 	}

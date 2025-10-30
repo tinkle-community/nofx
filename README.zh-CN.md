@@ -461,9 +461,11 @@ cp config.json.example config.json
     {
       "id": "hyperliquid_trader",
       "name": "My Hyperliquid Trader",
+      "enabled": true,
       "ai_model": "deepseek",
       "exchange": "hyperliquid",
       "hyperliquid_private_key": "your_private_key_without_0x",
+      "hyperliquid_wallet_addr": "your_ethereum_address",
       "hyperliquid_testnet": false,
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "initial_balance": 1000.0,
@@ -513,13 +515,14 @@ cp config.json.example config.json
     {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
+      "enabled": true,
       "ai_model": "deepseek",
       "exchange": "aster",
-      
+
       "aster_user": "0x63DD5aCC6b1aa0f563956C0e534DD30B6dcF7C4e",
       "aster_signer": "0x21cF8Ae13Bb72632562c6Fff438652Ba1a151bb0",
       "aster_private_key": "4fd0a42218f3eae43a6ce26d22544e986139a01e5b34a62db53757ffca81bae1",
-      
+
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "initial_balance": 1000.0,
       "scan_interval_minutes": 3
@@ -599,9 +602,14 @@ cp config.json.example config.json
 |-----|------|--------|-----------|
 | `id` | 此trader的唯一标识符 | `"my_trader"` | ✅ 是 |
 | `name` | 显示名称 | `"我的AI交易员"` | ✅ 是 |
-| `ai_model` | 使用的AI提供商 | `"deepseek"` 或 `"qwen"` | ✅ 是 |
-| `binance_api_key` | 币安API密钥 | `"abc123..."` | ✅ 是 |
-| `binance_secret_key` | 币安Secret密钥 | `"xyz789..."` | ✅ 是 |
+| `enabled` | 是否启用此trader<br>设为`false`可跳过启动 | `true` 或 `false` | ✅ 是 |
+| `ai_model` | 使用的AI提供商 | `"deepseek"` 或 `"qwen"` 或 `"custom"` | ✅ 是 |
+| `exchange` | 使用的交易所 | `"binance"` 或 `"hyperliquid"` 或 `"aster"` | ✅ 是 |
+| `binance_api_key` | 币安API密钥 | `"abc123..."` | 使用Binance时必填 |
+| `binance_secret_key` | 币安Secret密钥 | `"xyz789..."` | 使用Binance时必填 |
+| `hyperliquid_private_key` | Hyperliquid私钥<br>⚠️ 去掉`0x`前缀 | `"your_key..."` | 使用Hyperliquid时必填 |
+| `hyperliquid_wallet_addr` | Hyperliquid钱包地址 | `"0xabc..."` | 使用Hyperliquid时必填 |
+| `hyperliquid_testnet` | 是否使用测试网 | `true` 或 `false` | ❌ 否（默认false） |
 | `use_qwen` | 是否使用Qwen | `true` 或 `false` | ✅ 是 |
 | `deepseek_key` | DeepSeek API密钥 | `"sk-xxx"` | 使用DeepSeek时必填 |
 | `qwen_key` | Qwen API密钥 | `"sk-xxx"` | 使用Qwen时必填 |

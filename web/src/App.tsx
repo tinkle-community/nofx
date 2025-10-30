@@ -19,9 +19,37 @@ type Page = 'competition' | 'trader';
 
 function App() {
   const { language, setLanguage } = useLanguage();
-  const [currentPage, setCurrentPage] = useState<Page>('competition');
+
+  // 从URL hash读取初始页面状态（支持刷新保持页面）
+  const getInitialPage = (): Page => {
+    const hash = window.location.hash.slice(1); // 去掉 #
+    return hash === 'trader' || hash === 'details' ? 'trader' : 'competition';
+  };
+
+  const [currentPage, setCurrentPage] = useState<Page>(getInitialPage());
   const [selectedTraderId, setSelectedTraderId] = useState<string | undefined>();
   const [lastUpdate, setLastUpdate] = useState<string>('--:--:--');
+
+  // 监听URL hash变化，同步页面状态
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1);
+      if (hash === 'trader' || hash === 'details') {
+        setCurrentPage('trader');
+      } else if (hash === 'competition' || hash === '') {
+        setCurrentPage('competition');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // 切换页面时更新URL hash
+  const navigateToPage = (page: Page) => {
+    setCurrentPage(page);
+    window.location.hash = page === 'competition' ? '' : 'trader';
+  };
 
   // 获取trader列表
   const { data: traders } = useSWR<TraderInfo[]>('traders', api.getTraders, {
@@ -180,7 +208,7 @@ function App() {
               {/* Page Toggle */}
               <div className="flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1" style={{ background: '#1E2329' }}>
                 <button
-                  onClick={() => setCurrentPage('competition')}
+                  onClick={() => navigateToPage('competition')}
                   className="px-2 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-semibold transition-all"
                   style={currentPage === 'competition'
                     ? { background: '#F0B90B', color: '#000' }
@@ -190,7 +218,7 @@ function App() {
                   {t('competition', language)}
                 </button>
                 <button
-                  onClick={() => setCurrentPage('trader')}
+                  onClick={() => navigateToPage('trader')}
                   className="px-2 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-semibold transition-all"
                   style={currentPage === 'trader'
                     ? { background: '#F0B90B', color: '#000' }
