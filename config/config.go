@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"nofx/featureflag"
 )
 
 // TraderConfig 单个trader的配置
 type TraderConfig struct {
-	ID                  string  `json:"id"`
-	Name                string  `json:"name"`
-	AIModel             string  `json:"ai_model"` // "qwen" or "deepseek"
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
-	Exchange             string  `json:"exchange"` // "binance" or "hyperliquid"
+	Exchange string `json:"exchange"` // "binance" or "hyperliquid"
 
 	// 币安配置
-	BinanceAPIKey       string  `json:"binance_api_key,omitempty"`
-	BinanceSecretKey    string  `json:"binance_secret_key,omitempty"`
+	BinanceAPIKey    string `json:"binance_api_key,omitempty"`
+	BinanceSecretKey string `json:"binance_secret_key,omitempty"`
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`
@@ -30,13 +32,13 @@ type TraderConfig struct {
 	AsterPrivateKey string `json:"aster_private_key,omitempty"` // Aster API钱包私钥
 
 	// AI配置
-	QwenKey             string  `json:"qwen_key,omitempty"`
-	DeepSeekKey         string  `json:"deepseek_key,omitempty"`
+	QwenKey     string `json:"qwen_key,omitempty"`
+	DeepSeekKey string `json:"deepseek_key,omitempty"`
 
 	// 自定义AI API配置（支持任何OpenAI格式的API）
-	CustomAPIURL        string  `json:"custom_api_url,omitempty"`
-	CustomAPIKey        string  `json:"custom_api_key,omitempty"`
-	CustomModelName     string  `json:"custom_model_name,omitempty"`
+	CustomAPIURL    string `json:"custom_api_url,omitempty"`
+	CustomAPIKey    string `json:"custom_api_key,omitempty"`
+	CustomModelName string `json:"custom_model_name,omitempty"`
 
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
@@ -44,21 +46,22 @@ type TraderConfig struct {
 
 // LeverageConfig 杠杆配置
 type LeverageConfig struct {
-	BTCETHLeverage  int `json:"btc_eth_leverage"`  // BTC和ETH的杠杆倍数（主账户建议5-50，子账户≤5）
-	AltcoinLeverage int `json:"altcoin_leverage"`  // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
+	BTCETHLeverage  int `json:"btc_eth_leverage"` // BTC和ETH的杠杆倍数（主账户建议5-50，子账户≤5）
+	AltcoinLeverage int `json:"altcoin_leverage"` // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
 }
 
 // Config 总配置
 type Config struct {
-	Traders            []TraderConfig `json:"traders"`
-	UseDefaultCoins    bool           `json:"use_default_coins"`     // 是否使用默认主流币种列表
-	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
-	OITopAPIURL        string         `json:"oi_top_api_url"`
-	APIServerPort      int            `json:"api_server_port"`
-	MaxDailyLoss       float64        `json:"max_daily_loss"`
-	MaxDrawdown        float64        `json:"max_drawdown"`
-	StopTradingMinutes int            `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+	Traders            []TraderConfig    `json:"traders"`
+	UseDefaultCoins    bool              `json:"use_default_coins"` // 是否使用默认主流币种列表
+	CoinPoolAPIURL     string            `json:"coin_pool_api_url"`
+	OITopAPIURL        string            `json:"oi_top_api_url"`
+	APIServerPort      int               `json:"api_server_port"`
+	MaxDailyLoss       float64           `json:"max_daily_loss"`
+	MaxDrawdown        float64           `json:"max_drawdown"`
+	StopTradingMinutes int               `json:"stop_trading_minutes"`
+	Leverage           LeverageConfig    `json:"leverage"` // 杠杆配置
+	FeatureFlags       featureflag.State `json:"feature_flags"`
 }
 
 // LoadConfig 从文件加载配置
@@ -68,10 +71,14 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config Config
+	config := Config{
+		FeatureFlags: featureflag.DefaultState(),
+	}
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+
+	config.FeatureFlags = featureflag.WithEnvOverrides(config.FeatureFlags)
 
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {

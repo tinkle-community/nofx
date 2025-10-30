@@ -4,14 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"nofx/db"
 	"nofx/decision"
+	"nofx/featureflag"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/metrics"
 	"nofx/pool"
-	"strings"
-	"time"
+	"nofx/risk"
 )
+
+// TraderFactory allows tests to inject a deterministic trader implementation.
+type TraderFactory func(config AutoTraderConfig) (Trader, error)
 
 // AutoTraderConfig 自动交易配置（简化版 - AI全权决策）
 type AutoTraderConfig struct {
@@ -62,29 +72,42 @@ type AutoTraderConfig struct {
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
 	StopTradingTime time.Duration // 触发风控后暂停时长
+
+	FeatureFlags  *featureflag.RuntimeFlags `json:"-"`
+	TraderFactory TraderFactory             `json:"-"`
 }
 
 // AutoTrader 自动交易器
 type AutoTrader struct {
-	id                   string                 // Trader唯一标识
-	name                 string                 // Trader显示名称
-	aiModel              string                 // AI模型名称
-	exchange             string                 // 交易平台名称
-	config               AutoTraderConfig
-	trader               Trader                 // 使用Trader接口（支持多平台）
-	decisionLogger       *logger.DecisionLogger // 决策日志记录器
-	initialBalance       float64
-	dailyPnL             float64
-	lastResetTime        time.Time
-	stopUntil            time.Time
-	isRunning            bool
-	startTime            time.Time                 // 系统启动时间
-	callCount            int                       // AI调用次数
-	positionFirstSeenTime map[string]int64         // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	id                    string // Trader唯一标识
+	name                  string // Trader显示名称
+	aiModel               string // AI模型名称
+	exchange              string // 交易平台名称
+	config                AutoTraderConfig
+	trader                Trader                 // 使用Trader接口（支持多平台）
+	decisionLogger        *logger.DecisionLogger // 决策日志记录器
+	riskEngine            *risk.Engine
+	riskStore             *risk.Store
+	featureFlags          *featureflag.RuntimeFlags
+	persistStore          *db.RiskStore
+	stateMu               sync.RWMutex
+	mutexEnabledCache     atomic.Bool
+	mutexDisabledCache    atomic.Bool
+	initialBalance        float64
+	dailyPnL              float64
+	currentBalance        float64
+	peakBalance           float64
+	lastResetTime         time.Time
+	stopUntil             time.Time
+	isRunning             bool
+	startTime             time.Time        // 系统启动时间
+	callCount             int              // AI调用次数
+	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	persistenceCloseOnce  sync.Once
 }
 
 // NewAutoTrader 创建自动交易器
-func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
+func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featureflag.RuntimeFlags) (*AutoTrader, error) {
 	// 设置默认值
 	if config.ID == "" {
 		config.ID = "default_trader"
@@ -126,27 +149,37 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	}
 
 	// 根据配置创建对应的交易器
-	var trader Trader
-	var err error
+	var (
+		traderInstance Trader
+		err            error
+	)
 
-	switch config.Exchange {
-	case "binance":
-		log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
-	case "hyperliquid":
-		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
-		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
+	if config.TraderFactory != nil {
+		traderInstance, err = config.TraderFactory(config)
 		if err != nil {
-			return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			return nil, fmt.Errorf("初始化自定义交易器失败: %w", err)
 		}
-	case "aster":
-		log.Printf("🏦 [%s] 使用Aster交易", config.Name)
-		trader, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
-		if err != nil {
-			return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
+		log.Printf("🏦 [%s] 使用自定义Trader工厂", config.Name)
+	} else {
+		switch config.Exchange {
+		case "binance":
+			log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
+			traderInstance = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
+		case "hyperliquid":
+			log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
+			traderInstance, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			}
+		case "aster":
+			log.Printf("🏦 [%s] 使用Aster交易", config.Name)
+			traderInstance, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 		}
-	default:
-		return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 	}
 
 	// 验证初始金额配置
@@ -158,26 +191,175 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
-	return &AutoTrader{
-		id:                   config.ID,
-		name:                 config.Name,
-		aiModel:              config.AIModel,
-		exchange:             config.Exchange,
-		config:               config,
-		trader:               trader,
-		decisionLogger:       decisionLogger,
-		initialBalance:       config.InitialBalance,
-		lastResetTime:        time.Now(),
-		startTime:            time.Now(),
-		callCount:            0,
-		isRunning:            false,
+	if config.FeatureFlags != nil {
+		flags = config.FeatureFlags
+	}
+	if store == nil {
+		store = risk.NewStore()
+	}
+	if flags == nil {
+		flags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
+	}
+	config.FeatureFlags = flags
+
+	riskParams := risk.Parameters{
+		MaxDailyLossPct: config.MaxDailyLoss,
+		MaxDrawdownPct:  config.MaxDrawdown,
+		StopTradingFor:  config.StopTradingTime,
+	}
+	riskEngine := risk.NewEngine(config.ID, config.InitialBalance, riskParams, store, flags)
+	riskEngine.RecordEquity(config.InitialBalance)
+	snapshot := riskEngine.Snapshot()
+	lastReset := snapshot.LastReset
+	if lastReset.IsZero() {
+		lastReset = time.Now()
+	}
+
+	at := &AutoTrader{
+		id:                    config.ID,
+		name:                  config.Name,
+		aiModel:               config.AIModel,
+		exchange:              config.Exchange,
+		config:                config,
+		trader:                traderInstance,
+		decisionLogger:        decisionLogger,
+		riskEngine:            riskEngine,
+		riskStore:             store,
+		featureFlags:          flags,
+		initialBalance:        config.InitialBalance,
+		startTime:             time.Now(),
 		positionFirstSeenTime: make(map[string]int64),
-	}, nil
+	}
+
+	at.refreshMutexProtectionCache()
+	at.setDailyPnL(snapshot.DailyPnL)
+	at.SetLastResetTime(lastReset)
+	at.SetStopUntil(snapshot.PausedUntil)
+	at.SetTrading(false)
+
+	return at, nil
+}
+
+// NewAutoTraderWithPersistence creates an AutoTrader with database persistence
+// enabled. When enable_persistence is true, the trader restores risk state from
+// the database and hooks persistence callbacks. Database failures are logged but
+// never fatal, preserving the trading loop's reliability.
+func NewAutoTraderWithPersistence(cfg AutoTraderConfig, dbPath string, flags *featureflag.RuntimeFlags) (*AutoTrader, error) {
+	runtimeFlags := flags
+	if cfg.FeatureFlags != nil {
+		runtimeFlags = cfg.FeatureFlags
+	}
+	if runtimeFlags == nil {
+		runtimeFlags = featureflag.NewRuntimeFlags(featureflag.DefaultState())
+	}
+
+	usePersistence := runtimeFlags.PersistenceEnabled() && strings.TrimSpace(dbPath) != ""
+
+	var store *risk.Store
+	if usePersistence {
+		store = risk.NewStore()
+	}
+
+	at, err := NewAutoTrader(cfg, store, runtimeFlags)
+	if err != nil {
+		return nil, err
+	}
+
+	if !usePersistence {
+		log.Printf("🔧 [%s] Persistence disabled; running in-memory only", cfg.Name)
+		return at, nil
+	}
+
+	persistStore, err := db.NewRiskStore(dbPath)
+	if err != nil {
+		log.Printf("⚠️  [%s] Failed to initialize persistence: %v; proceeding without it", cfg.Name, err)
+		return at, nil
+	}
+
+	persistStore.BindTrader(cfg.ID)
+	at.persistStore = persistStore
+
+	persistFunc := func(traderID string, snapshot risk.Snapshot) error {
+		if at.persistStore == nil {
+			return nil
+		}
+		state := &db.RiskState{
+			TraderID:      traderID,
+			DailyPnL:      snapshot.DailyPnL,
+			DrawdownPct:   snapshot.DrawdownPct,
+			CurrentEquity: snapshot.CurrentEquity,
+			PeakEquity:    snapshot.PeakEquity,
+			TradingPaused: snapshot.TradingPaused,
+			PausedUntil:   snapshot.PausedUntil,
+			LastResetTime: snapshot.LastReset,
+			UpdatedAt:     time.Now(),
+		}
+		return at.persistStore.Save(state, "", "risk_snapshot")
+	}
+
+	if at.riskStore != nil {
+		at.riskStore.SetPersistFunc(persistFunc)
+	}
+
+	if state, err := persistStore.Load(); err != nil {
+		log.Printf("⚠️  [%s] Failed to load persisted risk state: %v", cfg.Name, err)
+	} else if state != nil {
+		at.restorePersistedState(state)
+		persistFunc(at.id, at.riskEngine.Snapshot())
+	}
+
+	return at, nil
+}
+
+func (at *AutoTrader) restorePersistedState(state *db.RiskState) {
+	if state == nil || at.riskEngine == nil {
+		return
+	}
+
+	snapshot := at.riskEngine.Snapshot()
+	delta := state.DailyPnL - snapshot.DailyPnL
+	if delta != 0 {
+		at.riskEngine.UpdateDailyPnL(delta)
+	}
+
+	if state.PeakEquity > 0 {
+		at.riskEngine.RecordEquity(state.PeakEquity)
+	}
+	if state.CurrentEquity > 0 {
+		at.riskEngine.RecordEquity(state.CurrentEquity)
+	}
+
+	at.setDailyPnL(state.DailyPnL)
+	if !state.LastResetTime.IsZero() {
+		at.SetLastResetTime(state.LastResetTime)
+	}
+	at.SetStopUntil(state.PausedUntil)
+	at.setPeakBalance(state.PeakEquity)
+	at.setCurrentBalance(state.CurrentEquity)
+
+	if state.TradingPaused {
+		at.riskStore.SetTradingPaused(at.id, true, state.PausedUntil, at.featureFlags)
+	}
+
+	if state.TradingPaused && !state.PausedUntil.IsZero() && time.Now().Before(state.PausedUntil) {
+		log.Printf("⏸  [%s] Trading paused until %s due to restored risk state", at.name, state.PausedUntil.Format(time.RFC3339))
+	}
+}
+
+// ClosePersistence gracefully shuts down the persistence worker. Must be called
+// during graceful shutdown to drain pending writes.
+func (at *AutoTrader) ClosePersistence() {
+	at.persistenceCloseOnce.Do(func() {
+		if at.persistStore != nil {
+			at.persistStore.Close()
+		}
+	})
 }
 
 // Run 运行自动交易主循环
 func (at *AutoTrader) Run() error {
-	at.isRunning = true
+	defer at.ClosePersistence()
+	at.SetTrading(true)
 	log.Println("🚀 AI驱动自动交易系统启动")
 	log.Printf("💰 初始余额: %.2f USDT", at.initialBalance)
 	log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
@@ -191,7 +373,7 @@ func (at *AutoTrader) Run() error {
 		log.Printf("❌ 执行失败: %v", err)
 	}
 
-	for at.isRunning {
+	for at.IsTrading() {
 		select {
 		case <-ticker.C:
 			if err := at.runCycle(); err != nil {
@@ -205,7 +387,7 @@ func (at *AutoTrader) Run() error {
 
 // Stop 停止自动交易
 func (at *AutoTrader) Stop() {
-	at.isRunning = false
+	at.SetTrading(false)
 	log.Println("⏹ 自动交易系统停止")
 }
 
@@ -213,9 +395,9 @@ func (at *AutoTrader) Stop() {
 func (at *AutoTrader) runCycle() error {
 	at.callCount++
 
-	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Print("\n" + strings.Repeat("=", 70))
 	log.Printf("⏰ %s - AI决策周期 #%d", time.Now().Format("2006-01-02 15:04:05"), at.callCount)
-	log.Printf(strings.Repeat("=", 70))
+	log.Print(strings.Repeat("=", 70))
 
 	// 创建决策记录
 	record := &logger.DecisionRecord{
@@ -223,21 +405,33 @@ func (at *AutoTrader) runCycle() error {
 		Success:      true,
 	}
 
-	// 1. 检查是否需要停止交易
-	if time.Now().Before(at.stopUntil) {
-		remaining := at.stopUntil.Sub(time.Now())
-		log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟", remaining.Minutes())
-		record.Success = false
-		record.ErrorMessage = fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
-		at.decisionLogger.LogDecision(record)
-		return nil
-	}
+	now := time.Now()
+	if at.riskEngine != nil {
+		paused, until := at.riskEngine.TradingStatus()
+		at.SetStopUntil(until)
+		if paused {
+			remaining := time.Duration(0)
+			if !until.IsZero() {
+				remaining = until.Sub(now)
+				if remaining < 0 {
+					remaining = 0
+				}
+			}
+			log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟", remaining.Minutes())
+			record.Success = false
+			if !until.IsZero() {
+				record.ErrorMessage = fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
+			} else {
+				record.ErrorMessage = "风险控制暂停中"
+			}
+			at.decisionLogger.LogDecision(record)
+			return nil
+		}
 
-	// 2. 重置日盈亏（每天重置）
-	if time.Since(at.lastResetTime) > 24*time.Hour {
-		at.dailyPnL = 0
-		at.lastResetTime = time.Now()
-		log.Println("📅 日盈亏已重置")
+		if at.riskEngine.ResetDailyPnLIfNeeded() {
+			at.ResetDailyPnL(now)
+			log.Println("📅 日盈亏已重置")
+		}
 	}
 
 	// 3. 收集交易上下文
@@ -280,6 +474,23 @@ func (at *AutoTrader) runCycle() error {
 	log.Printf("📊 账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
+	at.setCurrentBalance(ctx.Account.TotalEquity)
+	if ctx.Account.TotalEquity > at.peakBalanceSnapshot() {
+		at.setPeakBalance(ctx.Account.TotalEquity)
+	}
+
+	canTrade, reason := at.CanTrade()
+	if !canTrade {
+		if reason == "" {
+			reason = "风险控制暂停中"
+		}
+		log.Printf("⏸ 风险控制触发：%s", reason)
+		record.Success = false
+		record.ErrorMessage = reason
+		at.decisionLogger.LogDecision(record)
+		return nil
+	}
+
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := decision.GetFullDecision(ctx)
@@ -300,11 +511,11 @@ func (at *AutoTrader) runCycle() error {
 
 		// 打印AI思维链（即使有错误）
 		if decision != nil && decision.CoTTrace != "" {
-			log.Printf("\n" + strings.Repeat("-", 70))
+			log.Print("\n" + strings.Repeat("-", 70))
 			log.Println("💭 AI思维链分析（错误情况）:")
 			log.Println(strings.Repeat("-", 70))
 			log.Println(decision.CoTTrace)
-			log.Printf(strings.Repeat("-", 70) + "\n")
+			log.Print(strings.Repeat("-", 70) + "\n")
 		}
 
 		at.decisionLogger.LogDecision(record)
@@ -312,11 +523,11 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// 5. 打印AI思维链
-	log.Printf("\n" + strings.Repeat("-", 70))
+	log.Print("\n" + strings.Repeat("-", 70))
 	log.Println("💭 AI思维链分析:")
 	log.Println(strings.Repeat("-", 70))
 	log.Println(decision.CoTTrace)
-	log.Printf(strings.Repeat("-", 70) + "\n")
+	log.Print(strings.Repeat("-", 70) + "\n")
 
 	// 6. 打印AI决策
 	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
@@ -515,11 +726,11 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. 构建上下文
 	ctx := &decision.Context{
-		CurrentTime:      time.Now().Format("2006-01-02 15:04:05"),
-		RuntimeMinutes:   int(time.Since(at.startTime).Minutes()),
-		CallCount:        at.callCount,
-		BTCETHLeverage:   at.config.BTCETHLeverage,   // 使用配置的杠杆倍数
-		AltcoinLeverage:  at.config.AltcoinLeverage,  // 使用配置的杠杆倍数
+		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
+		CallCount:       at.callCount,
+		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
+		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,
@@ -556,6 +767,78 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 	}
 }
 
+func (at *AutoTrader) openPositionWithProtection(decision *decision.Decision, quantity float64) (map[string]interface{}, error) {
+	if decision == nil {
+		return nil, fmt.Errorf("decision cannot be nil")
+	}
+
+	var (
+		openFn func(string, float64, int) (map[string]interface{}, error)
+		side   string
+	)
+
+	switch decision.Action {
+	case "open_long":
+		openFn = at.trader.OpenLong
+		side = "LONG"
+	case "open_short":
+		openFn = at.trader.OpenShort
+		side = "SHORT"
+	default:
+		return nil, fmt.Errorf("unsupported action %s for openPositionWithProtection", decision.Action)
+	}
+
+	guardEnabled := at.featureFlags != nil && at.featureFlags.GuardedStopLossEnabled()
+
+	if !guardEnabled {
+		order, err := openFn(decision.Symbol, quantity, decision.Leverage)
+		if err != nil {
+			return nil, err
+		}
+		if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, decision.StopLoss); err != nil {
+			log.Printf("  ⚠ 设置止损失败: %v", err)
+			metrics.IncRiskStopLossFailures(at.id)
+		}
+		if decision.TakeProfit > 0 {
+			if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, decision.TakeProfit); err != nil {
+				log.Printf("  ⚠ 设置止盈失败: %v", err)
+			}
+		}
+		return order, nil
+	}
+
+	if decision.StopLoss <= 0 {
+		metrics.IncRiskStopLossFailures(at.id)
+		log.Printf("CRITICAL: Position opening blocked - missing stop-loss for %s", decision.Symbol)
+		return nil, fmt.Errorf("guarded stop-loss enforcement requires stop-loss for %s", decision.Symbol)
+	}
+
+	if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, decision.StopLoss); err != nil {
+		log.Printf("  ⚠ 设置止损失败: %v", err)
+		metrics.IncRiskStopLossFailures(at.id)
+		log.Printf("CRITICAL: Position opening blocked - stop-loss placement failed for %s: %v", decision.Symbol, err)
+		return nil, fmt.Errorf("stop-loss placement failed: %w", err)
+	}
+
+	if decision.TakeProfit > 0 {
+		if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, decision.TakeProfit); err != nil {
+			log.Printf("  ⚠ 设置止盈失败: %v", err)
+		}
+	}
+
+	order, err := openFn(decision.Symbol, quantity, decision.Leverage)
+	if err != nil {
+		log.Printf("  ⚠ 开仓失败，撤销预设保护: %v", err)
+		// Roll back the pre-set protective orders so we do not leave orphan stops on the exchange.
+		if cancelErr := at.trader.CancelAllOrders(decision.Symbol); cancelErr != nil {
+			log.Printf("  ⚠ 撤销预设订单失败: %v", cancelErr)
+		}
+		return nil, err
+	}
+
+	return order, nil
+}
+
 // executeOpenLongWithRecord 执行开多仓并记录详细信息
 func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📈 开多仓: %s", decision.Symbol)
@@ -581,8 +864,8 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
-	// 开仓
-	order, err := at.trader.OpenLong(decision.Symbol, quantity, decision.Leverage)
+	// 开仓并根据特性开关预设保护单
+	order, err := at.openPositionWithProtection(decision, quantity)
 	if err != nil {
 		return err
 	}
@@ -597,14 +880,6 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	// 记录开仓时间
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
-
-	// 设置止损止盈
-	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
-		log.Printf("  ⚠ 设置止损失败: %v", err)
-	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
-		log.Printf("  ⚠ 设置止盈失败: %v", err)
-	}
 
 	return nil
 }
@@ -634,8 +909,8 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
-	// 开仓
-	order, err := at.trader.OpenShort(decision.Symbol, quantity, decision.Leverage)
+	// 开仓并根据特性开关预设保护单
+	order, err := at.openPositionWithProtection(decision, quantity)
 	if err != nil {
 		return err
 	}
@@ -650,14 +925,6 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	// 记录开仓时间
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
-
-	// 设置止损止盈
-	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
-		log.Printf("  ⚠ 设置止损失败: %v", err)
-	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
-		log.Printf("  ⚠ 设置止盈失败: %v", err)
-	}
 
 	return nil
 }
@@ -741,19 +1008,22 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
 		aiProvider = "Qwen"
 	}
 
+	stopUntil := at.GetStopUntil()
+	lastReset := at.GetLastResetTime()
+
 	return map[string]interface{}{
 		"trader_id":       at.id,
 		"trader_name":     at.name,
 		"ai_model":        at.aiModel,
 		"exchange":        at.exchange,
-		"is_running":      at.isRunning,
+		"is_running":      at.IsTrading(),
 		"start_time":      at.startTime.Format(time.RFC3339),
 		"runtime_minutes": int(time.Since(at.startTime).Minutes()),
 		"call_count":      at.callCount,
 		"initial_balance": at.initialBalance,
 		"scan_interval":   at.config.ScanInterval.String(),
-		"stop_until":      at.stopUntil.Format(time.RFC3339),
-		"last_reset_time": at.lastResetTime.Format(time.RFC3339),
+		"stop_until":      stopUntil.Format(time.RFC3339),
+		"last_reset_time": lastReset.Format(time.RFC3339),
 		"ai_provider":     aiProvider,
 	}
 }
@@ -819,6 +1089,8 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 		marginUsedPct = (totalMarginUsed / totalEquity) * 100
 	}
 
+	dailyPnL := at.GetDailyPnL()
+
 	return map[string]interface{}{
 		// 核心字段
 		"total_equity":      totalEquity,           // 账户净值 = wallet + unrealized
@@ -831,13 +1103,355 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 		"total_pnl_pct":        totalPnLPct,        // 总盈亏百分比
 		"total_unrealized_pnl": totalUnrealizedPnL, // 未实现盈亏（从持仓计算）
 		"initial_balance":      at.initialBalance,  // 初始余额
-		"daily_pnl":            at.dailyPnL,        // 日盈亏
+		"daily_pnl":            dailyPnL,           // 日盈亏
 
 		// 持仓信息
 		"position_count":  len(positions),  // 持仓数量
 		"margin_used":     totalMarginUsed, // 保证金占用
 		"margin_used_pct": marginUsedPct,   // 保证金使用率
 	}, nil
+}
+
+func (at *AutoTrader) refreshMutexProtectionCache() bool {
+	if at == nil {
+		return false
+	}
+
+	enabled := false
+	if at.featureFlags != nil {
+		enabled = at.featureFlags.MutexProtectionEnabled()
+	}
+
+	at.mutexEnabledCache.Store(enabled)
+	at.mutexDisabledCache.Store(!enabled)
+	return enabled
+}
+
+func (at *AutoTrader) mutexProtectionEnabled() bool {
+	if at == nil {
+		return false
+	}
+
+	enabled := false
+	if at.featureFlags != nil {
+		enabled = at.featureFlags.MutexProtectionEnabled()
+	}
+
+	if at.mutexEnabledCache.Load() == enabled {
+		return enabled
+	}
+
+	at.mutexEnabledCache.Store(enabled)
+	at.mutexDisabledCache.Store(!enabled)
+	return enabled
+}
+
+func (at *AutoTrader) mutexProtectionDisabled() bool {
+	if at == nil {
+		return true
+	}
+
+	at.mutexProtectionEnabled()
+	return at.mutexDisabledCache.Load()
+}
+
+// GetDailyPnL returns the current daily PnL snapshot. The helper is safe to
+// call regardless of enable_mutex_protection; it only grabs the mutex when the
+// flag is enabled so disabling the flag remains a back-out path.
+func (at *AutoTrader) GetDailyPnL() float64 {
+	if at == nil {
+		return 0
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.dailyPnL
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.dailyPnL
+}
+
+func (at *AutoTrader) setDailyPnL(value float64) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.dailyPnL = value
+		return
+	}
+
+	at.stateMu.Lock()
+	at.dailyPnL = value
+	at.stateMu.Unlock()
+}
+
+func (at *AutoTrader) setCurrentBalance(value float64) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.currentBalance = value
+		return
+	}
+
+	at.stateMu.Lock()
+	at.currentBalance = value
+	at.stateMu.Unlock()
+}
+
+func (at *AutoTrader) currentBalanceSnapshot() float64 {
+	if at == nil {
+		return 0
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.currentBalance
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.currentBalance
+}
+
+func (at *AutoTrader) setPeakBalance(value float64) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.peakBalance = value
+		return
+	}
+
+	at.stateMu.Lock()
+	at.peakBalance = value
+	at.stateMu.Unlock()
+}
+
+func (at *AutoTrader) peakBalanceSnapshot() float64 {
+	if at == nil {
+		return 0
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.peakBalance
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.peakBalance
+}
+
+// CanTrade evaluates whether the trader is allowed to execute trades at the
+// present moment. It enforces stop-until windows and consults the risk engine
+// when risk enforcement is enabled. On breach it logs an explicit warning.
+func (at *AutoTrader) CanTrade() (bool, string) {
+	if at == nil {
+		return false, "auto trader not initialized"
+	}
+
+	now := time.Now()
+	stopUntil := at.GetStopUntil()
+	if !stopUntil.IsZero() && now.Before(stopUntil) {
+		remaining := stopUntil.Sub(now)
+		if remaining < 0 {
+			remaining = 0
+		}
+		return false, fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
+	}
+
+	if at.riskEngine == nil {
+		return true, ""
+	}
+
+	if at.featureFlags != nil && !at.featureFlags.RiskEnforcementEnabled() {
+		return true, ""
+	}
+
+	equity := at.currentBalanceSnapshot()
+	if equity <= 0 {
+		return true, ""
+	}
+
+	decision := at.riskEngine.Assess(equity)
+	at.setDailyPnL(decision.DailyPnL)
+	at.SetStopUntil(decision.PausedUntil)
+
+	snapshot := at.riskEngine.Snapshot()
+	at.setCurrentBalance(snapshot.CurrentEquity)
+	at.setPeakBalance(snapshot.PeakEquity)
+
+	if decision.Breached {
+		reason := decision.Reason
+		if reason == "" {
+			reason = "risk limit breached"
+		}
+		log.Printf("RISK LIMIT BREACHED [%s]: %s", at.name, reason)
+	}
+
+	if decision.TradingPaused {
+		reason := decision.Reason
+		if reason == "" {
+			reason = "风险控制暂停中"
+		}
+		return false, reason
+	}
+
+	return true, ""
+}
+
+// UpdateDailyPnL applies a delta to the tracked daily PnL. The helper is safe
+// to call regardless of enable_mutex_protection and falls back to the legacy
+// lock-free path when the flag is disabled so operators retain a back-out path.
+func (at *AutoTrader) UpdateDailyPnL(delta float64) float64 {
+	if at == nil {
+		return 0
+	}
+
+	if at.riskEngine == nil {
+		if at.mutexProtectionDisabled() {
+			at.dailyPnL += delta
+			return at.dailyPnL
+		}
+
+		at.stateMu.Lock()
+		at.dailyPnL += delta
+		value := at.dailyPnL
+		at.stateMu.Unlock()
+		return value
+	}
+
+	updated := at.riskEngine.UpdateDailyPnL(delta)
+	at.setDailyPnL(updated)
+	return updated
+}
+
+// ResetDailyPnL zeroes the accumulated daily PnL and records the reset time.
+// The helper honors enable_mutex_protection, locking only when the flag is on
+// so disabling the flag still provides a safe back-out path.
+func (at *AutoTrader) ResetDailyPnL(atTime time.Time) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.dailyPnL = 0
+		at.lastResetTime = atTime
+		return
+	}
+
+	at.stateMu.Lock()
+	at.dailyPnL = 0
+	at.lastResetTime = atTime
+	at.stateMu.Unlock()
+}
+
+// SetStopUntil updates the trading pause deadline. The helper is safe to call
+// with enable_mutex_protection either on or off, acquiring the mutex only when
+// the flag is active so the rollout retains a back-out path.
+func (at *AutoTrader) SetStopUntil(until time.Time) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.stopUntil = until
+		return
+	}
+
+	at.stateMu.Lock()
+	at.stopUntil = until
+	at.stateMu.Unlock()
+}
+
+// GetStopUntil exposes the current trading pause deadline. The helper remains
+// safe regardless of enable_mutex_protection and avoids locking when the flag
+// is disabled so operators can revert via the flag if required.
+func (at *AutoTrader) GetStopUntil() time.Time {
+	if at == nil {
+		return time.Time{}
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.stopUntil
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.stopUntil
+}
+
+// SetLastResetTime updates the timestamp of the last daily PnL reset. The
+// helper is safe to call regardless of enable_mutex_protection, falling back to
+// the legacy path when the flag is disabled to keep a back-out option.
+func (at *AutoTrader) SetLastResetTime(ts time.Time) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.lastResetTime = ts
+		return
+	}
+
+	at.stateMu.Lock()
+	at.lastResetTime = ts
+	at.stateMu.Unlock()
+}
+
+// GetLastResetTime returns the timestamp of the last daily PnL reset. The
+// helper respects enable_mutex_protection, only locking when the flag is true
+// so disabling the flag continues to provide the back-out path.
+func (at *AutoTrader) GetLastResetTime() time.Time {
+	if at == nil {
+		return time.Time{}
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.lastResetTime
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.lastResetTime
+}
+
+// SetTrading flips the trading loop state. The helper is safe independent of
+// enable_mutex_protection and skips locking when the feature flag is turned off
+// so we can revert to the legacy behavior instantly.
+func (at *AutoTrader) SetTrading(running bool) {
+	if at == nil {
+		return
+	}
+
+	if at.mutexProtectionDisabled() {
+		at.isRunning = running
+		return
+	}
+
+	at.stateMu.Lock()
+	at.isRunning = running
+	at.stateMu.Unlock()
+}
+
+// IsTrading reports whether the AutoTrader loop is currently running. The
+// helper automatically honors enable_mutex_protection and bypasses the mutex
+// when the feature flag is disabled, preserving the back-out path.
+func (at *AutoTrader) IsTrading() bool {
+	if at == nil {
+		return false
+	}
+
+	if at.mutexProtectionDisabled() {
+		return at.isRunning
+	}
+
+	at.stateMu.RLock()
+	defer at.stateMu.RUnlock()
+	return at.isRunning
 }
 
 // GetPositions 获取持仓列表（用于API）
