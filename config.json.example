@@ -1,30 +1,6 @@
 {
   "traders": [
     {
-      "id": "binance_testnet",
-      "name": "Binance Testnet Trader (Recommended for Testing)",
-      "ai_model": "deepseek",
-      "exchange": "binance",
-      "binance_api_key": "your_testnet_api_key",
-      "binance_secret_key": "your_testnet_secret_key",
-      "binance_testnet": true,
-      "deepseek_key": "your_deepseek_api_key",
-      "initial_balance": 10000,
-      "scan_interval_minutes": 3
-    },
-    {
-      "id": "binance_qwen",
-      "name": "Binance Qwen Trader (Mainnet)",
-      "ai_model": "qwen",
-      "exchange": "binance",
-      "binance_api_key": "your_binance_api_key",
-      "binance_secret_key": "your_binance_secret_key",
-      "binance_testnet": false,
-      "qwen_key": "your_qwen_api_key",
-      "initial_balance": 1000,
-      "scan_interval_minutes": 3
-    },
-    {
       "id": "hyperliquid_deepseek",
       "name": "Hyperliquid DeepSeek Trader",
       "ai_model": "deepseek",
@@ -36,27 +12,42 @@
       "scan_interval_minutes": 3
     },
     {
+      "id": "binance_qwen",
+      "name": "Binance Qwen Trader",
+      "ai_model": "qwen",
+      "exchange": "binance",
+      "binance_api_key": "your_binance_api_key",
+      "binance_secret_key": "your_binance_secret_key",
+      "qwen_key": "your_qwen_api_key",
+      "initial_balance": 1000,
+      "scan_interval_minutes": 3
+    },
+    {
       "id": "binance_custom",
       "name": "Binance Custom API Trader",
       "ai_model": "custom",
       "exchange": "binance",
       "binance_api_key": "your_binance_api_key",
       "binance_secret_key": "your_binance_secret_key",
-      "binance_testnet": false,
       "custom_api_url": "https://api.openai.com/v1",
       "custom_api_key": "sk-your-api-key",
       "custom_model_name": "gpt-4o",
       "initial_balance": 1000,
       "scan_interval_minutes": 3
-    },
+    }，
     {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
       "ai_model": "deepseek",
       "exchange": "aster",
 
-      "aster_user": "0x63DD5aCC6b1aa0f563956C0e534DD30B6dcF7C4e",
-      "aster_signer": "0x21cF8Ae13Bb72662c6Fff438652Ba1a151bb0",
+      // 注意请仔细阅读这三个提示 请进入https://www.asterdex.com/en/api-wallet网站 -> 选择专业api -> 创建新api获取以下信息
+      // user: 主钱包地址 (登录地址/连接到aster的钱包地址)
+      // signer: API钱包地址 (点击生成地址后生成的地址)
+      // privateKey: API钱包私钥 (生成地址对应的私钥)
+
+      "aster_user": "0x63DD5aCC6b1aa0f563956C0e534DD30B6dcF7C4e", 
+      "aster_signer": "0x21cF8Ae13Bb72632562c6Fff438652Ba1a151bb0",
       "aster_private_key": "your_aster_api_wallet_private_key_without_0x_prefix",
 
       "deepseek_key": "your_deepseek_api_key",

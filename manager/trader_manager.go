@@ -39,7 +39,6 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		Exchange:              cfg.Exchange,
 		BinanceAPIKey:         cfg.BinanceAPIKey,
 		BinanceSecretKey:      cfg.BinanceSecretKey,
-		BinanceTestnet:        cfg.BinanceTestnet, // 添加币安测试网配置
 		HyperliquidPrivateKey: cfg.HyperliquidPrivateKey,
 		HyperliquidTestnet:    cfg.HyperliquidTestnet,
 		AsterUser:             cfg.AsterUser,

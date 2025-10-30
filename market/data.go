@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -144,7 +143,6 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatal("获取K线数据出错")
 		return nil, err
 	}
 	defer resp.Body.Close()

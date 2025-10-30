@@ -19,7 +19,6 @@ type TraderConfig struct {
 	// 币安配置
 	BinanceAPIKey    string `json:"binance_api_key,omitempty"`
 	BinanceSecretKey string `json:"binance_secret_key,omitempty"`
-	BinanceTestnet   bool   `json:"binance_testnet,omitempty"` // 是否使用币安测试网
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`
@@ -79,6 +78,7 @@ func LoadConfig(filename string) (*Config, error) {
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
 		config.UseDefaultCoins = true
 	}
+
 	// 设置默认币种池
 	if len(config.DefaultCoins) == 0 {
 		config.DefaultCoins = []string{
@@ -92,6 +92,7 @@ func LoadConfig(filename string) (*Config, error) {
 			"HYPEUSDT",
 		}
 	}
+
 	// 验证配置
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("配置验证失败: %w", err)
@@ -135,12 +136,6 @@ func (c *Config) Validate() error {
 		if trader.Exchange == "binance" {
 			if trader.BinanceAPIKey == "" || trader.BinanceSecretKey == "" {
 				return fmt.Errorf("trader[%d]: 使用币安时必须配置binance_api_key和binance_secret_key", i)
-			}
-			// 测试网提示
-			if trader.BinanceTestnet {
-				fmt.Printf("ℹ️  trader[%d]: 使用币安测试网 (https://testnet.binancefuture.com) - 仅用于测试，不会产生真实交易\n", i)
-			} else {
-				fmt.Printf("⚠️  trader[%d]: 使用币安主网 (https://fapi.binance.com) - 将进行真实交易，请谨慎操作！\n", i)
 			}
 		} else if trader.Exchange == "hyperliquid" {
 			if trader.HyperliquidPrivateKey == "" {

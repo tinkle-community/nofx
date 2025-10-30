@@ -27,26 +27,14 @@ type FuturesTrader struct {
 
 	// 缓存有效期（15秒）
 	cacheDuration time.Duration
-	isTestnet     bool // 是否使用测试网
 }
 
-// NewFuturesTrader 创建合约交易器（支持测试网）
-func NewFuturesTrader(apiKey, secretKey string, isTestnet bool) *FuturesTrader {
+// NewFuturesTrader 创建合约交易器
+func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
-
-	// 根据是否测试网设置不同的API端点
-	if isTestnet {
-		client.BaseURL = "https://testnet.binancefuture.com"
-		log.Printf("🔗 使用币安测试网: https://testnet.binancefuture.com")
-	} else {
-		client.BaseURL = "https://fapi.binance.com"
-		log.Printf("🔗 使用币安主网: https://fapi.binance.com")
-	}
-
 	return &FuturesTrader{
 		client:        client,
 		cacheDuration: 15 * time.Second, // 15秒缓存
-		isTestnet:     isTestnet,
 	}
 }
 
