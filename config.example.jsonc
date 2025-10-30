@@ -35,7 +35,7 @@
       "custom_model_name": "gpt-4o",
       "initial_balance": 1000,
       "scan_interval_minutes": 3
-    }，
+    },
     {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
@@ -69,7 +69,7 @@
     "XRPUSDT",
     "DOGEUSDT",
     "ADAUSDT",
-    "HYPEUSDT",
+    "HYPEUSDT"
   ],
   "coin_pool_api_url": "",
   "oi_top_api_url": "",

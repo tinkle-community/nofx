@@ -248,7 +248,7 @@ Docker automatically handles all dependencies (Go, Node.js, TA-Lib) and environm
 #### Step 1: Prepare Configuration
 ```bash
 # Copy configuration template
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # Edit and fill in your API keys
 nano config.json  # or use any editor
@@ -389,7 +389,7 @@ Before configuring the system, you need to obtain AI API keys. Choose one of the
 **Step 1**: Copy and rename the example config file
 
 ```bash
-cp config.json.example config.json
+cp config.example.jsonc config.json
 ```
 
 **Step 2**: Edit `config.json` with your API keys

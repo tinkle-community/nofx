@@ -184,7 +184,7 @@ Docker автоматично обробляє всі залежності (Go, 
 #### Крок 1: Підготуйте конфігурацію
 ```bash
 # Скопіюйте шаблон конфігурації
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # Відредагуйте та заповніть ваші API ключі
 nano config.json  # або використайте будь-який редактор
@@ -322,7 +322,7 @@ cd ..
 **Крок 1**: Скопіюйте та перейменуйте файл прикладу конфігурації
 
 ```bash
-cp config.json.example config.json
+cp config.example.jsonc config.json
 ```
 
 **Крок 2**: Відредагуйте `config.json` та заповніть ваші API ключі

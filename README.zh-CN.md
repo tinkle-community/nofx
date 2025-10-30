@@ -248,7 +248,7 @@ Docker会自动处理所有依赖（Go、Node.js、TA-Lib）和环境配置，�
 #### 步骤1：准备配置文件
 ```bash
 # 复制配置文件模板
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # 编辑并填入你的API密钥
 nano config.json  # 或使用其他编辑器
@@ -385,7 +385,7 @@ cd ..
 **步骤1**：复制并重命名示例配置文件
 
 ```bash
-cp config.json.example config.json
+cp config.example.jsonc config.json
 ```
 
 **步骤2**：编辑`config.json`填入您的API密钥

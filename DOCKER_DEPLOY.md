@@ -55,7 +55,7 @@ docker compose --version  # Docker 24+ 自带，无需单独安装
 
 ```bash
 # 复制配置文件模板
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # 编辑配置文件，填入你的 API 密钥
 nano config.json  # 或使用其他编辑器
@@ -270,7 +270,7 @@ kill -9 <PID>
 ls -la config.json
 
 # 如果不存在，复制模板
-cp config.json.example config.json
+cp config.example.jsonc config.json
 ```
 
 ### 健康检查失败

@@ -82,12 +82,19 @@ check_env() {
 # ------------------------------------------------------------------------
 check_config() {
     if [ ! -f "config.json" ]; then
-        print_warning "config.json 不存在，从模板复制..."
-        cp config.json.example config.json
+        print_warning "config.json 不存在，正在从 config.example.jsonc 生成..."
+
+        # 生成 config.json（安全去除 JSONC 注释，不破坏 https://）
+        perl -0777 -pe 's:/\*.*?\*/::gs' config.example.jsonc \
+          | sed -E 's/^[[:space:]]*\/\/.*$//' \
+          | jq '.' > config.json
+
+        print_success "已生成 config.json"
         print_info "请编辑 config.json 填入你的 API 密钥"
         print_info "运行: nano config.json 或使用其他编辑器"
         exit 1
     fi
+
     print_success "配置文件存在"
 }
 
