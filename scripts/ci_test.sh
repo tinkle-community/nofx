@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 echo "═══════════════════════════════════════════════════════════════"
 echo "  Running comprehensive test suite with coverage"
@@ -26,6 +26,41 @@ else
   echo "✓ TEST_DB_URL set; database tests enabled"
 fi
 
+SKIP_DB_PACKAGES=0
+if [ "${DISABLE_DB_TESTS:-0}" = "1" ] || [ "${SKIP_DOCKER_TESTS:-0}" = "1" ] || [ "${NO_DOCKER:-0}" = "1" ]; then
+  SKIP_DB_PACKAGES=1
+fi
+
+mapfile -t ALL_PACKAGES < <(go list ./...)
+if [ ${#ALL_PACKAGES[@]} -eq 0 ]; then
+  echo "❌ go list ./... returned no packages"
+  exit 1
+fi
+
+PACKAGES=()
+for pkg in "${ALL_PACKAGES[@]}"; do
+  if [ "$SKIP_DB_PACKAGES" = "1" ] && [[ "$pkg" == "nofx/db" || "$pkg" == nofx/db/* ]]; then
+    continue
+  fi
+  PACKAGES+=("$pkg")
+done
+
+if [ ${#PACKAGES[@]} -eq 0 ]; then
+  echo "❌ No Go packages selected for testing after filtering"
+  exit 1
+fi
+
+if [ "$SKIP_DB_PACKAGES" = "1" ]; then
+  echo "⚠️  Database packages excluded from coverage (DISABLE_DB_TESTS mode)"
+fi
+
+echo "✓ Selected ${#PACKAGES[@]} packages for testing"
+
+COVERPKG=$(
+  IFS=,
+  printf "%s" "${PACKAGES[*]}"
+)
+
 echo
 echo "─────────────────────────────────────────────────────────────"
 echo "  Running tests with race detector and coverage"
@@ -33,10 +68,11 @@ echo "────────────────────────�
 echo
 
 go test $RACE_FLAG \
-  -coverpkg=./... \
+  -coverpkg="$COVERPKG" \
   -coverprofile=coverage.out \
   -covermode=atomic \
-  ./... -v
+  -v \
+  "${PACKAGES[@]}"
 
 echo
 echo "─────────────────────────────────────────────────────────────"
