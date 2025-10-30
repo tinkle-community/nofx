@@ -31,7 +31,7 @@ type AutoTraderConfig struct {
 	AIModel string // AI模型: "qwen" 或 "deepseek"
 
 	// 交易平台选择
-	Exchange string // "binance" 或 "hyperliquid"
+	Exchange string // "binance", "hyperliquid" 或 "aster"
 
 	// 币安API配置
 	BinanceAPIKey    string
@@ -41,12 +41,22 @@ type AutoTraderConfig struct {
 	HyperliquidPrivateKey string
 	HyperliquidTestnet    bool
 
+	// Aster配置
+	AsterUser       string // Aster主钱包地址
+	AsterSigner     string // Aster API钱包地址
+	AsterPrivateKey string // Aster API钱包私钥
+
 	CoinPoolAPIURL string
 
 	// AI配置
 	UseQwen     bool
 	DeepSeekKey string
 	QwenKey     string
+
+	// 自定义AI API配置
+	CustomAPIURL    string
+	CustomAPIKey    string
+	CustomModelName string
 
 	// 扫描配置
 	ScanInterval time.Duration // 扫描间隔（建议3分钟）
@@ -114,10 +124,16 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
 	}
 
 	// 初始化AI
-	if config.UseQwen {
+	if config.AIModel == "custom" {
+		// 使用自定义API
+		mcp.SetCustomAPI(config.CustomAPIURL, config.CustomAPIKey, config.CustomModelName)
+		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
+	} else if config.UseQwen || config.AIModel == "qwen" {
+		// 使用Qwen
 		mcp.SetQwenAPIKey(config.QwenKey, "")
 		log.Printf("🤖 [%s] 使用阿里云Qwen AI", config.Name)
 	} else {
+		// 默认使用DeepSeek
 		mcp.SetDeepSeekAPIKey(config.DeepSeekKey)
 		log.Printf("🤖 [%s] 使用DeepSeek AI", config.Name)
 	}
@@ -154,6 +170,12 @@ func NewAutoTrader(config AutoTraderConfig, store *risk.Store, flags *featurefla
 			traderInstance, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidTestnet)
 			if err != nil {
 				return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)
+			}
+		case "aster":
+			log.Printf("🏦 [%s] 使用Aster交易", config.Name)
+			traderInstance, err = NewAsterTrader(config.AsterUser, config.AsterSigner, config.AsterPrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
 			}
 		default:
 			return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
