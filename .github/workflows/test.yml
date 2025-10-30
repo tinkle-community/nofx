@@ -1,0 +1,138 @@
+name: Test Suite with Coverage
+
+on:
+  push:
+    branches: [ main, test-* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-with-docker:
+    name: Tests (with Docker/PostgreSQL)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests with Docker (PostgreSQL integration tests)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 90
+          SKIP_RACE: false
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          flags: with-docker
+          name: with-docker-coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-with-docker
+          path: |
+            coverage.out
+            coverage.html
+
+  test-without-docker:
+    name: Tests (without Docker, skip DB tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Disable Docker (simulate environment without Docker)
+        run: |
+          echo "SKIP_DOCKER_TESTS=1" >> $GITHUB_ENV
+
+      - name: Run tests without Docker (DB tests auto-skip)
+        run: ./scripts/ci_test.sh
+        env:
+          COVERAGE_TARGET: 90
+          SKIP_RACE: false
+          SKIP_DOCKER_TESTS: 1
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-without-docker
+          path: |
+            coverage.out
+            coverage.html
+
+  race-detector:
+    name: Race Detector Stress Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run mutex/race stress tests
+        run: |
+          go test -race -v -run 'TestStore_.*Concurrent|TestStore_.*Mutex|TestUpdateDailyPnLConcurrent|TestSetStopUntilConcurrent' ./risk/... ./trader/...
+
+      - name: Run risk enforcement tests
+        run: |
+          go test -race -v -run 'TestEngine_.*Enforce.*|TestEngine_.*Breach.*|TestAutoTrader.*Risk.*|TestAutoTrader_CanTrade' ./risk/... ./trader/...
+
+      - name: Run guarded stop-loss tests
+        run: |
+          go test -race -v -run 'TestAutoTrader_GuardedStopLoss.*' ./trader/...

@@ -1,12 +1,16 @@
 package trader
 
 import (
+	"context"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"nofx/featureflag"
 	"nofx/risk"
+	testpg "nofx/testsupport/postgres"
 )
 
 func TestNewAutoTraderWithPersistence_Disabled(t *testing.T) {
@@ -253,6 +257,24 @@ func skipIfNoPostgres(t *testing.T) string {
 	t.Helper()
 	connStr := os.Getenv("TEST_DB_URL")
 	if connStr == "" {
+		if ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute); ctx.Err() == nil {
+			defer cancel()
+			instance, err := testpg.Start(ctx)
+			if err != nil {
+				if errors.Is(err, testpg.ErrDockerDisabled) {
+					t.Skip("Skipping test: SKIP_DOCKER_TESTS=1")
+				}
+				if errors.Is(err, testpg.ErrDockerUnavailable) {
+					t.Skipf("Skipping test: %v", err)
+				}
+				if strings.Contains(err.Error(), "Cannot connect") {
+					t.Skipf("Skipping test: %v", err)
+				}
+				t.Fatalf("start postgres container: %v", err)
+			}
+			t.Cleanup(func() { instance.Terminate(context.Background()) })
+			return instance.ConnectionString()
+		}
 		t.Skip("Skipping test: no TEST_DB_URL provided")
 	}
 	return connStr

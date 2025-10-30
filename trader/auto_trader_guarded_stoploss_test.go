@@ -1,100 +1,154 @@
 package trader
 
 import (
-	"fmt"
+	"errors"
 	"testing"
+	"time"
 
 	"nofx/decision"
 	"nofx/featureflag"
 	"nofx/risk"
 )
 
-type stopLossFailingTrader struct {
+type mockTraderWithStopLossFailure struct {
 	*fakeTrader
-	stopLossShouldFail bool
+	shouldFailStopLoss bool
 }
 
-func newStopLossFailingTrader(shouldFail bool) *stopLossFailingTrader {
-	return &stopLossFailingTrader{
-		fakeTrader:         newFakeTrader(),
-		stopLossShouldFail: shouldFail,
-	}
-}
-
-func (t *stopLossFailingTrader) SetStopLoss(string, string, float64, float64) error {
-	if t.stopLossShouldFail {
-		return fmt.Errorf("simulated stop-loss placement failure")
+func (m *mockTraderWithStopLossFailure) SetStopLoss(symbol, side string, quantity, price float64) error {
+	if m.shouldFailStopLoss {
+		return errors.New("simulated stop-loss placement failure")
 	}
 	return nil
 }
 
-func TestGuardedStopLoss_BlocksPositionWhenStopLossFails(t *testing.T) {
+func TestAutoTrader_GuardedStopLoss_PreventOpenOnMissingStopLoss(t *testing.T) {
 	flags := featureflag.NewRuntimeFlags(featureflag.State{
 		EnableGuardedStopLoss: true,
-		EnableRiskEnforcement: false,
+		EnableRiskEnforcement: true,
 		EnableMutexProtection: true,
 	})
 
-	failingTrader := newStopLossFailingTrader(true)
-
 	cfg := AutoTraderConfig{
-		ID:               "test-guarded-stoploss",
-		Name:             "Guarded Stop-Loss Test",
+		ID:               "test-guarded-missing-sl",
+		Name:             "Guarded Missing SL",
 		AIModel:          "deepseek",
 		Exchange:         "binance",
 		BinanceAPIKey:    "key",
 		BinanceSecretKey: "secret",
 		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
 		InitialBalance:   1000.0,
 		BTCETHLeverage:   5,
 		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
 		TraderFactory: func(AutoTraderConfig) (Trader, error) {
-			return failingTrader, nil
+			return newFakeTrader(), nil
 		},
 	}
 
 	store := risk.NewStore()
 	at, err := NewAutoTrader(cfg, store, flags)
 	if err != nil {
-		t.Fatalf("NewAutoTrader failed: %v", err)
+		t.Fatalf("failed to create auto trader: %v", err)
 	}
 
-	dec := &decision.Decision{
-		Action:     "open_long",
-		Symbol:     "BTCUSDT",
-		Leverage:   5,
-		StopLoss:   40000.0,
-		TakeProfit: 60000.0,
+	decision := decision.Decision{
+		Symbol:          "BTCUSDT",
+		Action:          "open_long",
+		Leverage:        5,
+		PositionSizeUSD: 100.0,
+		StopLoss:        0,
+		TakeProfit:      50000.0,
 	}
 
-	_, err = at.openPositionWithProtection(dec, 0.01)
+	_, err = at.openPositionWithProtection(&decision, 0.002)
 	if err == nil {
-		t.Fatal("expected error when stop-loss placement fails with guarded stop-loss enabled")
+		t.Fatal("expected error when opening position without stop-loss with guarded enforcement")
+	}
+	if err.Error() != "guarded stop-loss enforcement requires stop-loss for BTCUSDT" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestAutoTrader_GuardedStopLoss_BlockOnStopLossPlacementFailure(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{
+		EnableGuardedStopLoss: true,
+		EnableRiskEnforcement: true,
+		EnableMutexProtection: true,
+	})
+
+	cfg := AutoTraderConfig{
+		ID:               "test-guarded-sl-fail",
+		Name:             "Guarded SL Failure",
+		AIModel:          "deepseek",
+		Exchange:         "binance",
+		BinanceAPIKey:    "key",
+		BinanceSecretKey: "secret",
+		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
+		InitialBalance:   1000.0,
+		BTCETHLeverage:   5,
+		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
+		TraderFactory: func(AutoTraderConfig) (Trader, error) {
+			return &mockTraderWithStopLossFailure{
+				fakeTrader:         newFakeTrader(),
+				shouldFailStopLoss: true,
+			}, nil
+		},
 	}
 
+	store := risk.NewStore()
+	at, err := NewAutoTrader(cfg, store, flags)
+	if err != nil {
+		t.Fatalf("failed to create auto trader: %v", err)
+	}
+
+	dec := decision.Decision{
+		Symbol:          "BTCUSDT",
+		Action:          "open_long",
+		Leverage:        5,
+		PositionSizeUSD: 100.0,
+		StopLoss:        45000.0,
+		TakeProfit:      50000.0,
+	}
+
+	_, err = at.openPositionWithProtection(&dec, 0.002)
+	if err == nil {
+		t.Fatal("expected error when stop-loss placement fails with guarded enforcement")
+	}
 	if err.Error() != "stop-loss placement failed: simulated stop-loss placement failure" {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
-func TestGuardedStopLoss_BlocksPositionWhenMissingStopLoss(t *testing.T) {
+func TestAutoTrader_GuardedStopLoss_SuccessWhenStopLossSet(t *testing.T) {
 	flags := featureflag.NewRuntimeFlags(featureflag.State{
 		EnableGuardedStopLoss: true,
-		EnableRiskEnforcement: false,
+		EnableRiskEnforcement: true,
 		EnableMutexProtection: true,
 	})
 
 	cfg := AutoTraderConfig{
-		ID:               "test-missing-stoploss",
-		Name:             "Missing Stop-Loss Test",
+		ID:               "test-guarded-sl-success",
+		Name:             "Guarded SL Success",
 		AIModel:          "deepseek",
 		Exchange:         "binance",
 		BinanceAPIKey:    "key",
 		BinanceSecretKey: "secret",
 		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
 		InitialBalance:   1000.0,
 		BTCETHLeverage:   5,
 		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
 		TraderFactory: func(AutoTraderConfig) (Trader, error) {
 			return newFakeTrader(), nil
 		},
@@ -103,95 +157,49 @@ func TestGuardedStopLoss_BlocksPositionWhenMissingStopLoss(t *testing.T) {
 	store := risk.NewStore()
 	at, err := NewAutoTrader(cfg, store, flags)
 	if err != nil {
-		t.Fatalf("NewAutoTrader failed: %v", err)
+		t.Fatalf("failed to create auto trader: %v", err)
 	}
 
-	dec := &decision.Decision{
-		Action:     "open_long",
-		Symbol:     "BTCUSDT",
-		Leverage:   5,
-		StopLoss:   0,
-		TakeProfit: 60000.0,
+	dec := decision.Decision{
+		Symbol:          "BTCUSDT",
+		Action:          "open_long",
+		Leverage:        5,
+		PositionSizeUSD: 100.0,
+		StopLoss:        45000.0,
+		TakeProfit:      50000.0,
 	}
 
-	_, err = at.openPositionWithProtection(dec, 0.01)
-	if err == nil {
-		t.Fatal("expected error when stop-loss is missing with guarded stop-loss enabled")
+	order, err := at.openPositionWithProtection(&dec, 0.002)
+	if err != nil {
+		t.Fatalf("expected success when stop-loss is properly set, got error: %v", err)
 	}
-
-	expectedMsg := "guarded stop-loss enforcement requires stop-loss for BTCUSDT"
-	if err.Error() != expectedMsg {
-		t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
+	if order == nil {
+		t.Fatal("expected non-nil order")
 	}
 }
 
-func TestGuardedStopLoss_AllowsPositionWhenDisabled(t *testing.T) {
+func TestAutoTrader_GuardedStopLoss_DisabledBypass(t *testing.T) {
 	flags := featureflag.NewRuntimeFlags(featureflag.State{
 		EnableGuardedStopLoss: false,
-		EnableRiskEnforcement: false,
+		EnableRiskEnforcement: true,
 		EnableMutexProtection: true,
 	})
 
-	failingTrader := newStopLossFailingTrader(true)
-
 	cfg := AutoTraderConfig{
-		ID:               "test-disabled-guarded",
-		Name:             "Disabled Guarded Stop-Loss Test",
+		ID:               "test-guarded-disabled",
+		Name:             "Guarded Disabled",
 		AIModel:          "deepseek",
 		Exchange:         "binance",
 		BinanceAPIKey:    "key",
 		BinanceSecretKey: "secret",
 		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
 		InitialBalance:   1000.0,
 		BTCETHLeverage:   5,
 		AltcoinLeverage:  5,
-		TraderFactory: func(AutoTraderConfig) (Trader, error) {
-			return failingTrader, nil
-		},
-	}
-
-	store := risk.NewStore()
-	at, err := NewAutoTrader(cfg, store, flags)
-	if err != nil {
-		t.Fatalf("NewAutoTrader failed: %v", err)
-	}
-
-	dec := &decision.Decision{
-		Action:     "open_long",
-		Symbol:     "BTCUSDT",
-		Leverage:   5,
-		StopLoss:   40000.0,
-		TakeProfit: 60000.0,
-	}
-
-	order, err := at.openPositionWithProtection(dec, 0.01)
-	if err != nil {
-		t.Fatalf("expected success when guarded stop-loss disabled, got error: %v", err)
-	}
-
-	if order == nil {
-		t.Fatal("expected non-nil order when guarded stop-loss disabled")
-	}
-}
-
-func TestGuardedStopLoss_SuccessfulPlacement(t *testing.T) {
-	flags := featureflag.NewRuntimeFlags(featureflag.State{
-		EnableGuardedStopLoss: true,
-		EnableRiskEnforcement: false,
-		EnableMutexProtection: true,
-	})
-
-	cfg := AutoTraderConfig{
-		ID:               "test-successful-guarded",
-		Name:             "Successful Guarded Stop-Loss Test",
-		AIModel:          "deepseek",
-		Exchange:         "binance",
-		BinanceAPIKey:    "key",
-		BinanceSecretKey: "secret",
-		DeepSeekKey:      "test-key",
-		InitialBalance:   1000.0,
-		BTCETHLeverage:   5,
-		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
 		TraderFactory: func(AutoTraderConfig) (Trader, error) {
 			return newFakeTrader(), nil
 		},
@@ -200,23 +208,66 @@ func TestGuardedStopLoss_SuccessfulPlacement(t *testing.T) {
 	store := risk.NewStore()
 	at, err := NewAutoTrader(cfg, store, flags)
 	if err != nil {
-		t.Fatalf("NewAutoTrader failed: %v", err)
+		t.Fatalf("failed to create auto trader: %v", err)
 	}
 
-	dec := &decision.Decision{
-		Action:     "open_long",
-		Symbol:     "BTCUSDT",
-		Leverage:   5,
-		StopLoss:   40000.0,
-		TakeProfit: 60000.0,
+	dec := decision.Decision{
+		Symbol:          "BTCUSDT",
+		Action:          "open_long",
+		Leverage:        5,
+		PositionSizeUSD: 100.0,
+		StopLoss:        0,
+		TakeProfit:      50000.0,
 	}
 
-	order, err := at.openPositionWithProtection(dec, 0.01)
+	order, err := at.openPositionWithProtection(&dec, 0.002)
 	if err != nil {
-		t.Fatalf("expected success with valid stop-loss, got error: %v", err)
+		t.Fatalf("expected success when guarded stop-loss is disabled, got error: %v", err)
+	}
+	if order == nil {
+		t.Fatal("expected non-nil order when guarded stop-loss is disabled")
+	}
+}
+
+func TestAutoTrader_GuardedStopLoss_PausedByRiskEngine_NoOpen(t *testing.T) {
+	flags := featureflag.NewRuntimeFlags(featureflag.State{
+		EnableGuardedStopLoss: true,
+		EnableRiskEnforcement: true,
+		EnableMutexProtection: true,
+	})
+
+	cfg := AutoTraderConfig{
+		ID:               "test-guarded-paused",
+		Name:             "Guarded Paused",
+		AIModel:          "deepseek",
+		Exchange:         "binance",
+		BinanceAPIKey:    "key",
+		BinanceSecretKey: "secret",
+		DeepSeekKey:      "test-key",
+		ScanInterval:     time.Minute,
+		InitialBalance:   1000.0,
+		BTCETHLeverage:   5,
+		AltcoinLeverage:  5,
+		MaxDailyLoss:     5.0,
+		MaxDrawdown:      20.0,
+		StopTradingTime:  time.Minute,
+		TraderFactory: func(AutoTraderConfig) (Trader, error) {
+			return newFakeTrader(), nil
+		},
 	}
 
-	if order == nil {
-		t.Fatal("expected non-nil order with valid stop-loss")
+	store := risk.NewStore()
+	at, err := NewAutoTrader(cfg, store, flags)
+	if err != nil {
+		t.Fatalf("failed to create auto trader: %v", err)
+	}
+
+	maxLoss := at.initialBalance * at.config.MaxDailyLoss / 100
+	at.UpdateDailyPnL(-(maxLoss + 10))
+	at.setCurrentBalance(at.initialBalance - (maxLoss + 10))
+
+	canTrade, reason := at.CanTrade()
+	if canTrade {
+		t.Fatalf("expected trading to be blocked by risk engine, got canTrade=true, reason=%s", reason)
 	}
 }
