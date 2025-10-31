@@ -3,7 +3,9 @@ package market
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -71,12 +73,14 @@ func Get(symbol string) (*Data, error) {
 	// 获取3分钟K线数据 (最近10个)
 	klines3m, err := getKlines(symbol, "3m", 40) // 多获取一些用于计算
 	if err != nil {
+		log.Printf("OKX K Lines error:%+v", err)
 		return nil, fmt.Errorf("获取3分钟K线失败: %v", err)
 	}
 
 	// 获取4小时K线数据 (最近10个)
 	klines4h, err := getKlines(symbol, "4h", 60) // 多获取用于计算指标
 	if err != nil {
+		log.Printf("Binance K Lines error:%+v", err)
 		return nil, fmt.Errorf("获取4小时K线失败: %v", err)
 	}
 
@@ -141,10 +145,11 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 	// 根据 symbol 格式判断交易所
 	// OKX 格式: BTC-USDT-SWAP (带连字符和SWAP后缀)
 	// Binance 格式: BTCUSDT (无连字符)
-	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
-		return getKlinesOKX(symbol, interval, limit)
-	}
-	return getKlinesBinance(symbol, interval, limit)
+	// if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+	// 	return getKlinesOKX(symbol, interval, limit)
+	// }
+	// return getKlinesBinance(symbol, interval, limit)
+	return getKlinesOKX(symbol, interval, limit)
 }
 
 // getKlinesBinance 从Binance获取K线数据
@@ -165,7 +170,7 @@ func getKlinesBinance(symbol, interval string, limit int) ([]Kline, error) {
 
 	var rawData [][]interface{}
 	if err := json.Unmarshal(body, &rawData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("解析Binance响应失败: %w, body: %s", err, string(body))
 	}
 
 	klines := make([]Kline, len(rawData))
@@ -209,7 +214,7 @@ func getKlinesOKX(symbol, interval string, limit int) ([]Kline, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
