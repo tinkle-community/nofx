@@ -1194,6 +1194,17 @@ function ExchangeConfigModal({
                         required
                       />
                     </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={testnet}
+                        onChange={(e) => setTestnet(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      <label className="text-sm" style={{ color: '#EAECEF' }}>
+                        使用测试网
+                      </label>
+                    </div>
                   </>
                 )}
 
