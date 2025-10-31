@@ -711,20 +711,26 @@ func formatFloatSlice(values []float64) string {
 	return "[" + strings.Join(strValues, ", ") + "]"
 }
 
-// Normalize 标准化symbol,确保是USDT交易对
+// Normalize 标准化symbol,转换为OKX SWAP格式
 func Normalize(symbol string) string {
 	symbol = strings.ToUpper(symbol)
 
-	// OKX 格式已经标准化（如 BTC-USDT-SWAP），不需要处理
+	// 如果已经是 OKX SWAP 格式（如 BTC-USDT-SWAP），直接返回
 	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
 		return symbol
 	}
 
-	// Binance 格式：确保以 USDT 结尾
-	if strings.HasSuffix(symbol, "USDT") {
-		return symbol
+	// 将 Binance 格式（如 BTCUSDT）转换为 OKX SWAP 格式（如 BTC-USDT-SWAP）
+	// 1. 先确保以 USDT 结尾
+	if !strings.HasSuffix(symbol, "USDT") {
+		symbol = symbol + "USDT"
 	}
-	return symbol + "USDT"
+
+	// 2. 提取基础货币（去掉USDT后缀）
+	baseCurrency := strings.TrimSuffix(symbol, "USDT")
+
+	// 3. 转换为 OKX SWAP 格式：{BASE}-USDT-SWAP
+	return baseCurrency + "-USDT-SWAP"
 }
 
 // parseFloat 解析float值
