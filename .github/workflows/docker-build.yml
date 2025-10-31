@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - main
-      - develop
+      - dev
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
-      - develop
+      - dev
   workflow_dispatch:
 
 env:
