@@ -532,6 +532,12 @@ func (t *AsterTrader) OpenLong(symbol string, quantity float64, leverage int) (m
 		return nil, fmt.Errorf("设置杠杆失败: %w", err)
 	}
 
+	// 设置全仓模式
+	if err := t.SetMarginType(symbol, "CROSSED"); err != nil {
+		log.Printf("  ⚠ 设置全仓模式失败(继续开仓): %v", err)
+		// 不返回错误，继续执行（可能已经是全仓模式）
+	}
+
 	// 获取当前价格
 	price, err := t.GetMarketPrice(symbol)
 	if err != nil {
@@ -597,6 +603,12 @@ func (t *AsterTrader) OpenShort(symbol string, quantity float64, leverage int) (
 	// 先设置杠杆
 	if err := t.SetLeverage(symbol, leverage); err != nil {
 		return nil, fmt.Errorf("设置杠杆失败: %w", err)
+	}
+
+	// 设置全仓模式
+	if err := t.SetMarginType(symbol, "CROSSED"); err != nil {
+		log.Printf("  ⚠ 设置全仓模式失败(继续开仓): %v", err)
+		// 不返回错误，继续执行（可能已经是全仓模式）
 	}
 
 	// 获取当前价格
@@ -828,6 +840,34 @@ func (t *AsterTrader) SetLeverage(symbol string, leverage int) error {
 
 	_, err := t.request("POST", "/fapi/v3/leverage", params)
 	return err
+}
+
+// SetMarginType 设置保证金模式
+func (t *AsterTrader) SetMarginType(symbol string, marginType string) error {
+	params := map[string]interface{}{
+		"symbol":     symbol,
+		"marginType": marginType,
+	}
+
+	_, err := t.request("POST", "/fapi/v3/marginType", params)
+	if err != nil {
+		// 如果已经是该模式，不算错误
+		if strings.Contains(err.Error(), "No need to change") ||
+			strings.Contains(err.Error(), "already") ||
+			strings.Contains(err.Error(), "相同") {
+			log.Printf("  ✓ %s 保证金模式已是 %s", symbol, marginType)
+			return nil
+		}
+		return fmt.Errorf("设置保证金模式失败: %w", err)
+	}
+
+	log.Printf("  ✓ %s 保证金模式已切换为 %s", symbol, marginType)
+
+	// 切换保证金模式后等待3秒（避免冷却期错误）
+	log.Printf("  ⏱ 等待3秒冷却期...")
+	time.Sleep(3 * time.Second)
+
+	return nil
 }
 
 // GetMarketPrice 获取市场价格
