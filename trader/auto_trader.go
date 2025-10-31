@@ -48,6 +48,7 @@ type AutoTraderConfig struct {
 	CustomAPIURL    string
 	CustomAPIKey    string
 	CustomModelName string
+	CustomPrompt    string
 
 	// 扫描配置
 	ScanInterval time.Duration // 扫描间隔（建议3分钟）
@@ -537,7 +538,8 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		},
 		Positions:      positionInfos,
 		CandidateCoins: candidateCoins,
-		Performance:    performance, // 添加历史表现分析
+		Performance:    performance,            // 添加历史表现分析
+		CustomPrompt:   at.config.CustomPrompt, // 使用配置的提示语
 	}
 
 	return ctx, nil

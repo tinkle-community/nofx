@@ -61,11 +61,12 @@ type Context struct {
 	Account         AccountInfo             `json:"account"`
 	Positions       []PositionInfo          `json:"positions"`
 	CandidateCoins  []CandidateCoin         `json:"candidate_coins"`
-	MarketDataMap   map[string]*market.Data `json:"-"` // 不序列化，但内部使用
-	OITopDataMap    map[string]*OITopData   `json:"-"` // OI Top数据映射
-	Performance     interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
-	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
-	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	MarketDataMap   map[string]*market.Data `json:"-"`             // 不序列化，但内部使用
+	OITopDataMap    map[string]*OITopData   `json:"-"`             // OI Top数据映射
+	Performance     interface{}             `json:"-"`             // 历史表现分析（logger.PerformanceAnalysis）
+	BTCETHLeverage  int                     `json:"-"`             // BTC/ETH杠杆倍数（从配置读取）
+	AltcoinLeverage int                     `json:"-"`             // 山寨币杠杆倍数（从配置读取）
+	CustomPrompt    string                  `json:"custom_prompt"` // 自定义提示词
 }
 
 // Decision AI的交易决策
@@ -329,6 +330,8 @@ func buildUserPrompt(ctx *Context) string {
 			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
 			btcData.CurrentMACD, btcData.CurrentRSI7))
 	}
+	// 自定义提示词
+	sb.WriteString(fmt.Sprintf(ctx.CustomPrompt))
 
 	// 账户
 	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | 余额%.2f (%.1f%%) | 盈亏%+.2f%% | 保证金%.1f%% | 持仓%d个\n\n",
