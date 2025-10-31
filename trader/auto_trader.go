@@ -583,36 +583,14 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 		return fmt.Errorf("获取账户余额失败: %w", err)
 	}
 	availableBalance := 0.0
-	totalWalletBalance := 0.0
-	totalUnrealizedProfit := 0.0
 	if avail, ok := balance["availableBalance"].(float64); ok {
 		availableBalance = avail
 	}
-	if wallet, ok := balance["totalWalletBalance"].(float64); ok {
-		totalWalletBalance = wallet
-	}
-	if unrealized, ok := balance["totalUnrealizedProfit"].(float64); ok {
-		totalUnrealizedProfit = unrealized
-	}
-	totalEquity := totalWalletBalance + totalUnrealizedProfit
-
-	// 第一层约束：可用保证金检查
 	if requiredMargin > availableBalance {
 		return fmt.Errorf("❌ 保证金不足: 开仓需要%.2f U保证金（仓位%.2f U ÷ %dx杠杆），但可用保证金仅%.2f U",
 			requiredMargin, decision.PositionSizeUSD, decision.Leverage, availableBalance)
 	}
-
-	// 第二层约束：保证金使用率≤90%检查
-	currentMarginUsed := totalEquity - availableBalance
-	afterMarginUsed := currentMarginUsed + requiredMargin
-	afterMarginUsedPct := (afterMarginUsed / totalEquity) * 100
-	if afterMarginUsedPct > 90.0 {
-		return fmt.Errorf("❌ 保证金使用率超限: 开仓后使用率将达到%.1f%%（当前%.1f%% + 新增%.2fU），超过90%%上限",
-			afterMarginUsedPct, (currentMarginUsed/totalEquity)*100, requiredMargin)
-	}
-
-	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U，开仓后使用率%.1f%%（≤90%%）",
-		requiredMargin, availableBalance, afterMarginUsedPct)
+	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U", requiredMargin, availableBalance)
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
@@ -674,36 +652,14 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 		return fmt.Errorf("获取账户余额失败: %w", err)
 	}
 	availableBalance := 0.0
-	totalWalletBalance := 0.0
-	totalUnrealizedProfit := 0.0
 	if avail, ok := balance["availableBalance"].(float64); ok {
 		availableBalance = avail
 	}
-	if wallet, ok := balance["totalWalletBalance"].(float64); ok {
-		totalWalletBalance = wallet
-	}
-	if unrealized, ok := balance["totalUnrealizedProfit"].(float64); ok {
-		totalUnrealizedProfit = unrealized
-	}
-	totalEquity := totalWalletBalance + totalUnrealizedProfit
-
-	// 第一层约束：可用保证金检查
 	if requiredMargin > availableBalance {
 		return fmt.Errorf("❌ 保证金不足: 开仓需要%.2f U保证金（仓位%.2f U ÷ %dx杠杆），但可用保证金仅%.2f U",
 			requiredMargin, decision.PositionSizeUSD, decision.Leverage, availableBalance)
 	}
-
-	// 第二层约束：保证金使用率≤90%检查
-	currentMarginUsed := totalEquity - availableBalance
-	afterMarginUsed := currentMarginUsed + requiredMargin
-	afterMarginUsedPct := (afterMarginUsed / totalEquity) * 100
-	if afterMarginUsedPct > 90.0 {
-		return fmt.Errorf("❌ 保证金使用率超限: 开仓后使用率将达到%.1f%%（当前%.1f%% + 新增%.2fU），超过90%%上限",
-			afterMarginUsedPct, (currentMarginUsed/totalEquity)*100, requiredMargin)
-	}
-
-	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U，开仓后使用率%.1f%%（≤90%%）",
-		requiredMargin, availableBalance, afterMarginUsedPct)
+	log.Printf("  ✓ 保证金检查通过: 需要%.2f U，可用%.2f U", requiredMargin, availableBalance)
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
