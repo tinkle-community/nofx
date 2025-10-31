@@ -85,12 +85,12 @@ func (t *HyperliquidTrader) GetBalance() (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
 	// 🔍 调试：打印API返回的完整CrossMarginSummary结构
-	summaryJSON, _ := json.MarshalIndent(accountState.CrossMarginSummary, "  ", "  ")
+	summaryJSON, _ := json.MarshalIndent(accountState.MarginSummary, "  ", "  ")
 	log.Printf("🔍 [DEBUG] Hyperliquid API CrossMarginSummary完整数据:")
 	log.Printf("%s", string(summaryJSON))
 
-	accountValue, _ := strconv.ParseFloat(accountState.CrossMarginSummary.AccountValue, 64)
-	totalMarginUsed, _ := strconv.ParseFloat(accountState.CrossMarginSummary.TotalMarginUsed, 64)
+	accountValue, _ := strconv.ParseFloat(accountState.MarginSummary.AccountValue, 64)
+	totalMarginUsed, _ := strconv.ParseFloat(accountState.MarginSummary.TotalMarginUsed, 64)
 
 	// ⚠️ 关键修复：从所有持仓中累加真正的未实现盈亏
 	totalUnrealizedPnl := 0.0
