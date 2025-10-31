@@ -214,10 +214,11 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 		return nil, err
 	}
 
-	// 设置逐仓模式
-	if err := t.SetMarginType(symbol, futures.MarginTypeIsolated); err != nil {
+	// 设置全仓模式
+	if err := t.SetMarginType(symbol, futures.MarginTypeCross); err != nil {
 		return nil, err
 	}
+
 
 	// 格式化数量到正确精度
 	quantityStr, err := t.FormatQuantity(symbol, quantity)
@@ -261,7 +262,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 	}
 
 	// 设置逐仓模式
-	if err := t.SetMarginType(symbol, futures.MarginTypeIsolated); err != nil {
+	if err := t.SetMarginType(symbol, futures.MarginTypeCross); err != nil {
 		return nil, err
 	}
 

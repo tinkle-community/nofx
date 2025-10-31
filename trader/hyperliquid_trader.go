@@ -193,7 +193,7 @@ func (t *HyperliquidTrader) SetLeverage(symbol string, leverage int) error {
 	coin := convertSymbolToHyperliquid(symbol)
 
 	// 调用UpdateLeverage (leverage int, name string, isCross bool)
-	_, err := t.exchange.UpdateLeverage(t.ctx, leverage, coin, false) // false = 逐仓模式
+	_, err := t.exchange.UpdateLeverage(t.ctx, leverage, coin, true) // true = 全仓模式
 	if err != nil {
 		return fmt.Errorf("设置杠杆失败: %w", err)
 	}
