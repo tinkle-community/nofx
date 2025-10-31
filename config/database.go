@@ -46,6 +46,7 @@ func (d *Database) createTables() error {
 			provider TEXT NOT NULL,
 			enabled BOOLEAN DEFAULT 0,
 			api_key TEXT DEFAULT '',
+			endpoint TEXT DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -154,6 +155,7 @@ func (d *Database) createTables() error {
 		`ALTER TABLE traders ADD COLUMN custom_prompt TEXT DEFAULT ''`,
 		`ALTER TABLE traders ADD COLUMN override_base_prompt BOOLEAN DEFAULT 0`,
 		`ALTER TABLE traders ADD COLUMN is_cross_margin BOOLEAN DEFAULT 1`, // 默认为全仓模式
+		`ALTER TABLE ai_models ADD COLUMN endpoint TEXT DEFAULT ''`,
 	}
 
 	for _, query := range alterQueries {
@@ -249,14 +251,14 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 如果已经迁移过，直接返回
 	if count > 0 {
 		return nil
 	}
-	
+
 	log.Printf("🔄 开始迁移exchanges表...")
-	
+
 	// 创建新的exchanges表，使用复合主键
 	_, err = d.db.Exec(`
 		CREATE TABLE exchanges_new (
@@ -281,7 +283,7 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return fmt.Errorf("创建新exchanges表失败: %w", err)
 	}
-	
+
 	// 复制数据到新表
 	_, err = d.db.Exec(`
 		INSERT INTO exchanges_new 
@@ -290,19 +292,19 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return fmt.Errorf("复制数据失败: %w", err)
 	}
-	
+
 	// 删除旧表
 	_, err = d.db.Exec(`DROP TABLE exchanges`)
 	if err != nil {
 		return fmt.Errorf("删除旧表失败: %w", err)
 	}
-	
+
 	// 重命名新表
 	_, err = d.db.Exec(`ALTER TABLE exchanges_new RENAME TO exchanges`)
 	if err != nil {
 		return fmt.Errorf("重命名表失败: %w", err)
 	}
-	
+
 	// 重新创建触发器
 	_, err = d.db.Exec(`
 		CREATE TRIGGER IF NOT EXISTS update_exchanges_updated_at
@@ -315,7 +317,7 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return fmt.Errorf("创建触发器失败: %w", err)
 	}
-	
+
 	log.Printf("✅ exchanges表迁移完成")
 	return nil
 }
@@ -339,6 +341,7 @@ type AIModelConfig struct {
 	Provider  string    `json:"provider"`
 	Enabled   bool      `json:"enabled"`
 	APIKey    string    `json:"apiKey"`
+	Endpoint  string    `json:"endpoint,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -407,12 +410,12 @@ func (d *Database) EnsureAdminUser() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 如果已存在，直接返回
 	if count > 0 {
 		return nil
 	}
-	
+
 	// 创建admin用户（密码为空，因为管理员模式下不需要密码）
 	adminUser := &User{
 		ID:           "admin",
@@ -421,7 +424,7 @@ func (d *Database) EnsureAdminUser() error {
 		OTPSecret:    "",
 		OTPVerified:  true,
 	}
-	
+
 	return d.CreateUser(adminUser)
 }
 
@@ -432,7 +435,7 @@ func (d *Database) GetUserByEmail(email string) (*User, error) {
 		SELECT id, email, password_hash, otp_secret, otp_verified, created_at, updated_at
 		FROM users WHERE email = ?
 	`, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret, 
+		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret,
 		&user.OTPVerified, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -448,7 +451,7 @@ func (d *Database) GetUserByID(userID string) (*User, error) {
 		SELECT id, email, password_hash, otp_secret, otp_verified, created_at, updated_at
 		FROM users WHERE id = ?
 	`, userID).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret, 
+		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret,
 		&user.OTPVerified, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -466,7 +469,7 @@ func (d *Database) UpdateUserOTPVerified(userID string, verified bool) error {
 // GetAIModels 获取用户的AI模型配置
 func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 	rows, err := d.db.Query(`
-		SELECT id, user_id, name, provider, enabled, api_key, created_at, updated_at 
+		SELECT id, user_id, name, provider, enabled, api_key, COALESCE(endpoint, ''), created_at, updated_at 
 		FROM ai_models WHERE user_id = ? ORDER BY id
 	`, userID)
 	if err != nil {
@@ -479,8 +482,8 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 	for rows.Next() {
 		var model AIModelConfig
 		err := rows.Scan(
-			&model.ID, &model.UserID, &model.Name, &model.Provider, 
-			&model.Enabled, &model.APIKey,
+			&model.ID, &model.UserID, &model.Name, &model.Provider,
+			&model.Enabled, &model.APIKey, &model.Endpoint,
 			&model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
@@ -493,51 +496,66 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 }
 
 // UpdateAIModel 更新AI模型配置，如果不存在则创建用户特定配置
-func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey string) error {
+func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey string, endpoint string, customName string) error {
 	// 首先尝试更新现有的用户配置
-	result, err := d.db.Exec(`
-		UPDATE ai_models SET enabled = ?, api_key = ? WHERE id = ? AND user_id = ?
-	`, enabled, apiKey, id, userID)
+	// 如果提供了 customName（非空），同时更新 name 字段（用于自定义模型）
+	var result sql.Result
+	var err error
+	if customName != "" {
+		result, err = d.db.Exec(`
+			UPDATE ai_models SET enabled = ?, api_key = ?, endpoint = ?, name = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?
+		`, enabled, apiKey, endpoint, customName, id, userID)
+	} else {
+		result, err = d.db.Exec(`
+			UPDATE ai_models SET enabled = ?, api_key = ?, endpoint = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?
+		`, enabled, apiKey, endpoint, id, userID)
+	}
 	if err != nil {
 		return err
 	}
-	
+
 	// 检查是否有行被更新
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	
+
 	// 如果没有行被更新，说明用户没有这个模型的配置，需要创建
 	if rowsAffected == 0 {
-		// 获取模型的基本信息
 		var name, provider string
-		err = d.db.QueryRow(`
-			SELECT name, provider FROM ai_models WHERE provider = ? LIMIT 1
-		`, id).Scan(&name, &provider)
-		if err != nil {
-			// 如果找不到基本信息，使用默认值
-			if id == "deepseek" {
-				name = "DeepSeek AI"
-				provider = "deepseek"
-			} else if id == "qwen" {
-				name = "Qwen AI"
-				provider = "qwen"
-			} else {
-				name = id + " AI"
-				provider = id
+		// 如果提供了自定义名称，使用它；否则从已有记录或默认值获取
+		if customName != "" {
+			name = customName
+			provider = id // 对于自定义模型，provider 就是 id (custom)
+		} else {
+			// 获取模型的基本信息
+			err = d.db.QueryRow(`
+				SELECT name, provider FROM ai_models WHERE provider = ? LIMIT 1
+			`, id).Scan(&name, &provider)
+			if err != nil {
+				// 如果找不到基本信息，使用默认值
+				if id == "deepseek" {
+					name = "DeepSeek AI"
+					provider = "deepseek"
+				} else if id == "qwen" {
+					name = "Qwen AI"
+					provider = "qwen"
+				} else {
+					name = id + " AI"
+					provider = id
+				}
 			}
 		}
-		
+
 		// 创建用户特定的配置
 		userModelID := fmt.Sprintf("%s_%s", userID, id)
 		_, err = d.db.Exec(`
-			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-		`, userModelID, userID, name, provider, enabled, apiKey)
+			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, endpoint, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, userModelID, userID, name, provider, enabled, apiKey, endpoint)
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -564,7 +582,7 @@ func (d *Database) GetExchanges(userID string) ([]*ExchangeConfig, error) {
 		err := rows.Scan(
 			&exchange.ID, &exchange.UserID, &exchange.Name, &exchange.Type,
 			&exchange.Enabled, &exchange.APIKey, &exchange.SecretKey, &exchange.Testnet,
-			&exchange.HyperliquidWalletAddr, &exchange.AsterUser, 
+			&exchange.HyperliquidWalletAddr, &exchange.AsterUser,
 			&exchange.AsterSigner, &exchange.AsterPrivateKey,
 			&exchange.CreatedAt, &exchange.UpdatedAt,
 		)
@@ -580,7 +598,7 @@ func (d *Database) GetExchanges(userID string) ([]*ExchangeConfig, error) {
 // UpdateExchange 更新交易所配置，如果不存在则创建用户特定配置
 func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secretKey string, testnet bool, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey string) error {
 	log.Printf("🔧 UpdateExchange: userID=%s, id=%s, enabled=%v", userID, id, enabled)
-	
+
 	// 首先尝试更新现有的用户配置
 	result, err := d.db.Exec(`
 		UPDATE exchanges SET enabled = ?, api_key = ?, secret_key = ?, testnet = ?, 
@@ -591,20 +609,20 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 		log.Printf("❌ UpdateExchange: 更新失败: %v", err)
 		return err
 	}
-	
+
 	// 检查是否有行被更新
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		log.Printf("❌ UpdateExchange: 获取影响行数失败: %v", err)
 		return err
 	}
-	
+
 	log.Printf("📊 UpdateExchange: 影响行数 = %d", rowsAffected)
-	
+
 	// 如果没有行被更新，说明用户没有这个交易所的配置，需要创建
 	if rowsAffected == 0 {
 		log.Printf("💡 UpdateExchange: 没有现有记录，创建新记录")
-		
+
 		// 根据交易所ID确定基本信息
 		var name, typ string
 		if id == "binance" {
@@ -620,16 +638,16 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 			name = id + " Exchange"
 			typ = "cex"
 		}
-		
+
 		log.Printf("🆕 UpdateExchange: 创建新记录 ID=%s, name=%s, type=%s", id, name, typ)
-		
+
 		// 创建用户特定的配置，使用原始的交易所ID
 		_, err = d.db.Exec(`
 			INSERT INTO exchanges (id, user_id, name, type, enabled, api_key, secret_key, testnet, 
 			                       hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 		`, id, userID, name, typ, enabled, apiKey, secretKey, testnet, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey)
-		
+
 		if err != nil {
 			log.Printf("❌ UpdateExchange: 创建记录失败: %v", err)
 		} else {
@@ -637,7 +655,7 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 		}
 		return err
 	}
-	
+
 	log.Printf("✅ UpdateExchange: 更新现有记录成功")
 	return nil
 }
@@ -682,9 +700,9 @@ func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 	}
 	defer rows.Close()
 
-    var traders []*TraderRecord
+	var traders []*TraderRecord
 	for rows.Next() {
-        var trader TraderRecord
+		var trader TraderRecord
 		err := rows.Scan(
 			&trader.ID, &trader.UserID, &trader.Name, &trader.AIModelID, &trader.ExchangeID,
 			&trader.InitialBalance, &trader.ScanIntervalMinutes, &trader.IsRunning,
@@ -720,7 +738,7 @@ func (d *Database) DeleteTrader(userID, id string) error {
 
 // GetTraderConfig 获取交易员完整配置（包含AI模型和交易所信息）
 func (d *Database) GetTraderConfig(userID, traderID string) (*TraderRecord, *AIModelConfig, *ExchangeConfig, error) {
-    var trader TraderRecord
+	var trader TraderRecord
 	var aiModel AIModelConfig
 	var exchange ExchangeConfig
 

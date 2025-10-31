@@ -34,7 +34,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	if adminModeStr != "false" { // 默认为true
 		userID = "admin"
 	}
-	
+
 	// 获取数据库中的所有交易员
 	traders, err := database.GetTraders(userID)
 	if err != nil {
@@ -78,7 +78,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
-    for _, traderCfg := range traders {
+	for _, traderCfg := range traders {
 		// 获取AI模型配置
 		aiModels, err := database.GetAIModels(userID)
 		if err != nil {
@@ -130,7 +130,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		}
 
 		// 添加到TraderManager
-        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, btcEthLeverage, altcoinLeverage)
+		err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, btcEthLeverage, altcoinLeverage)
 		if err != nil {
 			log.Printf("❌ 添加交易员 %s 失败: %v", traderCfg.Name, err)
 			continue
@@ -148,7 +148,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 构建AutoTraderConfig
-    traderConfig := trader.AutoTraderConfig{
+	traderConfig := trader.AutoTraderConfig{
 		ID:                    traderCfg.ID,
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
@@ -169,6 +169,13 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		IsCrossMargin:         traderCfg.IsCrossMargin,
+	}
+
+	// 若为自定义模型，使用已有自定义API字段承载
+	if aiModelCfg.Provider == "custom" {
+		traderConfig.CustomAPIURL = aiModelCfg.Endpoint
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		traderConfig.CustomModelName = aiModelCfg.Name
 	}
 
 	// 根据交易所类型设置API密钥
@@ -196,7 +203,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -248,6 +255,13 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		IsCrossMargin:         traderCfg.IsCrossMargin,
 	}
 
+	// 若为自定义模型，使用已有自定义API字段承载
+	if aiModelCfg.Provider == "custom" {
+		traderConfig.CustomAPIURL = aiModelCfg.Endpoint
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		traderConfig.CustomModelName = aiModelCfg.Name
+	}
+
 	// 根据交易所类型设置API密钥
 	if exchangeCfg.ID == "binance" {
 		traderConfig.BinanceAPIKey = exchangeCfg.APIKey
@@ -273,7 +287,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -620,7 +634,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)

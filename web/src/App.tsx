@@ -18,12 +18,46 @@ import type {
   DecisionRecord,
   Statistics,
   TraderInfo,
+  AIModel,
 } from './types';
 
 type Page = 'competition' | 'traders' | 'trader';
 
 // 获取友好的AI模型名称
-function getModelDisplayName(modelId: string): string {
+function getModelDisplayName(modelId: string, models?: AIModel[]): string {
+  // 如果提供了模型列表，先尝试查找模型信息
+  if (models && models.length > 0) {
+    // 尝试多种匹配方式：精确ID、provider、或ID后缀
+    const model = models.find(m => {
+      const normalizedModelId = modelId.toLowerCase();
+      const normalizedMId = (m.id || '').toLowerCase();
+      const normalizedMProvider = (m.provider || '').toLowerCase();
+      
+      // 精确匹配
+      if (normalizedMId === normalizedModelId || normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      // 匹配ID后缀（例如：user123_custom 匹配 custom）
+      if (normalizedMId.includes('_') && normalizedMId.endsWith('_' + normalizedModelId)) {
+        return true;
+      }
+      
+      // 匹配provider（例如：custom）
+      if (normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // 如果找到模型且是CUSTOM类型，返回模型的name字段
+    if (model && (model.provider === 'custom' || model.id.toLowerCase() === 'custom' || model.id.toLowerCase().endsWith('_custom'))) {
+      return model.name || 'CUSTOM';
+    }
+  }
+  
+  // 默认处理逻辑
   switch (modelId.toLowerCase()) {
     case 'deepseek':
       return 'DeepSeek';
@@ -82,6 +116,11 @@ function App() {
   // 获取trader列表
   const { data: traders } = useSWR<TraderInfo[]>('traders', api.getTraders, {
     refreshInterval: 10000,
+  });
+
+  // 获取模型配置列表（用于显示模型名称）
+  const { data: models } = useSWR<AIModel[]>('model-configs', api.getModelConfigs, {
+    refreshInterval: 30000, // 模型配置更新频率较低
   });
 
   // 当获取到traders后，设置默认选中第一个
@@ -331,6 +370,7 @@ function App() {
             traders={traders}
             selectedTraderId={selectedTraderId}
             onTraderSelect={setSelectedTraderId}
+            models={models}
           />
         )}
       </main>
@@ -382,6 +422,7 @@ function TraderDetailsPage({
   traders,
   selectedTraderId,
   onTraderSelect,
+  models,
 }: {
   selectedTrader?: TraderInfo;
   traders?: TraderInfo[];
@@ -394,6 +435,7 @@ function TraderDetailsPage({
   stats?: Statistics;
   lastUpdate: string;
   language: Language;
+  models?: AIModel[];
 }) {
   if (!selectedTrader) {
     return (
@@ -455,7 +497,7 @@ function TraderDetailsPage({
           )}
         </div>
         <div className="flex items-center gap-4 text-sm" style={{ color: '#848E9C' }}>
-          <span>AI Model: <span className="font-semibold" style={{ color: selectedTrader.ai_model.includes('qwen') ? '#c084fc' : '#60a5fa' }}>{getModelDisplayName(selectedTrader.ai_model.split('_').pop() || selectedTrader.ai_model)}</span></span>
+          <span>AI Model: <span className="font-semibold" style={{ color: selectedTrader.ai_model.includes('qwen') ? '#c084fc' : '#60a5fa' }}>{getModelDisplayName(selectedTrader.ai_model.split('_').pop() || selectedTrader.ai_model, models)}</span></span>
           {status && (
             <>
               <span>•</span>
