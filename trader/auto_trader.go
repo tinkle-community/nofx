@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"
@@ -546,15 +547,29 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 // executeDecisionWithRecord 执行AI决策并记录详细信息
 func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	switch decision.Action {
-	case "open_long":
+	case decision.ActionOpenLong:
 		return at.executeOpenLongWithRecord(decision, actionRecord)
-	case "open_short":
+	case decision.ActionOpenShort:
 		return at.executeOpenShortWithRecord(decision, actionRecord)
-	case "close_long":
+	case decision.ActionCloseLong:
 		return at.executeCloseLongWithRecord(decision, actionRecord)
-	case "close_short":
+	case decision.ActionCloseShort:
 		return at.executeCloseShortWithRecord(decision, actionRecord)
-	case "hold", "wait":
+	case decision.ActionSetTakeProfit, decision.ActionAdjustTakeProfit:
+		return at.executeSetTakeProfit(decision, actionRecord)
+	case decision.ActionSetStopLoss, decision.ActionAdjustStopLoss:
+		return at.executeSetStopLoss(decision, actionRecord)
+	case decision.ActionCancelTakeProfit:
+		return at.executeCancelTakeProfit(decision, actionRecord)
+	case decision.ActionCancelStopLoss:
+		return at.executeCancelStopLoss(decision, actionRecord)
+	case decision.ActionPartialCloseLong:
+		return at.executePartialClose(decision, actionRecord, "LONG")
+	case decision.ActionPartialCloseShort:
+		return at.executePartialClose(decision, actionRecord, "SHORT")
+	case decision.ActionCancelOrders:
+		return at.executeCancelOrders(decision, actionRecord)
+	case decision.ActionHold, decision.ActionWait:
 		// 无需执行，仅记录
 		return nil
 	default:
@@ -718,6 +733,233 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 
 	log.Printf("  ✓ 平仓成功")
 	return nil
+}
+
+func (at *AutoTrader) executeSetTakeProfit(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	pos, side, err := at.getActivePosition(decision.Symbol)
+	if err != nil {
+		return err
+	}
+	if pos == nil {
+		return fmt.Errorf("未持有 %s 仓位，无法设置止盈", decision.Symbol)
+	}
+
+	price := positive(decision.NewTakeProfit, decision.TakeProfit)
+	if price <= 0 {
+		return fmt.Errorf("止盈价必须大于0")
+	}
+
+	quantity, err := at.resolveQuantity(decision, pos)
+	if err != nil {
+		return err
+	}
+
+	actionRecord.Price = price
+	actionRecord.Quantity = quantity
+
+	if err := at.trader.CancelTakeProfit(decision.Symbol, side); err != nil {
+		log.Printf("  ⚠ 取消旧止盈失败: %v", err)
+	}
+	if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, price); err != nil {
+		return fmt.Errorf("设置止盈失败: %w", err)
+	}
+
+	if stop := positive(decision.NewStopLoss, decision.StopLoss); stop > 0 {
+		if err := at.trader.CancelStopLoss(decision.Symbol, side); err != nil {
+			log.Printf("  ⚠ 同步取消旧止损失败: %v", err)
+		}
+		if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, stop); err != nil {
+			log.Printf("  ⚠ 同步设置止损失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (at *AutoTrader) executeSetStopLoss(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	pos, side, err := at.getActivePosition(decision.Symbol)
+	if err != nil {
+		return err
+	}
+	if pos == nil {
+		return fmt.Errorf("未持有 %s 仓位，无法设置止损", decision.Symbol)
+	}
+
+	price := positive(decision.NewStopLoss, decision.StopLoss)
+	if price <= 0 {
+		return fmt.Errorf("止损价必须大于0")
+	}
+
+	quantity, err := at.resolveQuantity(decision, pos)
+	if err != nil {
+		return err
+	}
+
+	actionRecord.Price = price
+	actionRecord.Quantity = quantity
+
+	if err := at.trader.CancelStopLoss(decision.Symbol, side); err != nil {
+		log.Printf("  ⚠ 取消旧止损失败: %v", err)
+	}
+	if err := at.trader.SetStopLoss(decision.Symbol, side, quantity, price); err != nil {
+		return fmt.Errorf("设置止损失败: %w", err)
+	}
+
+	if take := positive(decision.NewTakeProfit, decision.TakeProfit); take > 0 {
+		if err := at.trader.CancelTakeProfit(decision.Symbol, side); err != nil {
+			log.Printf("  ⚠ 同步取消旧止盈失败: %v", err)
+		}
+		if err := at.trader.SetTakeProfit(decision.Symbol, side, quantity, take); err != nil {
+			log.Printf("  ⚠ 同步设置止盈失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (at *AutoTrader) executeCancelTakeProfit(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	_, side, err := at.getActivePosition(decision.Symbol)
+	if err != nil {
+		return err
+	}
+	if err := at.trader.CancelTakeProfit(decision.Symbol, side); err != nil {
+		return fmt.Errorf("取消止盈失败: %w", err)
+	}
+	actionRecord.Success = true
+	return nil
+}
+
+func (at *AutoTrader) executeCancelStopLoss(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	_, side, err := at.getActivePosition(decision.Symbol)
+	if err != nil {
+		return err
+	}
+	if err := at.trader.CancelStopLoss(decision.Symbol, side); err != nil {
+		return fmt.Errorf("取消止损失败: %w", err)
+	}
+	actionRecord.Success = true
+	return nil
+}
+
+func (at *AutoTrader) executePartialClose(decision *decision.Decision, actionRecord *logger.DecisionAction, targetSide string) error {
+	pos, side, err := at.getActivePosition(decision.Symbol)
+	if err != nil {
+		return err
+	}
+	if pos == nil {
+		return fmt.Errorf("当前无 %s 仓位，无法部分平仓", decision.Symbol)
+	}
+	if side != targetSide {
+		return fmt.Errorf("%s 当前持仓方向为 %s，无法执行 %s", decision.Symbol, side, targetSide)
+	}
+
+	quantity := decision.Quantity
+	if quantity <= 0 && decision.PositionSizeUSD > 0 {
+		marketData, err := market.Get(decision.Symbol)
+		if err != nil {
+			return err
+		}
+		if marketData.CurrentPrice > 0 {
+			quantity = decision.PositionSizeUSD / marketData.CurrentPrice
+		}
+	}
+
+	if quantity <= 0 {
+		return fmt.Errorf("部分平仓需提供有效的数量或金额")
+	}
+
+	currentQty := 0.0
+	if v, ok := pos["positionAmt"].(float64); ok {
+		currentQty = math.Abs(v)
+	}
+	if currentQty <= 0 {
+		return fmt.Errorf("未能获取当前持仓数量，无法部分平仓")
+	}
+
+	if quantity >= currentQty {
+		quantity = currentQty
+	}
+
+	marketData, err := market.Get(decision.Symbol)
+	if err != nil {
+		return err
+	}
+
+	actionRecord.Quantity = quantity
+	actionRecord.Price = marketData.CurrentPrice
+
+	if targetSide == "LONG" {
+		_, err = at.trader.CloseLong(decision.Symbol, quantity)
+	} else {
+		_, err = at.trader.CloseShort(decision.Symbol, quantity)
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (at *AutoTrader) executeCancelOrders(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	if err := at.trader.CancelAllOrders(decision.Symbol); err != nil {
+		return fmt.Errorf("取消挂单失败: %w", err)
+	}
+	actionRecord.Success = true
+	return nil
+}
+
+func (at *AutoTrader) getActivePosition(symbol string) (map[string]interface{}, string, error) {
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, pos := range positions {
+		if pos["symbol"] == symbol {
+			side := strings.ToUpper(fmt.Sprintf("%v", pos["side"]))
+			if side != "LONG" && side != "SHORT" {
+				continue
+			}
+			return pos, side, nil
+		}
+	}
+	return nil, "", nil
+}
+
+func (at *AutoTrader) resolveQuantity(decision *decision.Decision, position map[string]interface{}) (float64, error) {
+	quantity := decision.Quantity
+	if quantity <= 0 && decision.PositionSizeUSD > 0 {
+		marketData, err := market.Get(decision.Symbol)
+		if err != nil {
+			return 0, err
+		}
+		if marketData.CurrentPrice > 0 {
+			quantity = decision.PositionSizeUSD / marketData.CurrentPrice
+		}
+	}
+
+	if quantity <= 0 {
+		raw := 0.0
+		if v, ok := position["positionAmt"].(float64); ok {
+			raw = v
+		}
+		quantity = math.Abs(raw)
+	}
+
+	if quantity <= 0 {
+		return 0, fmt.Errorf("无法确定操作数量")
+	}
+
+	return quantity, nil
+}
+
+func positive(values ...float64) float64 {
+	for _, v := range values {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
 }
 
 // GetID 获取trader ID

@@ -68,6 +68,43 @@ type Context struct {
 	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
 }
 
+// Action constants - keep in sync with AI prompt & frontend枚举
+const (
+	ActionOpenLong          = "open_long"
+	ActionOpenShort         = "open_short"
+	ActionCloseLong         = "close_long"
+	ActionCloseShort        = "close_short"
+	ActionHold              = "hold"
+	ActionWait              = "wait"
+	ActionSetTakeProfit     = "set_take_profit"
+	ActionAdjustTakeProfit  = "adjust_take_profit"
+	ActionSetStopLoss       = "set_stop_loss"
+	ActionAdjustStopLoss    = "adjust_stop_loss"
+	ActionCancelTakeProfit  = "cancel_take_profit"
+	ActionCancelStopLoss    = "cancel_stop_loss"
+	ActionPartialCloseLong  = "partial_close_long"
+	ActionPartialCloseShort = "partial_close_short"
+	ActionCancelOrders      = "cancel_orders"
+)
+
+var validActions = map[string]bool{
+	ActionOpenLong:          true,
+	ActionOpenShort:         true,
+	ActionCloseLong:         true,
+	ActionCloseShort:        true,
+	ActionHold:              true,
+	ActionWait:              true,
+	ActionSetTakeProfit:     true,
+	ActionAdjustTakeProfit:  true,
+	ActionSetStopLoss:       true,
+	ActionAdjustStopLoss:    true,
+	ActionCancelTakeProfit:  true,
+	ActionCancelStopLoss:    true,
+	ActionPartialCloseLong:  true,
+	ActionPartialCloseShort: true,
+	ActionCancelOrders:      true,
+}
+
 // Decision AI的交易决策
 type Decision struct {
 	Symbol          string  `json:"symbol"`
@@ -76,6 +113,9 @@ type Decision struct {
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
 	TakeProfit      float64 `json:"take_profit,omitempty"`
+	NewStopLoss     float64 `json:"new_stop_loss,omitempty"`
+	NewTakeProfit   float64 `json:"new_take_profit,omitempty"`
+	Quantity        float64 `json:"quantity,omitempty"`
 	Confidence      int     `json:"confidence,omitempty"` // 信心度 (0-100)
 	RiskUSD         float64 `json:"risk_usd,omitempty"`   // 最大美元风险
 	Reasoning       string  `json:"reasoning"`
@@ -300,7 +340,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n\n")
 	sb.WriteString("**字段说明**:\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait | set_take_profit | adjust_take_profit | set_stop_loss | adjust_stop_loss | cancel_take_profit | cancel_stop_loss | partial_close_long | partial_close_short | cancel_orders\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
 	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
 
@@ -500,8 +540,8 @@ func fixMissingQuotes(jsonStr string) string {
 
 // validateDecisions 验证所有决策（需要账户信息和杠杆配置）
 func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
-	for i, decision := range decisions {
-		if err := validateDecision(&decision, accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
+	for i := range decisions {
+		if err := validateDecision(&decisions[i], accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
 			return fmt.Errorf("决策 #%d 验证失败: %w", i+1, err)
 		}
 	}
@@ -532,23 +572,17 @@ func findMatchingBracket(s string, start int) int {
 
 // validateDecision 验证单个决策的有效性
 func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
-	// 验证action
-	validActions := map[string]bool{
-		"open_long":   true,
-		"open_short":  true,
-		"close_long":  true,
-		"close_short": true,
-		"hold":        true,
-		"wait":        true,
-	}
+	d.Action = normaliseAction(d.Action)
 
+	if strings.TrimSpace(d.Symbol) == "" {
+		return fmt.Errorf("symbol不能为空")
+	}
 	if !validActions[d.Action] {
 		return fmt.Errorf("无效的action: %s", d.Action)
 	}
 
-	// 开仓操作必须提供完整参数
-	if d.Action == "open_long" || d.Action == "open_short" {
-		// 根据币种使用配置的杠杆上限
+	switch d.Action {
+	case ActionOpenLong, ActionOpenShort:
 		maxLeverage := altcoinLeverage          // 山寨币使用配置的杠杆
 		maxPositionValue := accountEquity * 1.5 // 山寨币最多1.5倍账户净值
 		if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
@@ -617,7 +651,72 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥3.0:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
 				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
 		}
+	case ActionSetTakeProfit, ActionAdjustTakeProfit:
+		target := firstPositive(d.NewTakeProfit, d.TakeProfit)
+		if target <= 0 {
+			return fmt.Errorf("设置止盈时必须提供新的take_profit/new_take_profit")
+		}
+	case ActionSetStopLoss, ActionAdjustStopLoss:
+		target := firstPositive(d.NewStopLoss, d.StopLoss)
+		if target <= 0 {
+			return fmt.Errorf("设置止损时必须提供新的stop_loss/new_stop_loss")
+		}
+	case ActionPartialCloseLong, ActionPartialCloseShort:
+		if d.Quantity <= 0 && d.PositionSizeUSD <= 0 {
+			return fmt.Errorf("部分平仓需要quantity或position_size_usd")
+		}
+	case ActionCancelTakeProfit, ActionCancelStopLoss, ActionCancelOrders, ActionCloseLong, ActionCloseShort, ActionHold, ActionWait:
+		// 无额外参数要求
+	default:
+		return fmt.Errorf("不支持的action: %s", d.Action)
 	}
 
 	return nil
+}
+
+func firstPositive(values ...float64) float64 {
+	for _, v := range values {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
+}
+
+func normaliseAction(action string) string {
+	a := strings.ToLower(strings.TrimSpace(action))
+	switch a {
+	case ActionOpenLong:
+		return ActionOpenLong
+	case ActionOpenShort:
+		return ActionOpenShort
+	case ActionCloseLong:
+		return ActionCloseLong
+	case ActionCloseShort:
+		return ActionCloseShort
+	case ActionHold:
+		return ActionHold
+	case ActionWait:
+		return ActionWait
+	case ActionPartialCloseShort:
+		return ActionPartialCloseShort
+	case ActionPartialCloseLong:
+		return ActionPartialCloseLong
+	case ActionCancelOrders:
+		return ActionCancelOrders
+	case "adjust_tp", "adjusttakeprofit":
+		return ActionAdjustTakeProfit
+	case "adjust_sl", "adjuststoploss":
+		return ActionAdjustStopLoss
+	case "set_tp", "settakeprofit":
+		return ActionSetTakeProfit
+	case "set_sl", "setstoploss":
+		return ActionSetStopLoss
+	case "cancel_tp":
+		return ActionCancelTakeProfit
+	case "cancel_sl":
+		return ActionCancelStopLoss
+	default:
+		return a
+	}
 }

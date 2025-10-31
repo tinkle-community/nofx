@@ -486,6 +486,18 @@ func (t *HyperliquidTrader) CancelAllOrders(symbol string) error {
 	return nil
 }
 
+// CancelTakeProfit 取消止盈单（Hyperliquid目前不支持单独取消，需手动处理）
+func (t *HyperliquidTrader) CancelTakeProfit(symbol string, positionSide string) error {
+	log.Printf("  ⚠ Hyperliquid 暂不支持API单独取消止盈，请手动检查 %s (%s)", symbol, positionSide)
+	return nil
+}
+
+// CancelStopLoss 取消止损单（Hyperliquid目前不支持单独取消，需手动处理）
+func (t *HyperliquidTrader) CancelStopLoss(symbol string, positionSide string) error {
+	log.Printf("  ⚠ Hyperliquid 暂不支持API单独取消止损，请手动检查 %s (%s)", symbol, positionSide)
+	return nil
+}
+
 // GetMarketPrice 获取市场价格
 func (t *HyperliquidTrader) GetMarketPrice(symbol string) (float64, error) {
 	coin := convertSymbolToHyperliquid(symbol)

@@ -949,6 +949,22 @@ func (t *AsterTrader) CancelAllOrders(symbol string) error {
 	return err
 }
 
+// CancelTakeProfit 取消止盈单（Aster暂不区分止盈/止损，直接取消全部挂单）
+func (t *AsterTrader) CancelTakeProfit(symbol string, positionSide string) error {
+	if err := t.CancelAllOrders(symbol); err != nil {
+		return fmt.Errorf("取消止盈失败: %w", err)
+	}
+	return nil
+}
+
+// CancelStopLoss 取消止损单（Aster暂不区分止盈/止损，直接取消全部挂单）
+func (t *AsterTrader) CancelStopLoss(symbol string, positionSide string) error {
+	if err := t.CancelAllOrders(symbol); err != nil {
+		return fmt.Errorf("取消止损失败: %w", err)
+	}
+	return nil
+}
+
 // FormatQuantity 格式化数量（实现Trader接口）
 func (t *AsterTrader) FormatQuantity(symbol string, quantity float64) (string, error) {
 	formatted, err := t.formatQuantity(symbol, quantity)

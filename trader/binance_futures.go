@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -413,6 +414,62 @@ func (t *FuturesTrader) CancelAllOrders(symbol string) error {
 	}
 
 	log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
+	return nil
+}
+
+// CancelTakeProfit 取消止盈单
+func (t *FuturesTrader) CancelTakeProfit(symbol string, positionSide string) error {
+	return t.cancelConditionalOrders(symbol, positionSide,
+		futures.OrderTypeTakeProfit, futures.OrderTypeTakeProfitMarket)
+}
+
+// CancelStopLoss 取消止损单
+func (t *FuturesTrader) CancelStopLoss(symbol string, positionSide string) error {
+	return t.cancelConditionalOrders(symbol, positionSide,
+		futures.OrderTypeStop, futures.OrderTypeStopMarket)
+}
+
+func (t *FuturesTrader) cancelConditionalOrders(symbol string, positionSide string, orderTypes ...futures.OrderType) error {
+	orders, err := t.client.NewListOpenOrdersService().
+		Symbol(symbol).
+		Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("获取挂单失败: %w", err)
+	}
+
+	typeSet := make(map[futures.OrderType]bool)
+	for _, typ := range orderTypes {
+		typeSet[typ] = true
+	}
+
+	positionSide = strings.ToUpper(positionSide)
+	cancelled := 0
+
+	for _, order := range orders {
+		if len(typeSet) > 0 && !typeSet[order.Type] {
+			continue
+		}
+		if positionSide != "" && !strings.EqualFold(string(order.PositionSide), positionSide) {
+			continue
+		}
+
+		_, err := t.client.NewCancelOrderService().
+			Symbol(symbol).
+			OrderID(order.OrderID).
+			Do(context.Background())
+		if err != nil {
+			log.Printf("  ⚠ 取消挂单失败 id=%d: %v", order.OrderID, err)
+			continue
+		}
+		cancelled++
+	}
+
+	if cancelled > 0 {
+		log.Printf("  ✓ %s 已取消 %d 条条件单", symbol, cancelled)
+	} else {
+		log.Printf("  ℹ %s 未找到符合条件的挂单", symbol)
+	}
+
 	return nil
 }
 

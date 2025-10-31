@@ -33,6 +33,12 @@ type Trader interface {
 	// SetTakeProfit 设置止盈单
 	SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
 
+	// CancelTakeProfit 取消止盈单
+	CancelTakeProfit(symbol string, positionSide string) error
+
+	// CancelStopLoss 取消止损单
+	CancelStopLoss(symbol string, positionSide string) error
+
 	// CancelAllOrders 取消该币种的所有挂单
 	CancelAllOrders(symbol string) error
 
