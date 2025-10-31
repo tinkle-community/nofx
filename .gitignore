@@ -37,3 +37,4 @@ web/node_modules/
 node_modules/
 web/dist/
 web/.vite/
+.claude/settings.local.json
