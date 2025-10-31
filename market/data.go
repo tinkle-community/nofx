@@ -136,8 +136,19 @@ func Get(symbol string) (*Data, error) {
 	}, nil
 }
 
-// getKlines 从Binance获取K线数据
+// getKlines 获取K线数据（支持 Binance 和 OKX）
 func getKlines(symbol, interval string, limit int) ([]Kline, error) {
+	// 根据 symbol 格式判断交易所
+	// OKX 格式: BTC-USDT-SWAP (带连字符和SWAP后缀)
+	// Binance 格式: BTCUSDT (无连字符)
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return getKlinesOKX(symbol, interval, limit)
+	}
+	return getKlinesBinance(symbol, interval, limit)
+}
+
+// getKlinesBinance 从Binance获取K线数据
+func getKlinesBinance(symbol, interval string, limit int) ([]Kline, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=%s&limit=%d",
 		symbol, interval, limit)
 
@@ -175,6 +186,78 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 			Close:     close,
 			Volume:    volume,
 			CloseTime: closeTime,
+		}
+	}
+
+	return klines, nil
+}
+
+// getKlinesOKX 从OKX获取K线数据
+func getKlinesOKX(symbol, interval string, limit int) ([]Kline, error) {
+	// 转换时间间隔格式：3m -> 3m, 4h -> 4H (OKX要求大写H)
+	okxInterval := interval
+	if strings.HasSuffix(interval, "h") {
+		okxInterval = strings.TrimSuffix(interval, "h") + "H"
+	}
+
+	url := fmt.Sprintf("https://www.okx.com/api/v5/market/candles?instId=%s&bar=%s&limit=%d",
+		symbol, okxInterval, limit)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// OKX 返回格式: {"code":"0","msg":"","data":[[...],[...]]}
+	var okxResp struct {
+		Code string          `json:"code"`
+		Msg  string          `json:"msg"`
+		Data [][]interface{} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &okxResp); err != nil {
+		return nil, fmt.Errorf("解析OKX响应失败: %w, body: %s", err, string(body))
+	}
+
+	if okxResp.Code != "0" {
+		return nil, fmt.Errorf("OKX API错误: code=%s, msg=%s", okxResp.Code, okxResp.Msg)
+	}
+
+	if len(okxResp.Data) == 0 {
+		return nil, fmt.Errorf("OKX返回空数据")
+	}
+
+	// OKX K线数据格式: [timestamp, open, high, low, close, volume, volCcy, volCcyQuote, confirm]
+	// 时间是从新到旧，需要反转
+	klines := make([]Kline, len(okxResp.Data))
+	for i, item := range okxResp.Data {
+		if len(item) < 7 {
+			continue
+		}
+
+		timestamp, _ := parseFloat(item[0])
+		open, _ := parseFloat(item[1])
+		high, _ := parseFloat(item[2])
+		low, _ := parseFloat(item[3])
+		close, _ := parseFloat(item[4])
+		volume, _ := parseFloat(item[5])
+
+		// OKX返回的是从新到旧，需要反转索引
+		reverseIdx := len(okxResp.Data) - 1 - i
+		klines[reverseIdx] = Kline{
+			OpenTime:  int64(timestamp),
+			Open:      open,
+			High:      high,
+			Low:       low,
+			Close:     close,
+			Volume:    volume,
+			CloseTime: int64(timestamp), // OKX 只有一个时间戳
 		}
 	}
 
@@ -386,8 +469,17 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 	return data
 }
 
-// getOpenInterestData 获取OI数据
+// getOpenInterestData 获取OI数据（支持 Binance 和 OKX）
 func getOpenInterestData(symbol string) (*OIData, error) {
+	// 根据 symbol 格式判断交易所
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return getOpenInterestDataOKX(symbol)
+	}
+	return getOpenInterestDataBinance(symbol)
+}
+
+// getOpenInterestDataBinance 从 Binance 获取OI数据
+func getOpenInterestDataBinance(symbol string) (*OIData, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
 
 	resp, err := http.Get(url)
@@ -419,8 +511,59 @@ func getOpenInterestData(symbol string) (*OIData, error) {
 	}, nil
 }
 
-// getFundingRate 获取资金费率
+// getOpenInterestDataOKX 从 OKX 获取OI数据
+func getOpenInterestDataOKX(symbol string) (*OIData, error) {
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=%s", symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var okxResp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstId string `json:"instId"`
+			Oi     string `json:"oi"`
+			OiCcy  string `json:"oiCcy"`
+			Ts     string `json:"ts"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &okxResp); err != nil {
+		return nil, err
+	}
+
+	if okxResp.Code != "0" || len(okxResp.Data) == 0 {
+		return nil, fmt.Errorf("OKX OI API错误: code=%s", okxResp.Code)
+	}
+
+	oi, _ := strconv.ParseFloat(okxResp.Data[0].Oi, 64)
+
+	return &OIData{
+		Latest:  oi,
+		Average: oi * 0.999, // 近似平均值
+	}, nil
+}
+
+// getFundingRate 获取资金费率（支持 Binance 和 OKX）
 func getFundingRate(symbol string) (float64, error) {
+	// 根据 symbol 格式判断交易所
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return getFundingRateOKX(symbol)
+	}
+	return getFundingRateBinance(symbol)
+}
+
+// getFundingRateBinance 从 Binance 获取资金费率
+func getFundingRateBinance(symbol string) (float64, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
 
 	resp, err := http.Get(url)
@@ -449,6 +592,43 @@ func getFundingRate(symbol string) (float64, error) {
 	}
 
 	rate, _ := strconv.ParseFloat(result.LastFundingRate, 64)
+	return rate, nil
+}
+
+// getFundingRateOKX 从 OKX 获取资金费率
+func getFundingRateOKX(symbol string) (float64, error) {
+	url := fmt.Sprintf("https://www.okx.com/api/v5/public/funding-rate?instId=%s", symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var okxResp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstId      string `json:"instId"`
+			FundingRate string `json:"fundingRate"`
+			FundingTime string `json:"fundingTime"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &okxResp); err != nil {
+		return 0, err
+	}
+
+	if okxResp.Code != "0" || len(okxResp.Data) == 0 {
+		return 0, fmt.Errorf("OKX Funding Rate API错误: code=%s", okxResp.Code)
+	}
+
+	rate, _ := strconv.ParseFloat(okxResp.Data[0].FundingRate, 64)
 	return rate, nil
 }
 
@@ -529,6 +709,13 @@ func formatFloatSlice(values []float64) string {
 // Normalize 标准化symbol,确保是USDT交易对
 func Normalize(symbol string) string {
 	symbol = strings.ToUpper(symbol)
+
+	// OKX 格式已经标准化（如 BTC-USDT-SWAP），不需要处理
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return symbol
+	}
+
+	// Binance 格式：确保以 USDT 结尾
 	if strings.HasSuffix(symbol, "USDT") {
 		return symbol
 	}
