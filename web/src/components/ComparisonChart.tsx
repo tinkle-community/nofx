@@ -14,12 +14,15 @@ import useSWR from 'swr';
 import { api } from '../lib/api';
 import type { CompetitionTraderData } from '../types';
 import { getTraderColor } from '../utils/traderColors';
+import { useLanguage } from '../contexts/LanguageContext';
+import { t } from '../i18n/translations';
 
 interface ComparisonChartProps {
   traders: CompetitionTraderData[];
 }
 
 export function ComparisonChart({ traders }: ComparisonChartProps) {
+  const { language } = useLanguage();
   // 获取所有trader的历史数据 - 使用单个useSWR并发请求所有trader数据
   // 生成唯一的key，当traders变化时会触发重新请求
   const tradersKey = traders.map(t => t.trader_id).sort().join(',');
@@ -134,8 +137,8 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     return (
       <div className="text-center py-16" style={{ color: '#848E9C' }}>
         <div className="text-6xl mb-4 opacity-50">📊</div>
-        <div className="text-lg font-semibold mb-2">暂无历史数据</div>
-        <div className="text-sm">运行几个周期后将显示对比曲线</div>
+        <div className="text-lg font-semibold mb-2">{t('noHistoricalData', language)}</div>
+        <div className="text-sm">{t('dataWillAppear', language)}</div>
       </div>
     );
   }
@@ -311,25 +314,25 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
       {/* Stats */}
       <div className="mt-6 grid grid-cols-4 gap-4 pt-5" style={{ borderTop: '1px solid #2B3139' }}>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>对比模式</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('comparisonMode', language)}</div>
           <div className="text-base font-bold" style={{ color: '#EAECEF' }}>PnL %</div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>数据点数</div>
-          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{combinedData.length} 个</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('dataPoints', language)}</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{t('count', language, {count: combinedData.length})}</div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>当前差距</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('currentGap', language)}</div>
           <div className="text-base font-bold mono" style={{ color: currentGap > 1 ? '#F0B90B' : '#EAECEF' }}>
             {currentGap.toFixed(2)}%
           </div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>显示范围</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('displayRange', language)}</div>
           <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {combinedData.length > MAX_DISPLAY_POINTS
-              ? `最近 ${MAX_DISPLAY_POINTS}`
-              : '全部数据'}
+              ? `${t('recent', language)} ${MAX_DISPLAY_POINTS}`
+              : t('allData', language)}
           </div>
         </div>
       </div>

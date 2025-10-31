@@ -66,6 +66,10 @@ type AutoTraderConfig struct {
 
 	// 仓位模式
 	IsCrossMargin bool // true=全仓模式, false=逐仓模式
+	
+	// 币种配置
+	DefaultCoins    []string // 默认币种列表（从数据库获取）
+	TradingCoins    []string // 实际交易币种列表
 }
 
 // AutoTrader 自动交易器
@@ -82,6 +86,8 @@ type AutoTrader struct {
 	dailyPnL              float64
 	customPrompt          string // 自定义交易策略prompt
 	overrideBasePrompt    bool   // 是否覆盖基础prompt
+	defaultCoins          []string // 默认币种列表（从数据库获取）
+	tradingCoins          []string // 实际交易币种列表
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
@@ -184,6 +190,8 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		mcpClient:             mcpClient,
 		decisionLogger:        decisionLogger,
 		initialBalance:        config.InitialBalance,
+		defaultCoins:          config.DefaultCoins,
+		tradingCoins:          config.TradingCoins,
 		lastResetTime:         time.Now(),
 		startTime:             time.Now(),
 		callCount:             0,
@@ -502,29 +510,11 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		}
 	}
 
-	// 3. 获取合并的候选币种池（AI500 + OI Top，去重）
-	// 无论有没有持仓，都分析相同数量的币种（让AI看到所有好机会）
-	// AI会根据保证金使用率和现有持仓情况，自己决定是否要换仓
-	const ai500Limit = 20 // AI500取前20个评分最高的币种
-
-	// 获取合并后的币种池（AI500 + OI Top）
-	mergedPool, err := pool.GetMergedCoinPool(ai500Limit)
+	// 3. 获取交易员的候选币种池
+	candidateCoins, err := at.getCandidateCoins()
 	if err != nil {
-		return nil, fmt.Errorf("获取合并币种池失败: %w", err)
+		return nil, fmt.Errorf("获取候选币种失败: %w", err)
 	}
-
-	// 构建候选币种列表（包含来源信息）
-	var candidateCoins []decision.CandidateCoin
-	for _, symbol := range mergedPool.AllSymbols {
-		sources := mergedPool.SymbolSources[symbol]
-		candidateCoins = append(candidateCoins, decision.CandidateCoin{
-			Symbol:  symbol,
-			Sources: sources, // "ai500" 和/或 "oi_top"
-		})
-	}
-
-	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种",
-		ai500Limit, len(candidateCoins))
 
 	// 4. 计算总盈亏
 	totalPnL := totalEquity - at.initialBalance
@@ -775,6 +765,11 @@ func (at *AutoTrader) GetAIModel() string {
 	return at.aiModel
 }
 
+// GetExchange 获取交易所
+func (at *AutoTrader) GetExchange() string {
+	return at.exchange
+}
+
 // SetCustomPrompt 设置自定义交易策略prompt
 func (at *AutoTrader) SetCustomPrompt(prompt string) {
 	at.customPrompt = prompt
@@ -983,4 +978,75 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 	}
 
 	return sorted
+}
+
+// getCandidateCoins 获取交易员的候选币种列表
+func (at *AutoTrader) getCandidateCoins() ([]decision.CandidateCoin, error) {
+	if len(at.tradingCoins) == 0 {
+		// 使用数据库配置的默认币种列表
+		var candidateCoins []decision.CandidateCoin
+		
+		if len(at.defaultCoins) > 0 {
+			// 使用数据库中配置的默认币种
+			for _, coin := range at.defaultCoins {
+				symbol := normalizeSymbol(coin)
+				candidateCoins = append(candidateCoins, decision.CandidateCoin{
+					Symbol:  symbol,
+					Sources: []string{"default"}, // 标记为数据库默认币种
+				})
+			}
+			log.Printf("📋 [%s] 使用数据库默认币种: %d个币种 %v",
+				at.name, len(candidateCoins), at.defaultCoins)
+			return candidateCoins, nil
+		} else {
+			// 如果数据库中没有配置默认币种，则使用AI500+OI Top作为fallback
+			const ai500Limit = 20 // AI500取前20个评分最高的币种
+			
+			mergedPool, err := pool.GetMergedCoinPool(ai500Limit)
+			if err != nil {
+				return nil, fmt.Errorf("获取合并币种池失败: %w", err)
+			}
+
+			// 构建候选币种列表（包含来源信息）
+			for _, symbol := range mergedPool.AllSymbols {
+				sources := mergedPool.SymbolSources[symbol]
+				candidateCoins = append(candidateCoins, decision.CandidateCoin{
+					Symbol:  symbol,
+					Sources: sources, // "ai500" 和/或 "oi_top"
+				})
+			}
+
+			log.Printf("📋 [%s] 数据库无默认币种配置，使用AI500+OI Top: AI500前%d + OI_Top20 = 总计%d个候选币种",
+				at.name, ai500Limit, len(candidateCoins))
+			return candidateCoins, nil
+		}
+	} else {
+		// 使用自定义币种列表
+		var candidateCoins []decision.CandidateCoin
+		for _, coin := range at.tradingCoins {
+			// 确保币种格式正确（转为大写USDT交易对）
+			symbol := normalizeSymbol(coin)
+			candidateCoins = append(candidateCoins, decision.CandidateCoin{
+				Symbol:  symbol,
+				Sources: []string{"custom"}, // 标记为自定义来源
+			})
+		}
+
+		log.Printf("📋 [%s] 使用自定义币种: %d个币种 %v",
+			at.name, len(candidateCoins), at.tradingCoins)
+		return candidateCoins, nil
+	}
+}
+
+// normalizeSymbol 标准化币种符号（确保以USDT结尾）
+func normalizeSymbol(symbol string) string {
+	// 转为大写
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	
+	// 确保以USDT结尾
+	if !strings.HasSuffix(symbol, "USDT") {
+		symbol = symbol + "USDT"
+	}
+	
+	return symbol
 }

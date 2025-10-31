@@ -208,26 +208,37 @@ func main() {
 		log.Fatalf("❌ 加载交易员失败: %v", err)
 	}
 
-	// 获取数据库中的所有交易员配置（用于显示，使用default用户）
-	traders, err := database.GetTraders("default")
+	// 获取所有用户的交易员配置（用于显示）
+	userIDs, err := database.GetAllUsers()
 	if err != nil {
-		log.Fatalf("❌ 获取交易员列表失败: %v", err)
+		log.Printf("⚠️ 获取用户列表失败: %v", err)
+		userIDs = []string{"default"} // 回退到default用户
+	}
+
+	var allTraders []*config.TraderRecord
+	for _, userID := range userIDs {
+		traders, err := database.GetTraders(userID)
+		if err != nil {
+			log.Printf("⚠️ 获取用户 %s 的交易员失败: %v", userID, err)
+			continue
+		}
+		allTraders = append(allTraders, traders...)
 	}
 
 	// 显示加载的交易员信息
 	fmt.Println()
 	fmt.Println("🤖 数据库中的AI交易员配置:")
-	if len(traders) == 0 {
+	if len(allTraders) == 0 {
 		fmt.Println("  • 暂无配置的交易员，请通过Web界面创建")
 	} else {
-		for _, trader := range traders {
+		for _, trader := range allTraders {
 			status := "停止"
 			if trader.IsRunning {
 				status = "运行中"
 			}
-			fmt.Printf("  • %s (%s + %s) - 初始资金: %.0f USDT [%s]\n",
+			fmt.Printf("  • %s (%s + %s) - 用户: %s - 初始资金: %.0f USDT [%s]\n",
 				trader.Name, strings.ToUpper(trader.AIModelID), strings.ToUpper(trader.ExchangeID), 
-				trader.InitialBalance, status)
+				trader.UserID, trader.InitialBalance, status)
 		}
 	}
 

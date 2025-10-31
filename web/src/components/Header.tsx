@@ -14,9 +14,8 @@ export function Header({ simple = false }: HeaderProps) {
         <div className="flex items-center justify-between">
           {/* Left - Logo and Title */}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xl" 
-                 style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
-              ⚡
+            <div className="flex items-center justify-center">
+              <img src="/icons/nofx.svg?v=2" alt="NOFX" className="h-10 w-auto" />
             </div>
             <div>
               <h1 className="text-xl font-bold" style={{ color: '#EAECEF' }}>

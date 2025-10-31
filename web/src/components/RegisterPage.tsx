@@ -75,9 +75,8 @@ export function RegisterPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl"
-               style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
-            ⚡
+          <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <img src="/icons/nofx.svg?v=2" alt="NOFX" className="w-16 h-16" />
           </div>
           <h1 className="text-2xl font-bold" style={{ color: '#EAECEF' }}>
             {t('appTitle', language)}

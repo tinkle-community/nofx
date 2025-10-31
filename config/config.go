@@ -55,8 +55,6 @@ type Config struct {
 	Traders            []TraderConfig `json:"traders"`
 	UseDefaultCoins    bool           `json:"use_default_coins"` // 是否使用默认主流币种列表
 	DefaultCoins       []string       `json:"default_coins"`     // 默认主流币种池
-	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
-	OITopAPIURL        string         `json:"oi_top_api_url"`
 	APIServerPort      int            `json:"api_server_port"`
 	MaxDailyLoss       float64        `json:"max_daily_loss"`
 	MaxDrawdown        float64        `json:"max_drawdown"`
@@ -76,8 +74,8 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
-	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
-	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
+	// 设置默认值：确保使用默认币种列表
+	if !config.UseDefaultCoins {
 		config.UseDefaultCoins = true
 	}
 

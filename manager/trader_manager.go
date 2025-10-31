@@ -1,11 +1,13 @@
 package manager
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"nofx/config"
 	"nofx/trader"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,28 +30,33 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	// 根据admin_mode确定用户ID
-	adminModeStr, _ := database.GetSystemConfig("admin_mode")
-	userID := "default"
-	if adminModeStr != "false" { // 默认为true
-		userID = "admin"
-	}
-	
-	// 获取数据库中的所有交易员
-	traders, err := database.GetTraders(userID)
+	// 获取所有用户
+	userIDs, err := database.GetAllUsers()
 	if err != nil {
-		return fmt.Errorf("获取交易员列表失败: %w", err)
+		return fmt.Errorf("获取用户列表失败: %w", err)
 	}
 
-	log.Printf("📋 加载数据库中的交易员配置: %d 个 (用户: %s)", len(traders), userID)
+	log.Printf("📋 发现 %d 个用户，开始加载所有交易员配置...", len(userIDs))
 
-	// 获取系统配置
-	coinPoolURL, _ := database.GetSystemConfig("coin_pool_api_url")
+	var allTraders []*config.TraderRecord
+	for _, userID := range userIDs {
+		// 获取每个用户的交易员
+		traders, err := database.GetTraders(userID)
+		if err != nil {
+			log.Printf("⚠️ 获取用户 %s 的交易员失败: %v", userID, err)
+			continue
+		}
+		log.Printf("📋 用户 %s: %d 个交易员", userID, len(traders))
+		allTraders = append(allTraders, traders...)
+	}
+
+	log.Printf("📋 总共加载 %d 个交易员配置", len(allTraders))
+
+	// 获取系统配置（不包含信号源，信号源现在为用户级别）
 	maxDailyLossStr, _ := database.GetSystemConfig("max_daily_loss")
 	maxDrawdownStr, _ := database.GetSystemConfig("max_drawdown")
 	stopTradingMinutesStr, _ := database.GetSystemConfig("stop_trading_minutes")
-	btcEthLeverageStr, _ := database.GetSystemConfig("btc_eth_leverage")
-	altcoinLeverageStr, _ := database.GetSystemConfig("altcoin_leverage")
+	defaultCoinsStr, _ := database.GetSystemConfig("default_coins")
 
 	// 解析配置
 	maxDailyLoss := 10.0 // 默认值
@@ -67,20 +74,19 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		stopTradingMinutes = val
 	}
 
-	btcEthLeverage := 5 // 默认值
-	if val, err := strconv.Atoi(btcEthLeverageStr); err == nil && val > 0 {
-		btcEthLeverage = val
-	}
-
-	altcoinLeverage := 5 // 默认值
-	if val, err := strconv.Atoi(altcoinLeverageStr); err == nil && val > 0 {
-		altcoinLeverage = val
+	// 解析默认币种列表
+	var defaultCoins []string
+	if defaultCoinsStr != "" {
+		if err := json.Unmarshal([]byte(defaultCoinsStr), &defaultCoins); err != nil {
+			log.Printf("⚠️ 解析默认币种配置失败: %v，使用空列表", err)
+			defaultCoins = []string{}
+		}
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
-    for _, traderCfg := range traders {
-		// 获取AI模型配置
-		aiModels, err := database.GetAIModels(userID)
+    for _, traderCfg := range allTraders {
+		// 获取AI模型配置（使用交易员所属的用户ID）
+		aiModels, err := database.GetAIModels(traderCfg.UserID)
 		if err != nil {
 			log.Printf("⚠️  获取AI模型配置失败: %v", err)
 			continue
@@ -104,8 +110,8 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 			continue
 		}
 
-		// 获取交易所配置
-		exchanges, err := database.GetExchanges(userID)
+		// 获取交易所配置（使用交易员所属的用户ID）
+		exchanges, err := database.GetExchanges(traderCfg.UserID)
 		if err != nil {
 			log.Printf("⚠️  获取交易所配置失败: %v", err)
 			continue
@@ -129,8 +135,18 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 			continue
 		}
 
+		// 获取用户信号源配置
+		var coinPoolURL, oiTopURL string
+		if userSignalSource, err := database.GetUserSignalSource(traderCfg.UserID); err == nil {
+			coinPoolURL = userSignalSource.CoinPoolURL
+			oiTopURL = userSignalSource.OITopURL
+		} else {
+			// 如果用户没有配置信号源，使用空字符串
+			log.Printf("🔍 用户 %s 暂未配置信号源", traderCfg.UserID)
+		}
+
 		// 添加到TraderManager
-        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, btcEthLeverage, altcoinLeverage)
+        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
 		if err != nil {
 			log.Printf("❌ 添加交易员 %s 失败: %v", traderCfg.Name, err)
 			continue
@@ -142,9 +158,34 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 }
 
 // addTraderFromConfig 内部方法：从配置添加交易员（不加锁，因为调用方已加锁）
-func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes, btcEthLeverage, altcoinLeverage int) error {
+func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string) error {
 	if _, exists := tm.traders[traderCfg.ID]; exists {
 		return fmt.Errorf("trader ID '%s' 已存在", traderCfg.ID)
+	}
+
+	// 处理交易币种列表
+	var tradingCoins []string
+	if traderCfg.TradingSymbols != "" {
+		// 解析逗号分隔的交易币种列表
+		symbols := strings.Split(traderCfg.TradingSymbols, ",")
+		for _, symbol := range symbols {
+			symbol = strings.TrimSpace(symbol)
+			if symbol != "" {
+				tradingCoins = append(tradingCoins, symbol)
+			}
+		}
+	}
+	
+	// 如果没有指定交易币种，使用默认币种
+	if len(tradingCoins) == 0 {
+		tradingCoins = defaultCoins
+	}
+
+	// 根据交易员配置决定是否使用信号源
+	var effectiveCoinPoolURL string
+	if traderCfg.UseCoinPool && coinPoolURL != "" {
+		effectiveCoinPoolURL = coinPoolURL
+		log.Printf("✓ 交易员 %s 启用 COIN POOL 信号源: %s", traderCfg.Name, coinPoolURL)
 	}
 
 	// 构建AutoTraderConfig
@@ -157,18 +198,20 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		BinanceSecretKey:      "",
 		HyperliquidPrivateKey: "",
 		HyperliquidTestnet:    exchangeCfg.Testnet,
-		CoinPoolAPIURL:        coinPoolURL,
+		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
 		QwenKey:               "",
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
-		BTCETHLeverage:        btcEthLeverage,
-		AltcoinLeverage:       altcoinLeverage,
+		BTCETHLeverage:        traderCfg.BTCETHLeverage,
+		AltcoinLeverage:       traderCfg.AltcoinLeverage,
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		IsCrossMargin:         traderCfg.IsCrossMargin,
+		DefaultCoins:          defaultCoins,
+		TradingCoins:          tradingCoins,
 	}
 
 	// 根据交易所类型设置API密钥
@@ -216,12 +259,37 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 // AddTrader 从数据库配置添加trader (移除旧版兼容性)
 
 // AddTraderFromDB 从数据库配置添加trader
-func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes, btcEthLeverage, altcoinLeverage int) error {
+func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
 	if _, exists := tm.traders[traderCfg.ID]; exists {
 		return fmt.Errorf("trader ID '%s' 已存在", traderCfg.ID)
+	}
+
+	// 处理交易币种列表
+	var tradingCoins []string
+	if traderCfg.TradingSymbols != "" {
+		// 解析逗号分隔的交易币种列表
+		symbols := strings.Split(traderCfg.TradingSymbols, ",")
+		for _, symbol := range symbols {
+			symbol = strings.TrimSpace(symbol)
+			if symbol != "" {
+				tradingCoins = append(tradingCoins, symbol)
+			}
+		}
+	}
+	
+	// 如果没有指定交易币种，使用默认币种
+	if len(tradingCoins) == 0 {
+		tradingCoins = defaultCoins
+	}
+
+	// 根据交易员配置决定是否使用信号源
+	var effectiveCoinPoolURL string
+	if traderCfg.UseCoinPool && coinPoolURL != "" {
+		effectiveCoinPoolURL = coinPoolURL
+		log.Printf("✓ 交易员 %s 启用 COIN POOL 信号源: %s", traderCfg.Name, coinPoolURL)
 	}
 
 	// 构建AutoTraderConfig
@@ -234,18 +302,20 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		BinanceSecretKey:      "",
 		HyperliquidPrivateKey: "",
 		HyperliquidTestnet:    exchangeCfg.Testnet,
-		CoinPoolAPIURL:        coinPoolURL,
+		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
 		QwenKey:               "",
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
-		BTCETHLeverage:        btcEthLeverage,
-		AltcoinLeverage:       altcoinLeverage,
+		BTCETHLeverage:        traderCfg.BTCETHLeverage,
+		AltcoinLeverage:       traderCfg.AltcoinLeverage,
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		IsCrossMargin:         traderCfg.IsCrossMargin,
+		DefaultCoins:          defaultCoins,
+		TradingCoins:          tradingCoins,
 	}
 
 	// 根据交易所类型设置API密钥
@@ -373,6 +443,7 @@ func (tm *TraderManager) GetComparisonData() (map[string]interface{}, error) {
 			"trader_id":       t.GetID(),
 			"trader_name":     t.GetName(),
 			"ai_model":        t.GetAIModel(),
+			"exchange":        t.GetExchange(),
 			"total_equity":    account["total_equity"],
 			"total_pnl":       account["total_pnl"],
 			"total_pnl_pct":   account["total_pnl_pct"],
@@ -389,42 +460,55 @@ func (tm *TraderManager) GetComparisonData() (map[string]interface{}, error) {
 	return comparison, nil
 }
 
-// GetCompetitionData 获取竞赛数据（特定用户的所有交易员）
-func (tm *TraderManager) GetCompetitionData(userID string) (map[string]interface{}, error) {
+// GetCompetitionData 获取竞赛数据（全平台所有交易员）
+func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
 	comparison := make(map[string]interface{})
 	traders := make([]map[string]interface{}, 0)
 
-	// 只获取该用户的交易员
-	for traderID, t := range tm.traders {
-		// 检查trader是否属于该用户（通过ID前缀判断）
-		// 格式：userID_traderName
-		if !isUserTrader(traderID, userID) {
-			continue
-		}
-
+	// 获取全平台所有交易员
+	for _, t := range tm.traders {
 		account, err := t.GetAccountInfo()
-		if err != nil {
-			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", traderID, err)
-			continue
-		}
-
 		status := t.GetStatus()
-		traders = append(traders, map[string]interface{}{
-			"trader_id":       t.GetID(),
-			"trader_name":     t.GetName(),
-			"ai_model":        t.GetAIModel(),
-			"total_equity":    account["total_equity"],
-			"total_pnl":       account["total_pnl"],
-			"total_pnl_pct":   account["total_pnl_pct"],
-			"position_count":  account["position_count"],
-			"margin_used_pct": account["margin_used_pct"],
-			"is_running":      status["is_running"],
-		})
+		
+		var traderData map[string]interface{}
+		
+		if err != nil {
+			// 如果获取账户信息失败，使用默认值但仍然显示交易员
+			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", t.GetID(), err)
+			traderData = map[string]interface{}{
+				"trader_id":       t.GetID(),
+				"trader_name":     t.GetName(),
+				"ai_model":        t.GetAIModel(),
+				"exchange":        t.GetExchange(),
+				"total_equity":    0.0,
+				"total_pnl":       0.0,
+				"total_pnl_pct":   0.0,
+				"position_count":  0,
+				"margin_used_pct": 0.0,
+				"is_running":      status["is_running"],
+				"error":           "账户数据获取失败",
+			}
+		} else {
+			// 正常情况下使用真实账户数据
+			traderData = map[string]interface{}{
+				"trader_id":       t.GetID(),
+				"trader_name":     t.GetName(),
+				"ai_model":        t.GetAIModel(),
+				"exchange":        t.GetExchange(),
+				"total_equity":    account["total_equity"],
+				"total_pnl":       account["total_pnl"],
+				"total_pnl_pct":   account["total_pnl_pct"],
+				"position_count":  account["position_count"],
+				"margin_used_pct": account["margin_used_pct"],
+				"is_running":      status["is_running"],
+			}
+		}
+		
+		traders = append(traders, traderData)
 	}
-
 	comparison["traders"] = traders
 	comparison["count"] = len(traders)
 
@@ -474,13 +558,21 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 
 	log.Printf("📋 为用户 %s 加载交易员配置: %d 个", userID, len(traders))
 
-	// 获取系统配置
-	coinPoolURL, _ := database.GetSystemConfig("coin_pool_api_url")
+	// 获取系统配置（不包含信号源，信号源现在为用户级别）
 	maxDailyLossStr, _ := database.GetSystemConfig("max_daily_loss")
 	maxDrawdownStr, _ := database.GetSystemConfig("max_drawdown")
 	stopTradingMinutesStr, _ := database.GetSystemConfig("stop_trading_minutes")
-	btcEthLeverageStr, _ := database.GetSystemConfig("btc_eth_leverage")
-	altcoinLeverageStr, _ := database.GetSystemConfig("altcoin_leverage")
+	defaultCoinsStr, _ := database.GetSystemConfig("default_coins")
+
+	// 获取用户信号源配置
+	var coinPoolURL, oiTopURL string
+	if userSignalSource, err := database.GetUserSignalSource(userID); err == nil {
+		coinPoolURL = userSignalSource.CoinPoolURL
+		oiTopURL = userSignalSource.OITopURL
+		log.Printf("📡 加载用户 %s 的信号源配置: COIN POOL=%s, OI TOP=%s", userID, coinPoolURL, oiTopURL)
+	} else {
+		log.Printf("🔍 用户 %s 暂未配置信号源", userID)
+	}
 
 	// 解析配置
 	maxDailyLoss := 10.0 // 默认值
@@ -498,14 +590,13 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 		stopTradingMinutes = val
 	}
 
-	btcEthLeverage := 5 // 默认值
-	if val, err := strconv.Atoi(btcEthLeverageStr); err == nil && val > 0 {
-		btcEthLeverage = val
-	}
-
-	altcoinLeverage := 5 // 默认值
-	if val, err := strconv.Atoi(altcoinLeverageStr); err == nil && val > 0 {
-		altcoinLeverage = val
+	// 解析默认币种列表
+	var defaultCoins []string
+	if defaultCoinsStr != "" {
+		if err := json.Unmarshal([]byte(defaultCoinsStr), &defaultCoins); err != nil {
+			log.Printf("⚠️ 解析默认币种配置失败: %v，使用空列表", err)
+			defaultCoins = []string{}
+		}
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
@@ -567,7 +658,7 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 		}
 
 		// 使用现有的方法加载交易员
-		err = tm.loadSingleTrader(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, btcEthLeverage, altcoinLeverage)
+		err = tm.loadSingleTrader(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
 		if err != nil {
 			log.Printf("⚠️ 加载交易员 %s 失败: %v", traderCfg.Name, err)
 		}
@@ -577,7 +668,32 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 }
 
 // loadSingleTrader 加载单个交易员（从现有代码提取的公共逻辑）
-func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes, btcEthLeverage, altcoinLeverage int) error {
+func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string) error {
+	// 处理交易币种列表
+	var tradingCoins []string
+	if traderCfg.TradingSymbols != "" {
+		// 解析逗号分隔的交易币种列表
+		symbols := strings.Split(traderCfg.TradingSymbols, ",")
+		for _, symbol := range symbols {
+			symbol = strings.TrimSpace(symbol)
+			if symbol != "" {
+				tradingCoins = append(tradingCoins, symbol)
+			}
+		}
+	}
+	
+	// 如果没有指定交易币种，使用默认币种
+	if len(tradingCoins) == 0 {
+		tradingCoins = defaultCoins
+	}
+
+	// 根据交易员配置决定是否使用信号源
+	var effectiveCoinPoolURL string
+	if traderCfg.UseCoinPool && coinPoolURL != "" {
+		effectiveCoinPoolURL = coinPoolURL
+		log.Printf("✓ 交易员 %s 启用 COIN POOL 信号源: %s", traderCfg.Name, coinPoolURL)
+	}
+
 	// 构建AutoTraderConfig
 	traderConfig := trader.AutoTraderConfig{
 		ID:                    traderCfg.ID,
@@ -585,14 +701,16 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
 		InitialBalance:        traderCfg.InitialBalance,
+		BTCETHLeverage:        traderCfg.BTCETHLeverage,
+		AltcoinLeverage:       traderCfg.AltcoinLeverage,
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
-		CoinPoolAPIURL:        coinPoolURL,
-		BTCETHLeverage:        btcEthLeverage,
-		AltcoinLeverage:       altcoinLeverage,
+		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		IsCrossMargin:         traderCfg.IsCrossMargin,
+		DefaultCoins:          defaultCoins,
+		TradingCoins:          tradingCoins,
 	}
 
 	// 根据交易所类型设置API密钥

@@ -3,7 +3,7 @@ export type Language = 'en' | 'zh';
 export const translations = {
   en: {
     // Header
-    appTitle: 'AI Trading System',
+    appTitle: 'NOFX',
     subtitle: 'Multi-AI Model Trading Platform',
     aiTraders: 'AI Traders',
     details: 'Details',
@@ -64,11 +64,17 @@ export const translations = {
     recent: 'Recent',
     allData: 'All Data',
     cycles: 'Cycles',
+    
+    // Comparison Chart
+    comparisonMode: 'Comparison Mode',
+    dataPoints: 'Data Points',
+    currentGap: 'Current Gap',
+    count: '{count} pts',
 
     // Competition Page
     aiCompetition: 'AI Competition',
     traders: 'traders',
-    liveBattle: 'Qwen vs DeepSeek · Live Battle',
+    liveBattle: 'Live Battle',
     leader: 'Leader',
     leaderboard: 'Leaderboard',
     live: 'LIVE',
@@ -147,6 +153,38 @@ export const translations = {
     useTestnet: 'Use Testnet',
     enabled: 'Enabled',
     save: 'Save',
+    
+    // AI Model Configuration
+    officialAPI: 'Official API',
+    customAPI: 'Custom API',
+    apiKey: 'API Key',
+    customAPIURL: 'Custom API URL',
+    enterAPIKey: 'Enter API Key',
+    enterCustomAPIURL: 'Enter custom API endpoint URL',
+    useOfficialAPI: 'Use official API service',
+    useCustomAPI: 'Use custom API endpoint',
+
+    // Trader Configuration
+    positionMode: 'Position Mode',
+    crossMarginMode: 'Cross Margin',
+    isolatedMarginMode: 'Isolated Margin',
+    crossMarginDescription: 'Cross margin: All positions share account balance as collateral',
+    isolatedMarginDescription: 'Isolated margin: Each position manages collateral independently, risk isolation',
+    leverageConfiguration: 'Leverage Configuration',
+    btcEthLeverage: 'BTC/ETH Leverage',
+    altcoinLeverage: 'Altcoin Leverage',
+    leverageRecommendation: 'Recommended: BTC/ETH 5-10x, Altcoins 3-5x for risk control',
+    tradingSymbols: 'Trading Symbols',
+    tradingSymbolsPlaceholder: 'Enter symbols, comma separated (e.g., BTCUSDT,ETHUSDT,SOLUSDT)',
+    selectSymbols: 'Select Symbols',
+    selectTradingSymbols: 'Select Trading Symbols',
+    selectedSymbolsCount: 'Selected {count} symbols',
+    clearSelection: 'Clear All',
+    confirmSelection: 'Confirm',
+    tradingSymbolsDescription: 'Empty = use default symbols. Must end with USDT (e.g., BTCUSDT, ETHUSDT)',
+    btcEthLeverageValidation: 'BTC/ETH leverage must be between 1-50x',
+    altcoinLeverageValidation: 'Altcoin leverage must be between 1-20x',
+    invalidSymbolFormat: 'Invalid symbol format: {symbol}, must end with USDT',
 
     // Loading & Error
     loading: 'Loading...',
@@ -207,7 +245,7 @@ export const translations = {
   },
   zh: {
     // Header
-    appTitle: 'AI交易系统',
+    appTitle: 'NOFX',
     subtitle: '多AI模型交易平台',
     aiTraders: 'AI交易员',
     details: '详情',
@@ -268,22 +306,28 @@ export const translations = {
     recent: '最近',
     allData: '全部数据',
     cycles: '个',
+    
+    // Comparison Chart
+    comparisonMode: '对比模式',
+    dataPoints: '数据点数',
+    currentGap: '当前差距',
+    count: '{count} 个',
 
     // Competition Page
     aiCompetition: 'AI竞赛',
-    traders: '位交易者',
-    liveBattle: 'Qwen vs DeepSeek · 实时对战',
-    leader: '🥇 领先者',
-    leaderboard: '🥇 排行榜',
-    live: '直播',
-    performanceComparison: '📈 表现对比',
-    realTimePnL: '实时盈亏百分比',
-    headToHead: '⚔️ 正面对决',
+    traders: '交易员',
+    liveBattle: '实时对战',
+    leader: '领先者',
+    leaderboard: '排行榜',
+    live: '实时',
+    performanceComparison: '表现对比',
+    realTimePnL: '实时收益率',
+    headToHead: '正面对决',
     leadingBy: '领先 {gap}%',
     behindBy: '落后 {gap}%',
-    equity: '净值',
-    pnl: '盈亏',
-    pos: '仓位',
+    equity: '权益',
+    pnl: '收益',
+    pos: '持仓',
 
     // AI Learning
     aiLearning: 'AI学习与反思',
@@ -351,6 +395,38 @@ export const translations = {
     useTestnet: '使用测试网',
     enabled: '启用',
     save: '保存',
+    
+    // AI Model Configuration
+    officialAPI: '官方API',
+    customAPI: '自定义API',
+    apiKey: 'API密钥',
+    customAPIURL: '自定义API地址',
+    enterAPIKey: '请输入API密钥',
+    enterCustomAPIURL: '请输入自定义API端点地址',
+    useOfficialAPI: '使用官方API服务',
+    useCustomAPI: '使用自定义API端点',
+
+    // Trader Configuration
+    positionMode: '仓位模式',
+    crossMarginMode: '全仓模式',
+    isolatedMarginMode: '逐仓模式',
+    crossMarginDescription: '全仓模式：所有仓位共享账户余额作为保证金',
+    isolatedMarginDescription: '逐仓模式：每个仓位独立管理保证金，风险隔离',
+    leverageConfiguration: '杠杆配置',
+    btcEthLeverage: 'BTC/ETH杠杆',
+    altcoinLeverage: '山寨币杠杆',
+    leverageRecommendation: '推荐：BTC/ETH 5-10倍，山寨币 3-5倍，控制风险',
+    tradingSymbols: '交易币种',
+    tradingSymbolsPlaceholder: '输入币种，逗号分隔（如：BTCUSDT,ETHUSDT,SOLUSDT）',
+    selectSymbols: '选择币种',
+    selectTradingSymbols: '选择交易币种',
+    selectedSymbolsCount: '已选择 {count} 个币种',
+    clearSelection: '清空选择',
+    confirmSelection: '确认选择',
+    tradingSymbolsDescription: '留空 = 使用默认币种。必须以USDT结尾（如：BTCUSDT, ETHUSDT）',
+    btcEthLeverageValidation: 'BTC/ETH杠杆必须在1-50倍之间',
+    altcoinLeverageValidation: '山寨币杠杆必须在1-20倍之间',
+    invalidSymbolFormat: '无效的币种格式：{symbol}，必须以USDT结尾',
 
     // Loading & Error
     loading: '加载中...',

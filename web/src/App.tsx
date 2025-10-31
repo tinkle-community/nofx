@@ -201,8 +201,8 @@ function App() {
           <div className="relative flex items-center">
             {/* Left - Logo and Title */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xl" style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
-                ⚡
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img src="/icons/nofx.svg?v=2" alt="NOFX" className="w-8 h-8" />
               </div>
               <div>
                 <h1 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
@@ -224,7 +224,7 @@ function App() {
                   : { background: 'transparent', color: '#848E9C' }
                 }
               >
-                竞赛
+                {t('aiCompetition', language)}
               </button>
               <button
                 onClick={() => setCurrentPage('traders')}
@@ -264,7 +264,7 @@ function App() {
               {/* Admin Mode Indicator */}
               {systemConfig?.admin_mode && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
-                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>⚡ 管理员模式</span>
+                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>⚡ {t('adminMode', language)}</span>
                 </div>
               )}
 
@@ -438,7 +438,7 @@ function TraderDetailsPage({
           {/* Trader Selector */}
           {traders && traders.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm" style={{ color: '#848E9C' }}>切换交易员:</span>
+              <span className="text-sm" style={{ color: '#848E9C' }}>{t('switchTrader', language)}:</span>
               <select
                 value={selectedTraderId}
                 onChange={(e) => onTraderSelect(e.target.value)}
