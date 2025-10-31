@@ -160,14 +160,30 @@ func main() {
 	log.Printf("✓ 配置数据库初始化成功")
 	fmt.Println()
 
-	// 设置默认主流币种列表
-	defaultCoins := []string{"BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "HYPE"}
+	// 从数据库读取默认主流币种列表
+	defaultCoinsJSON, _ := database.GetSystemConfig("default_coins")
+	var defaultCoins []string
+
+	if defaultCoinsJSON != "" {
+		// 尝试从JSON解析
+		if err := json.Unmarshal([]byte(defaultCoinsJSON), &defaultCoins); err != nil {
+			log.Printf("⚠️  解析default_coins配置失败: %v，使用硬编码默认值", err)
+			defaultCoins = []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "HYPEUSDT"}
+		} else {
+			log.Printf("✓ 从数据库加载默认币种列表（共%d个）: %v", len(defaultCoins), defaultCoins)
+		}
+	} else {
+		// 如果数据库中没有配置，使用硬编码默认值
+		defaultCoins = []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "HYPEUSDT"}
+		log.Printf("⚠️  数据库中未配置default_coins，使用硬编码默认值")
+	}
+
 	pool.SetDefaultCoins(defaultCoins)
 
 	// 设置是否使用默认主流币种
 	pool.SetUseDefaultCoins(useDefaultCoins)
 	if useDefaultCoins {
-		log.Printf("✓ 已启用默认主流币种列表（BTC、ETH、SOL、BNB、XRP、DOGE、ADA、HYPE）")
+		log.Printf("✓ 已启用默认主流币种列表")
 	}
 
 	// 设置币种池API URL
