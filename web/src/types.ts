@@ -100,6 +100,7 @@ export interface AIModel {
   provider: string;
   enabled: boolean;
   apiKey?: string;
+  endpoint?: string;
 }
 
 export interface Exchange {
@@ -133,6 +134,8 @@ export interface UpdateModelConfigRequest {
     [key: string]: {
       enabled: boolean;
       api_key: string;
+      endpoint?: string;
+      name?: string; // 自定义模型的名称，使用数据库的 name 字段
     };
   };
 }
