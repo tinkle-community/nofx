@@ -32,6 +32,11 @@ type FuturesTrader struct {
 // NewFuturesTrader 创建合约交易器
 func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
+
+	// 🔧 修复时间戳问题：启用时间同步
+	futures.UseTestnet = false // 确保使用正式网络
+	client.NewSetServerTimeService().Do(context.Background()) // 同步服务器时间
+
 	return &FuturesTrader{
 		client:        client,
 		cacheDuration: 15 * time.Second, // 15秒缓存
