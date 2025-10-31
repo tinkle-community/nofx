@@ -181,13 +181,14 @@ func fetchCoinPool() ([]CoinInfo, error) {
 		return nil, fmt.Errorf("币种列表为空")
 	}
 
-	// 设置IsAvailable标志
+	// 设置IsAvailable标志并转换为OKX格式
 	coins := response.Data.Coins
 	for i := range coins {
 		coins[i].IsAvailable = true
+		coins[i].Pair = normalizeSymbolToOKX(coins[i].Pair) // 转换为 OKX 格式
 	}
 
-	log.Printf("✓ 成功获取%d个币种", len(coins))
+	log.Printf("✓ 成功获取%d个币种（已转换为OKX格式）", len(coins))
 	return coins, nil
 }
 
@@ -245,6 +246,11 @@ func loadCoinPoolCache() ([]CoinInfo, error) {
 		log.Printf("📂 缓存数据时间: %s（%.1f分钟前）",
 			cache.FetchedAt.Format("2006-01-02 15:04:05"),
 			cacheAge.Minutes())
+	}
+
+	// 转换为 OKX 格式（兼容旧缓存）
+	for i := range cache.Coins {
+		cache.Coins[i].Pair = normalizeSymbolToOKX(cache.Coins[i].Pair)
 	}
 
 	return cache.Coins, nil
@@ -362,12 +368,34 @@ func endsWith(s, suffix string) bool {
 	return s[len(s)-len(suffix):] == suffix
 }
 
-// convertSymbolsToCoins 将币种符号列表转换为CoinInfo列表
+// normalizeSymbolToOKX 将币种符号标准化为 OKX SWAP 格式
+func normalizeSymbolToOKX(symbol string) string {
+	symbol = strings.ToUpper(symbol)
+
+	// 如果已经是 OKX SWAP 格式（如 BTC-USDT-SWAP），直接返回
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-SWAP") {
+		return symbol
+	}
+
+	// 将 Binance 格式（如 BTCUSDT）转换为 OKX SWAP 格式（如 BTC-USDT-SWAP）
+	// 1. 先确保以 USDT 结尾
+	if !strings.HasSuffix(symbol, "USDT") {
+		symbol = symbol + "USDT"
+	}
+
+	// 2. 提取基础货币（去掉USDT后缀）
+	baseCurrency := strings.TrimSuffix(symbol, "USDT")
+
+	// 3. 转换为 OKX SWAP 格式：{BASE}-USDT-SWAP
+	return baseCurrency + "-USDT-SWAP"
+}
+
+// convertSymbolsToCoins 将币种符号列表转换为CoinInfo列表（统一转换为OKX格式）
 func convertSymbolsToCoins(symbols []string) []CoinInfo {
 	coins := make([]CoinInfo, 0, len(symbols))
 	for _, symbol := range symbols {
 		coins = append(coins, CoinInfo{
-			Pair:        symbol,
+			Pair:        normalizeSymbolToOKX(symbol), // 转换为 OKX 格式
 			Score:       0,
 			IsAvailable: true,
 		})
@@ -572,7 +600,9 @@ func GetOITopSymbols() ([]string, error) {
 
 	var symbols []string
 	for _, pos := range positions {
+		// 先用旧的 normalizeSymbol 转为 Binance 格式，再转为 OKX 格式
 		symbol := normalizeSymbol(pos.Symbol)
+		symbol = normalizeSymbolToOKX(symbol)
 		symbols = append(symbols, symbol)
 	}
 
