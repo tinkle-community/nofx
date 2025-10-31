@@ -1,8 +1,61 @@
 import useSWR from 'swr';
 import { api } from '../lib/api';
-import type { CompetitionData } from '../types';
+import type { CompetitionData, AIModel } from '../types';
 import { ComparisonChart } from './ComparisonChart';
 import { getTraderColor } from '../utils/traderColors';
+
+// 获取友好的AI模型名称
+function getModelDisplayName(modelId: string, models?: AIModel[]): string {
+  // 如果提供了模型列表，先尝试查找模型信息
+  if (models && models.length > 0) {
+    // 尝试多种匹配方式：精确ID、provider、或ID后缀
+    const model = models.find(m => {
+      const normalizedModelId = modelId.toLowerCase();
+      const normalizedMId = (m.id || '').toLowerCase();
+      const normalizedMProvider = (m.provider || '').toLowerCase();
+      
+      // 精确匹配
+      if (normalizedMId === normalizedModelId || normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      // 匹配ID后缀（例如：user123_custom 匹配 custom）
+      if (normalizedMId.includes('_') && normalizedMId.endsWith('_' + normalizedModelId)) {
+        return true;
+      }
+      
+      // 匹配provider（例如：custom）
+      if (normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // 如果找到模型且是CUSTOM类型，返回模型的name字段
+    if (model && (model.provider === 'custom' || model.id.toLowerCase() === 'custom' || model.id.toLowerCase().endsWith('_custom'))) {
+      return model.name || 'CUSTOM';
+    }
+  }
+  
+  // 默认处理逻辑
+  switch (modelId.toLowerCase()) {
+    case 'deepseek':
+      return 'DeepSeek';
+    case 'qwen':
+      return 'Qwen';
+    case 'claude':
+      return 'Claude';
+    case 'gpt4':
+    case 'gpt-4':
+      return 'GPT-4';
+    case 'gpt3.5':
+    case 'gpt-3.5':
+      return 'GPT-3.5';
+    default:
+      return modelId.toUpperCase();
+  }
+}
 
 export function CompetitionPage() {
   const { data: competition } = useSWR<CompetitionData>(
@@ -14,6 +67,11 @@ export function CompetitionPage() {
       dedupingInterval: 10000,
     }
   );
+
+  // 获取模型配置列表（用于显示模型名称）
+  const { data: models } = useSWR<AIModel[]>('model-configs', api.getModelConfigs, {
+    refreshInterval: 30000, // 模型配置更新频率较低
+  });
 
   if (!competition || !competition.traders) {
     return (
@@ -127,7 +185,7 @@ export function CompetitionPage() {
                       <div>
                         <div className="font-bold text-sm" style={{ color: '#EAECEF' }}>{trader.trader_name}</div>
                         <div className="text-xs mono font-semibold" style={{ color: traderColor }}>
-                          {trader.ai_model.toUpperCase()}
+                          {getModelDisplayName(trader.ai_model.split('_').pop() || trader.ai_model, models)}
                         </div>
                       </div>
                     </div>

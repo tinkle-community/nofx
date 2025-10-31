@@ -8,7 +8,40 @@ import { getExchangeIcon } from './ExchangeIcons';
 import { getModelIcon } from './ModelIcons';
 
 // 获取友好的AI模型名称
-function getModelDisplayName(modelId: string): string {
+function getModelDisplayName(modelId: string, models?: AIModel[]): string {
+  // 如果提供了模型列表，先尝试查找模型信息
+  if (models && models.length > 0) {
+    // 尝试多种匹配方式：精确ID、provider、或ID后缀
+    const model = models.find(m => {
+      const normalizedModelId = modelId.toLowerCase();
+      const normalizedMId = (m.id || '').toLowerCase();
+      const normalizedMProvider = (m.provider || '').toLowerCase();
+      
+      // 精确匹配
+      if (normalizedMId === normalizedModelId || normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      // 匹配ID后缀（例如：user123_custom 匹配 custom）
+      if (normalizedMId.includes('_') && normalizedMId.endsWith('_' + normalizedModelId)) {
+        return true;
+      }
+      
+      // 匹配provider（例如：custom）
+      if (normalizedMProvider === normalizedModelId) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // 如果找到模型且是CUSTOM类型，返回模型的name字段
+    if (model && (model.provider === 'custom' || model.id.toLowerCase() === 'custom' || model.id.toLowerCase().endsWith('_custom'))) {
+      return model.name || 'CUSTOM';
+    }
+  }
+  
+  // 默认处理逻辑
   switch (modelId.toLowerCase()) {
     case 'deepseek':
       return 'DeepSeek';
@@ -551,7 +584,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div className="text-sm" style={{
                       color: trader.ai_model.includes('deepseek') ? '#60a5fa' : '#c084fc'
                     }}>
-                      {getModelDisplayName(trader.ai_model.split('_').pop() || trader.ai_model)} Model • {trader.exchange_id?.toUpperCase()}
+                      {getModelDisplayName(trader.ai_model.split('_').pop() || trader.ai_model, allModels)} Model • {trader.exchange_id?.toUpperCase()}
                     </div>
                   </div>
                 </div>
