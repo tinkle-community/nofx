@@ -80,5 +80,9 @@
   "api_server_port": 8080,
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
-  "stop_trading_minutes": 60
+  "stop_trading_minutes": 60,
+  "proxy_url": ""
+  // 代理配置示例:
+  // "proxy_url": "http://127.0.0.1:7890"     // HTTP代理
+  // "proxy_url": "socks5://127.0.0.1:1080"  // SOCKS5代理
 }

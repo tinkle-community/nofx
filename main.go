@@ -6,12 +6,18 @@ import (
 	"nofx/api"
 	"nofx/config"
 	"nofx/manager"
+	"nofx/market"
 	"nofx/pool"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 )
+
+// initHTTPClient 初始化HTTP客户端，支持代理配置
+func initHTTPClient(proxyURL string) error {
+	return market.InitHTTPClient(proxyURL)
+}
 
 func main() {
 	fmt.Println("╔════════════════════════════════════════════════════════════╗")
@@ -33,6 +39,14 @@ func main() {
 
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))
 	fmt.Println()
+
+	// 初始化HTTP客户端（支持代理）
+	if err := initHTTPClient(cfg.ProxyURL); err != nil {
+		log.Fatalf("❌ 初始化HTTP客户端失败: %v", err)
+	}
+	if cfg.ProxyURL != "" {
+		log.Printf("✓ 已配置代理服务器: %s", cfg.ProxyURL)
+	}
 
 	// 设置默认主流币种列表
 	pool.SetDefaultCoins(cfg.DefaultCoins)

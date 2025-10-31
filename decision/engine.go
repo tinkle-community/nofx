@@ -150,6 +150,7 @@ func fetchMarketDataForContext(ctx *Context) error {
 		data, err := market.Get(symbol)
 		if err != nil {
 			// 单个币种失败不影响整体，只记录错误
+			fmt.Printf("获取市场数据失败: %s\n", err)
 			continue
 		}
 
@@ -378,6 +379,7 @@ func buildUserPrompt(ctx *Context) string {
 	for _, coin := range ctx.CandidateCoins {
 		marketData, hasData := ctx.MarketDataMap[coin.Symbol]
 		if !hasData {
+			fmt.Printf("coin: %s 无数据", coin.Symbol)
 			continue
 		}
 		displayedCount++
