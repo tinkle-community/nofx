@@ -68,6 +68,7 @@ nano config.json  # or use any other editor
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY", // ← Your Binance Secret Key
       "deepseek_key": "YOUR_DEEPSEEK_API_KEY",         // ← Your DeepSeek API Key
       "initial_balance": 1000.0,
+      "enabled": true,
       "scan_interval_minutes": 3
     }
   ],
