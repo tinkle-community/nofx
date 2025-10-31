@@ -211,6 +211,24 @@ func (at *AutoTrader) Run() error {
 // Stop 停止自动交易
 func (at *AutoTrader) Stop() {
 	at.isRunning = false
+	log.Println("🛑 关闭所有仓位...")
+
+	// 获取持仓信息
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		fmt.Printf("获取持仓失败: %w \n", err)
+	}
+
+	for _, pos := range positions {
+		symbol := pos["symbol"].(string)
+		side := pos["side"].(string)
+		if side == "long" {
+			at.trader.CloseLong(symbol, 0)
+		} else {
+			at.trader.CloseShort(symbol, 0)
+		}
+		log.Printf("✅ 已平仓: %s %s", symbol, side)
+	}
 	log.Println("⏹ 自动交易系统停止")
 }
 
