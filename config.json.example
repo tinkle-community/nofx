@@ -21,6 +21,7 @@
       "exchange": "binance",
       "binance_api_key": "your_binance_api_key",
       "binance_secret_key": "your_binance_secret_key",
+      "binance_testnet": true,
       "qwen_key": "your_qwen_api_key",
       "initial_balance": 1000,
       "scan_interval_minutes": 3
@@ -33,6 +34,7 @@
       "exchange": "binance",
       "binance_api_key": "your_binance_api_key",
       "binance_secret_key": "your_binance_secret_key",
+      "binance_testnet": false,
       "custom_api_url": "https://api.openai.com/v1",
       "custom_api_key": "sk-your-api-key",
       "custom_model_name": "gpt-4o",

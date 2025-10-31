@@ -11,7 +11,7 @@ import (
 type TraderConfig struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"` // 是否启用该trader
+	Enabled bool   `json:"enabled"`  // 是否启用该trader
 	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
@@ -20,6 +20,7 @@ type TraderConfig struct {
 	// 币安配置
 	BinanceAPIKey    string `json:"binance_api_key,omitempty"`
 	BinanceSecretKey string `json:"binance_secret_key,omitempty"`
+	BinanceTestnet   bool   `json:"binance_testnet,omitempty"` // 是否使用币安测试网
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string `json:"hyperliquid_private_key,omitempty"`

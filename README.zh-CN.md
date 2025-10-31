@@ -399,6 +399,7 @@ cp config.json.example config.json
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY",
+      "binance_testnet": false,
       "use_qwen": false,
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "qwen_key": "",
@@ -563,6 +564,7 @@ cp config.json.example config.json
       "ai_model": "qwen",
       "binance_api_key": "YOUR_BINANCE_API_KEY_1",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_1",
+      "binance_testnet": false,
       "use_qwen": true,
       "qwen_key": "sk-xxxxx",
       "deepseek_key": "",
@@ -575,6 +577,7 @@ cp config.json.example config.json
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY_2",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_2",
+      "binance_testnet": false,
       "use_qwen": false,
       "qwen_key": "",
       "deepseek_key": "sk-xxxxx",
@@ -607,9 +610,10 @@ cp config.json.example config.json
 | `exchange` | 使用的交易所 | `"binance"` 或 `"hyperliquid"` 或 `"aster"` | ✅ 是 |
 | `binance_api_key` | 币安API密钥 | `"abc123..."` | 使用Binance时必填 |
 | `binance_secret_key` | 币安Secret密钥 | `"xyz789..."` | 使用Binance时必填 |
+| `binance_testnet` | 使用币安测试网<br>ℹ️ `true`：测试网（安全测试）<br>⚠️ `false`：主网（真实交易！） | `true` 或 `false` | ❌ 否（默认false） |
 | `hyperliquid_private_key` | Hyperliquid私钥<br>⚠️ 去掉`0x`前缀 | `"your_key..."` | 使用Hyperliquid时必填 |
 | `hyperliquid_wallet_addr` | Hyperliquid钱包地址 | `"0xabc..."` | 使用Hyperliquid时必填 |
-| `hyperliquid_testnet` | 是否使用测试网 | `true` 或 `false` | ❌ 否（默认false） |
+| `hyperliquid_testnet` | 使用Hyperliquid测试网<br>ℹ️ `true`：测试网（安全测试）<br>⚠️ `false`：主网（真实交易！） | `true` 或 `false` | ❌ 否（默认false） |
 | `use_qwen` | 是否使用Qwen | `true` 或 `false` | ✅ 是 |
 | `deepseek_key` | DeepSeek API密钥 | `"sk-xxx"` | 使用DeepSeek时必填 |
 | `qwen_key` | Qwen API密钥 | `"sk-xxx"` | 使用Qwen时必填 |

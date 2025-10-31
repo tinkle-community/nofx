@@ -403,6 +403,7 @@ cp config.json.example config.json
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY",
+      "binance_testnet": false,
       "use_qwen": false,
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "qwen_key": "",
@@ -569,6 +570,7 @@ For running multiple AI traders competing against each other:
       "ai_model": "qwen",
       "binance_api_key": "YOUR_BINANCE_API_KEY_1",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_1",
+      "binance_testnet": false,
       "use_qwen": true,
       "qwen_key": "sk-xxxxx",
       "deepseek_key": "",
@@ -581,6 +583,7 @@ For running multiple AI traders competing against each other:
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY_2",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_2",
+      "binance_testnet": false,
       "use_qwen": false,
       "qwen_key": "",
       "deepseek_key": "sk-xxxxx",
@@ -613,9 +616,10 @@ For running multiple AI traders competing against each other:
 | `exchange` | Exchange to use | `"binance"` or `"hyperliquid"` or `"aster"` | ✅ Yes |
 | `binance_api_key` | Binance API key | `"abc123..."` | Required when using Binance |
 | `binance_secret_key` | Binance Secret key | `"xyz789..."` | Required when using Binance |
+| `binance_testnet` | Use Binance testnet<br>ℹ️ `true`: Testnet (safe for testing)<br>⚠️ `false`: Mainnet (real trading!) | `true` or `false` | ❌ No (defaults to false) |
 | `hyperliquid_private_key` | Hyperliquid private key<br>⚠️ Remove `0x` prefix | `"your_key..."` | Required when using Hyperliquid |
 | `hyperliquid_wallet_addr` | Hyperliquid wallet address | `"0xabc..."` | Required when using Hyperliquid |
-| `hyperliquid_testnet` | Use testnet | `true` or `false` | ❌ No (defaults to false) |
+| `hyperliquid_testnet` | Use Hyperliquid testnet<br>ℹ️ `true`: Testnet (safe for testing)<br>⚠️ `false`: Mainnet (real trading!) | `true` or `false` | ❌ No (defaults to false) |
 | `use_qwen` | Whether to use Qwen | `true` or `false` | ✅ Yes |
 | `deepseek_key` | DeepSeek API key | `"sk-xxx"` | If using DeepSeek |
 | `qwen_key` | Qwen API key | `"sk-xxx"` | If using Qwen |

@@ -89,13 +89,29 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("🏁 竞赛参赛者:")
-	for _, traderCfg := range cfg.Traders {
+	for i, traderCfg := range cfg.Traders {
 		// 只显示启用的trader
 		if !traderCfg.Enabled {
 			continue
 		}
 		fmt.Printf("  • %s (%s) - 初始资金: %.0f USDT\n",
 			traderCfg.Name, strings.ToUpper(traderCfg.AIModel), traderCfg.InitialBalance)
+
+		// 显示测试网提示
+		if traderCfg.Exchange == "binance" {
+			if traderCfg.BinanceTestnet {
+				fmt.Printf("    ℹ️  trader[%d]: 使用币安测试网 (https://testnet.binancefuture.com) - 仅用于测试，不会产生真实交易\n", i)
+			} else {
+				fmt.Printf("    ⚠️  trader[%d]: 使用币安主网 (https://fapi.binance.com) - 将进行真实交易，请谨慎操作！\n", i)
+			}
+		}
+		if traderCfg.Exchange == "hyperliquid" {
+			if traderCfg.HyperliquidTestnet {
+				fmt.Printf("    ℹ️  trader[%d]: 使用Hyperliquid测试网 - 仅用于测试\n", i)
+			} else {
+				fmt.Printf("    ⚠️  trader[%d]: 使用Hyperliquid主网 - 将进行真实交易！\n", i)
+			}
+		}
 	}
 
 	fmt.Println()
