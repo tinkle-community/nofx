@@ -84,7 +84,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
-    for _, traderCfg := range allTraders {
+	for _, traderCfg := range allTraders {
 		// 获取AI模型配置（使用交易员所属的用户ID）
 		aiModels, err := database.GetAIModels(traderCfg.UserID)
 		if err != nil {
@@ -148,7 +148,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		}
 
 		// 添加到TraderManager
-        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
+		err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
 		if err != nil {
 			log.Printf("❌ 添加交易员 %s 失败: %v", traderCfg.Name, err)
 			continue
@@ -177,7 +177,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -191,7 +191,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 构建AutoTraderConfig
-    traderConfig := trader.AutoTraderConfig{
+	traderConfig := trader.AutoTraderConfig{
 		ID:                    traderCfg.ID,
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
@@ -232,10 +232,40 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
-		traderConfig.QwenKey = aiModelCfg.APIKey
+	// 检查是否有自定义API URL（优先使用自定义API）
+	if aiModelCfg.CustomAPIURL != "" && strings.TrimSpace(aiModelCfg.CustomAPIURL) != "" {
+		// 使用自定义API
+		traderConfig.AIModel = "custom"
+		traderConfig.CustomAPIURL = strings.TrimSpace(aiModelCfg.CustomAPIURL)
+		traderConfig.CustomAPIKey = strings.TrimSpace(aiModelCfg.APIKey)
+		// 优先使用用户配置的自定义模型名
+		if aiModelCfg.CustomModelName != "" && strings.TrimSpace(aiModelCfg.CustomModelName) != "" {
+			traderConfig.CustomModelName = strings.TrimSpace(aiModelCfg.CustomModelName)
+		} else if aiModelCfg.Provider == "qwen" {
+			traderConfig.CustomModelName = "qwen-plus" // Qwen默认模型
+		} else if aiModelCfg.Provider == "deepseek" {
+			traderConfig.CustomModelName = "deepseek-chat" // DeepSeek默认模型
+		} else if aiModelCfg.Name != "" {
+			traderConfig.CustomModelName = aiModelCfg.Name
+		} else {
+			traderConfig.CustomModelName = aiModelCfg.Provider
+		}
+		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s, API Key长度: %d)", traderCfg.Name, aiModelCfg.CustomAPIURL, traderConfig.CustomModelName, len(traderConfig.CustomAPIKey))
+	} else if aiModelCfg.Provider == "qwen" {
+		traderConfig.QwenKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("🤖 [%s] 使用阿里云Qwen AI (API Key长度: %d)", traderCfg.Name, len(traderConfig.QwenKey))
 	} else if aiModelCfg.Provider == "deepseek" {
-		traderConfig.DeepSeekKey = aiModelCfg.APIKey
+		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("🤖 [%s] 使用DeepSeek AI (API Key长度: %d)", traderCfg.Name, len(traderConfig.DeepSeekKey))
+	} else {
+		// 默认使用DeepSeek，但使用传入的API key
+		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("⚠️  [%s] 未知的AI模型provider '%s'，默认使用DeepSeek配置 (API Key长度: %d)", traderCfg.Name, aiModelCfg.Provider, len(traderConfig.DeepSeekKey))
+	}
+
+	// 验证API key是否为空
+	if traderConfig.CustomAPIKey == "" && traderConfig.QwenKey == "" && traderConfig.DeepSeekKey == "" {
+		return fmt.Errorf("AI模型配置错误：API key为空")
 	}
 
 	// 创建trader实例
@@ -243,7 +273,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -283,7 +313,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -349,7 +379,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -478,9 +508,9 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 	for _, t := range tm.traders {
 		account, err := t.GetAccountInfo()
 		status := t.GetStatus()
-		
+
 		var traderData map[string]interface{}
-		
+
 		if err != nil {
 			// 如果获取账户信息失败，使用默认值但仍然显示交易员
 			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", t.GetID(), err)
@@ -512,7 +542,7 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 				"is_running":      status["is_running"],
 			}
 		}
-		
+
 		traders = append(traders, traderData)
 	}
 	comparison["traders"] = traders
@@ -688,7 +718,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -707,11 +737,21 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
+		BinanceAPIKey:         "",
+		BinanceSecretKey:      "",
+		HyperliquidPrivateKey: "",
+		HyperliquidTestnet:    exchangeCfg.Testnet,
+		CoinPoolAPIURL:        effectiveCoinPoolURL,
+		UseQwen:               aiModelCfg.Provider == "qwen",
+		DeepSeekKey:           "",
+		QwenKey:               "",
+		CustomAPIURL:          "",
+		CustomAPIKey:          "",
+		CustomModelName:       "",
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
 		AltcoinLeverage:       traderCfg.AltcoinLeverage,
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
-		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
@@ -734,10 +774,40 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
-		traderConfig.QwenKey = aiModelCfg.APIKey
+	// 检查是否有自定义API URL（优先使用自定义API）
+	if aiModelCfg.CustomAPIURL != "" && strings.TrimSpace(aiModelCfg.CustomAPIURL) != "" {
+		// 使用自定义API
+		traderConfig.AIModel = "custom"
+		traderConfig.CustomAPIURL = strings.TrimSpace(aiModelCfg.CustomAPIURL)
+		traderConfig.CustomAPIKey = strings.TrimSpace(aiModelCfg.APIKey)
+		// 优先使用用户配置的自定义模型名
+		if aiModelCfg.CustomModelName != "" && strings.TrimSpace(aiModelCfg.CustomModelName) != "" {
+			traderConfig.CustomModelName = strings.TrimSpace(aiModelCfg.CustomModelName)
+		} else if aiModelCfg.Provider == "qwen" {
+			traderConfig.CustomModelName = "qwen-plus" // Qwen默认模型
+		} else if aiModelCfg.Provider == "deepseek" {
+			traderConfig.CustomModelName = "deepseek-chat" // DeepSeek默认模型
+		} else if aiModelCfg.Name != "" {
+			traderConfig.CustomModelName = aiModelCfg.Name
+		} else {
+			traderConfig.CustomModelName = aiModelCfg.Provider
+		}
+		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s, API Key长度: %d)", traderCfg.Name, aiModelCfg.CustomAPIURL, traderConfig.CustomModelName, len(traderConfig.CustomAPIKey))
+	} else if aiModelCfg.Provider == "qwen" {
+		traderConfig.QwenKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("🤖 [%s] 使用阿里云Qwen AI (API Key长度: %d)", traderCfg.Name, len(traderConfig.QwenKey))
 	} else if aiModelCfg.Provider == "deepseek" {
-		traderConfig.DeepSeekKey = aiModelCfg.APIKey
+		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("🤖 [%s] 使用DeepSeek AI (API Key长度: %d)", traderCfg.Name, len(traderConfig.DeepSeekKey))
+	} else {
+		// 默认使用DeepSeek，但使用传入的API key
+		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
+		log.Printf("⚠️  [%s] 未知的AI模型provider '%s'，默认使用DeepSeek配置 (API Key长度: %d)", traderCfg.Name, aiModelCfg.Provider, len(traderConfig.DeepSeekKey))
+	}
+
+	// 验证API key是否为空
+	if traderConfig.CustomAPIKey == "" && traderConfig.QwenKey == "" && traderConfig.DeepSeekKey == "" {
+		return fmt.Errorf("AI模型配置错误：API key为空")
 	}
 
 	// 创建trader实例
@@ -745,7 +815,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)

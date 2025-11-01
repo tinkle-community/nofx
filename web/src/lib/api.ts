@@ -125,6 +125,14 @@ export const api = {
     if (!res.ok) throw new Error('更新模型配置失败');
   },
 
+  async deleteModelConfig(modelId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/models/${modelId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('删除模型配置失败');
+  },
+
   // 交易所配置接口
   async getExchangeConfigs(): Promise<Exchange[]> {
     const res = await fetch(`${API_BASE}/exchanges`, {

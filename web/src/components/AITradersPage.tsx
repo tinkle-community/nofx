@@ -247,29 +247,14 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   };
 
   const handleDeleteModelConfig = async (modelId: string) => {
-    if (!confirm(t('confirmDeleteModel', language))) return;
-
     try {
-      const updatedModels = allModels?.map(m =>
-        m.id === modelId ? { ...m, apiKey: '', customApiUrl: '', customModelName: '', enabled: false } : m
-      ) || [];
+      // 使用DELETE接口真正删除数据库记录
+      await api.deleteModelConfig(modelId);
 
-      const request = {
-        models: Object.fromEntries(
-          updatedModels.map(model => [
-            model.provider, // 使用 provider 而不是 id
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || ''
-            }
-          ])
-        )
-      };
+      // 重新获取用户配置以确保数据同步
+      const refreshedModels = await api.getModelConfigs();
+      setAllModels(refreshedModels);
 
-      await api.updateModelConfigs(request);
-      setAllModels(updatedModels);
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {
