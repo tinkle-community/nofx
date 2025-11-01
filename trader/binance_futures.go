@@ -139,18 +139,18 @@ func (t *FuturesTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
 	} else {
 		marginType = futures.MarginTypeIsolated
 	}
-	
+
 	// 尝试设置仓位模式
 	err := t.client.NewChangeMarginTypeService().
 		Symbol(symbol).
 		MarginType(marginType).
 		Do(context.Background())
-	
+
 	marginModeStr := "全仓"
 	if !isCrossMargin {
 		marginModeStr = "逐仓"
 	}
-	
+
 	if err != nil {
 		// 如果错误信息包含"No need to change"，说明仓位模式已经是目标值
 		if contains(err.Error(), "No need to change margin type") {
@@ -166,7 +166,7 @@ func (t *FuturesTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
 		// 不返回错误，让交易继续
 		return nil
 	}
-	
+
 	log.Printf("  ✓ %s 仓位模式已设置为 %s", symbol, marginModeStr)
 	return nil
 }
