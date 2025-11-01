@@ -23,6 +23,7 @@ type Data struct {
 	FundingRate       float64
 	IntradaySeries    *IntradayData
 	LongerTermContext *LongerTermData
+	OrderBook         *OrderBookData // 订单簿数据
 }
 
 // OIData Open Interest数据
@@ -50,6 +51,17 @@ type LongerTermData struct {
 	AverageVolume float64
 	MACDValues    []float64
 	RSI14Values   []float64
+}
+
+// OrderBookData 订单簿数据
+type OrderBookData struct {
+	BidVolumeTop5 float64 // 前5档买单的成交量之和
+	AskVolumeTop5 float64 // 前5档卖单的成交量之和
+	Imbalance     float64 // 买卖不平衡度: (bid_volume_top5 - ask_volume_top5) / (bid_volume_top5 + ask_volume_top5)
+	BidPrice1     float64 // 买一价
+	AskPrice1     float64 // 卖一价
+	Spread        float64 // 买卖价差
+	SpreadPercent float64 // 买卖价差百分比
 }
 
 // Kline K线数据
@@ -115,6 +127,13 @@ func Get(symbol string) (*Data, error) {
 	// 获取Funding Rate
 	fundingRate, _ := getFundingRate(symbol)
 
+	// 获取订单簿数据
+	orderBookData, err := getOrderBookData(symbol)
+	if err != nil {
+		// 订单簿数据失败不影响整体,使用默认值
+		orderBookData = &OrderBookData{}
+	}
+
 	// 计算日内系列数据
 	intradayData := calculateIntradaySeries(klines3m)
 
@@ -131,6 +150,7 @@ func Get(symbol string) (*Data, error) {
 		CurrentRSI7:       currentRSI7,
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
+		OrderBook:         orderBookData,
 		IntradaySeries:    intradayData,
 		LongerTermContext: longerTermData,
 	}, nil
@@ -452,6 +472,80 @@ func getFundingRate(symbol string) (float64, error) {
 	return rate, nil
 }
 
+// getOrderBookData 获取订单簿数据并计算指标
+func getOrderBookData(symbol string) (*OrderBookData, error) {
+	// 获取订单簿深度数据,limit=5表示获取前5档
+	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/depth?symbol=%s&limit=5", symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		LastUpdateId int64           `json:"lastUpdateId"`
+		Bids         [][]interface{} `json:"bids"` // [[price, quantity], ...]
+		Asks         [][]interface{} `json:"asks"` // [[price, quantity], ...]
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	orderBookData := &OrderBookData{}
+
+	// 计算前5档买单成交量之和
+	bidVolumeTop5 := 0.0
+	for _, bid := range result.Bids {
+		if len(bid) >= 2 {
+			volume, _ := parseFloat(bid[1])
+			bidVolumeTop5 += volume
+		}
+	}
+
+	// 计算前5档卖单成交量之和
+	askVolumeTop5 := 0.0
+	for _, ask := range result.Asks {
+		if len(ask) >= 2 {
+			volume, _ := parseFloat(ask[1])
+			askVolumeTop5 += volume
+		}
+	}
+
+	// 计算买卖不平衡度
+	imbalance := 0.0
+	totalVolume := bidVolumeTop5 + askVolumeTop5
+	if totalVolume > 0 {
+		imbalance = (bidVolumeTop5 - askVolumeTop5) / totalVolume
+	}
+
+	orderBookData.BidVolumeTop5 = bidVolumeTop5
+	orderBookData.AskVolumeTop5 = askVolumeTop5
+	orderBookData.Imbalance = imbalance
+
+	// 获取买一价和卖一价
+	if len(result.Bids) > 0 && len(result.Bids[0]) >= 1 {
+		orderBookData.BidPrice1, _ = parseFloat(result.Bids[0][0])
+	}
+	if len(result.Asks) > 0 && len(result.Asks[0]) >= 1 {
+		orderBookData.AskPrice1, _ = parseFloat(result.Asks[0][0])
+	}
+
+	// 计算买卖价差
+	if orderBookData.BidPrice1 > 0 && orderBookData.AskPrice1 > 0 {
+		orderBookData.Spread = orderBookData.AskPrice1 - orderBookData.BidPrice1
+		orderBookData.SpreadPercent = (orderBookData.Spread / orderBookData.BidPrice1) * 100
+	}
+
+	return orderBookData, nil
+}
+
 // Format 格式化输出市场数据
 func Format(data *Data) string {
 	var sb strings.Builder
@@ -468,6 +562,26 @@ func Format(data *Data) string {
 	}
 
 	sb.WriteString(fmt.Sprintf("Funding Rate: %.2e\n\n", data.FundingRate))
+
+	// 添加订单簿数据
+	if data.OrderBook != nil {
+		sb.WriteString("Order Book (Top 5 Levels):\n\n")
+		sb.WriteString(fmt.Sprintf("Bid Volume (Top 5): %.2f\n", data.OrderBook.BidVolumeTop5))
+		sb.WriteString(fmt.Sprintf("Ask Volume (Top 5): %.2f\n", data.OrderBook.AskVolumeTop5))
+		sb.WriteString(fmt.Sprintf("Imbalance: %.4f ", data.OrderBook.Imbalance))
+
+		// 添加不平衡度的解释
+		if data.OrderBook.Imbalance > 0.1 {
+			sb.WriteString("(Strong Buy Pressure)\n")
+		} else if data.OrderBook.Imbalance < -0.1 {
+			sb.WriteString("(Strong Sell Pressure)\n")
+		} else {
+			sb.WriteString("(Balanced)\n")
+		}
+
+		sb.WriteString(fmt.Sprintf("Best Bid: %.4f | Best Ask: %.4f\n", data.OrderBook.BidPrice1, data.OrderBook.AskPrice1))
+		sb.WriteString(fmt.Sprintf("Spread: %.4f (%.4f%%)\n\n", data.OrderBook.Spread, data.OrderBook.SpreadPercent))
+	}
 
 	if data.IntradaySeries != nil {
 		sb.WriteString("Intraday series (3‑minute intervals, oldest → latest):\n\n")
