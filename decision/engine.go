@@ -83,26 +83,27 @@ type Decision struct {
 
 // FullDecision AI的完整决策（包含思维链）
 type FullDecision struct {
-	UserPrompt string     `json:"user_prompt"` // 发送给AI的输入prompt
-	CoTTrace   string     `json:"cot_trace"`   // 思维链分析（AI输出）
-	Decisions  []Decision `json:"decisions"`   // 具体决策列表
-	Timestamp  time.Time  `json:"timestamp"`
+	SystemPrompt string     `json:"system_prompt"` // 系统提示词（发送给AI的系统prompt）
+	UserPrompt   string     `json:"user_prompt"`   // 发送给AI的输入prompt
+	CoTTrace     string     `json:"cot_trace"`     // 思维链分析（AI输出）
+	Decisions    []Decision `json:"decisions"`     // 具体决策列表
+	Timestamp    time.Time  `json:"timestamp"`
 }
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
 func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
-	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false)
+	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false, "")
 }
 
-// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt）
-func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool) (*FullDecision, error) {
+// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt和模板选择）
+func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool, templateName string) (*FullDecision, error) {
 	// 1. 为所有币种获取市场数据
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase)
+	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase, templateName)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -118,7 +119,8 @@ func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, custom
 	}
 
 	decision.Timestamp = time.Now()
-	decision.UserPrompt = userPrompt // 保存输入prompt
+	decision.SystemPrompt = systemPrompt // 保存系统prompt
+	decision.UserPrompt = userPrompt     // 保存输入prompt
 	return decision, nil
 }
 
@@ -205,20 +207,20 @@ func calculateMaxCandidates(ctx *Context) int {
 }
 
 // buildSystemPromptWithCustom 构建包含自定义内容的 System Prompt
-func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool) string {
+func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string) string {
 	// 如果覆盖基础prompt且有自定义prompt，只使用自定义prompt
 	if overrideBase && customPrompt != "" {
 		return customPrompt
 	}
-	
-	// 获取基础prompt
-	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage)
-	
+
+	// 获取基础prompt（使用指定的模板）
+	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage, templateName)
+
 	// 如果没有自定义prompt，直接返回基础prompt
 	if customPrompt == "" {
 		return basePrompt
 	}
-	
+
 	// 添加自定义prompt部分到基础prompt
 	var sb strings.Builder
 	sb.WriteString(basePrompt)
@@ -227,30 +229,38 @@ func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinL
 	sb.WriteString(customPrompt)
 	sb.WriteString("\n\n")
 	sb.WriteString("注意: 以上个性化策略是对基础规则的补充，不能违背基础风险控制原则。\n")
-	
+
 	return sb.String()
 }
 
-// buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
-func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
+// buildSystemPrompt 构建 System Prompt（使用模板+动态部分）
+func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int, templateName string) string {
 	var sb strings.Builder
 
-	// === 核心使命 ===
-	sb.WriteString("你是专业的加密货币交易AI，在合约市场进行自主交易。\n\n")
-	sb.WriteString("# 核心目标\n\n")
-	sb.WriteString("最大化夏普比率（Sharpe Ratio）\n\n")
-	sb.WriteString("夏普比率 = 平均收益 / 收益波动率\n\n")
-	sb.WriteString("这意味着：\n")
-	sb.WriteString("- 高质量交易（高胜率、大盈亏比）→ 提升夏普\n")
-	sb.WriteString("- 稳定收益、控制回撤 → 提升夏普\n")
-	sb.WriteString("- 耐心持仓、让利润奔跑 → 提升夏普\n")
-	sb.WriteString("- 频繁交易、小盈小亏 → 增加波动，严重降低夏普\n")
-	sb.WriteString("- 过度交易、手续费损耗 → 直接亏损\n")
-	sb.WriteString("- 过早平仓、频繁进出 → 错失大行情\n\n")
-	sb.WriteString("关键认知: 系统每3分钟扫描一次，但不意味着每次都要交易！\n")
-	sb.WriteString("大多数时候应该是 `wait` 或 `hold`，只在极佳机会时才开仓。\n\n")
+	// 1. 加载提示词模板（核心交易策略部分）
+	if templateName == "" {
+		templateName = "default" // 默认使用 default 模板
+	}
 
-	// === 硬约束（风险控制）===
+	template, err := GetPromptTemplate(templateName)
+	if err != nil {
+		// 如果模板不存在，记录错误并使用 default
+		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
+		template, err = GetPromptTemplate("default")
+		if err != nil {
+			// 如果连 default 都不存在，使用内置的简化版本
+			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
+			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
+		} else {
+			sb.WriteString(template.Content)
+			sb.WriteString("\n\n")
+		}
+	} else {
+		sb.WriteString(template.Content)
+		sb.WriteString("\n\n")
+	}
+
+	// 2. 硬约束（风险控制）- 动态生成
 	sb.WriteString("# 硬约束（风险控制）\n\n")
 	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
@@ -258,77 +268,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. 保证金: 总使用率 ≤ 90%\n\n")
 
-	// === 交易哲学 & 最佳实践 ===
-	sb.WriteString("# 交易哲学 & 最佳实践\n\n")
-	sb.WriteString("## 核心原则：\n\n")
-	sb.WriteString("资金保全第一：保护资本比追求收益更重要\n\n")
-	sb.WriteString("纪律胜于情绪：执行你的退出方案，不随意移动止损或目标\n\n")
-	sb.WriteString("质量优于数量：少量高信念交易胜过大量低信念交易\n\n")
-	sb.WriteString("适应波动性：根据市场条件调整仓位\n\n")
-	sb.WriteString("尊重趋势：不要与强趋势作对\n\n")
-	sb.WriteString("## 常见误区避免：\n\n")
-	sb.WriteString("过度交易：频繁交易导致费用侵蚀利润\n\n")
-	sb.WriteString("复仇式交易：亏损后立即加码试图\"翻本\"\n\n")
-	sb.WriteString("分析瘫痪：过度等待完美信号，导致失机\n\n")
-	sb.WriteString("忽视相关性：BTC常引领山寨币，须优先观察BTC\n\n")
-	sb.WriteString("过度杠杆：放大收益同时放大亏损\n\n")
-
-	// === 交易频率认知 ===
-	sb.WriteString("#交易频率认知\n\n")
-	sb.WriteString("量化标准:\n")
-	sb.WriteString("- 优秀交易员：每天2-4笔 = 每小时0.1-0.2笔\n")
-	sb.WriteString("- 过度交易：每小时>2笔 = 严重问题\n")
-	sb.WriteString("- 最佳节奏：开仓后持有至少30-60分钟\n\n")
-	sb.WriteString("自查:\n")
-	sb.WriteString("如果你发现自己每个周期都在交易 → 说明标准太低\n")
-	sb.WriteString("如果你发现持仓<30分钟就平仓 → 说明太急躁\n\n")
-
-	// === 开仓信号强度 ===
-	sb.WriteString("# 开仓标准（严格）\n\n")
-	sb.WriteString("只在强信号时开仓，不确定就观望。\n\n")
-	sb.WriteString("你拥有的完整数据：\n")
-	sb.WriteString("- 原始序列：3分钟价格序列(MidPrices数组) + 4小时K线序列\n")
-	sb.WriteString("- 技术序列：EMA20序列、MACD序列、RSI7序列、RSI14序列\n")
-	sb.WriteString("- 资金序列：成交量序列、持仓量(OI)序列、资金费率\n")
-	sb.WriteString("- 筛选标记：AI500评分 / OI_Top排名（如果有标注）\n\n")
-	sb.WriteString("分析方法（完全由你自主决定）：\n")
-	sb.WriteString("- 自由运用序列数据，你可以做但不限于趋势分析、形态识别、支撑阻力、技术阻力位、斐波那契、波动带计算\n")
-	sb.WriteString("- 多维度交叉验证（价格+量+OI+指标+序列形态）\n")
-	sb.WriteString("- 用你认为最有效的方法发现高确定性机会\n")
-	sb.WriteString("- 综合信心度 ≥ 75 才开仓\n\n")
-	sb.WriteString("避免低质量信号：\n")
-	sb.WriteString("- 单一维度（只看一个指标）\n")
-	sb.WriteString("- 相互矛盾（涨但量萎缩）\n")
-	sb.WriteString("- 横盘震荡\n")
-	sb.WriteString("- 刚平仓不久（<15分钟）\n\n")
-
-	// === 夏普比率自我进化 ===
-sb.WriteString("# 夏普比率自我进化\n\n")
-	sb.WriteString("每次你会收到夏普比率作为绩效反馈（周期级别）：\n\n")
-	sb.WriteString("夏普比率 < -0.5 (持续亏损):\n")
-	sb.WriteString("  → 停止交易，连续观望至少6个周期（18分钟）\n")
-	sb.WriteString("  → 深度反思：\n")
-	sb.WriteString("     • 交易频率过高？（每小时>2次就是过度）\n")
-	sb.WriteString("     • 持仓时间过短？（<30分钟就是过早平仓）\n")
-	sb.WriteString("     • 信号强度不足？（信心度<75）\n")
-	sb.WriteString("夏普比率 -0.5 ~ 0 (轻微亏损):\n")
-	sb.WriteString("  → 严格控制：只做信心度>80的交易\n")
-	sb.WriteString("  → 减少交易频率：每小时最多1笔新开仓\n")
-	sb.WriteString("  → 耐心持仓：至少持有30分钟以上\n\n")
-	sb.WriteString("夏普比率 0 ~ 0.7 (正收益):\n")
-	sb.WriteString("  → 维持当前策略\n\n")
-	sb.WriteString("夏普比率 > 0.7 (优异表现):\n")
-	sb.WriteString("  → 可适度扩大仓位\n\n")
-	sb.WriteString("关键: 夏普比率是唯一指标，它会自然惩罚频繁交易和过度进出。\n\n")
-
-	// === 决策流程 ===
-	sb.WriteString("#决策流程\n\n")
-	sb.WriteString("1. 分析夏普比率: 当前策略是否有效？需要调整吗？\n")
-	sb.WriteString("2. 评估持仓: 趋势是否改变？是否该止盈/止损？\n")
-	sb.WriteString("3. 寻找新机会: 有强信号吗？多空机会？\n")
-	sb.WriteString("4. 输出决策: 思维链分析 + JSON\n\n")
-
-	// === 输出格式 ===
+	// 3. 输出格式 - 动态生成
 	sb.WriteString("#输出格式\n\n")
 	sb.WriteString("第一步: 思维链（纯文本）\n")
 	sb.WriteString("简洁分析你的思考过程\n\n")
@@ -341,13 +281,6 @@ sb.WriteString("# 夏普比率自我进化\n\n")
 	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
 	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
-
-	// === 关键提醒 ===
-	sb.WriteString("---\n\n")
-	sb.WriteString("记住: \n")
-	sb.WriteString("- 目标是夏普比率，不是交易频率\n")
-	sb.WriteString("- 宁可错过，不做低质量交易\n")
-	sb.WriteString("- 风险回报比1:3是底线\n")
 
 	return sb.String()
 }

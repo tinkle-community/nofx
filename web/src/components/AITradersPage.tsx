@@ -18,12 +18,6 @@ function getModelDisplayName(modelId: string): string {
       return 'Qwen';
     case 'claude':
       return 'Claude';
-    case 'gpt4':
-    case 'gpt-4':
-      return 'GPT-4';
-    case 'gpt3.5':
-    case 'gpt-3.5':
-      return 'GPT-3.5';
     default:
       return modelId.toUpperCase();
   }
@@ -131,7 +125,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
   const handleCreateTrader = async (data: CreateTraderRequest) => {
     try {
-      const model = allModels?.find(m => m.provider === data.ai_model_id);
+      const model = allModels?.find(m => m.id === data.ai_model_id);
       const exchange = allExchanges?.find(e => e.id === data.exchange_id);
 
       if (!model?.enabled) {
@@ -168,7 +162,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!editingTrader) return;
 
     try {
-      const model = enabledModels?.find(m => m.provider === data.ai_model_id);
+      const model = enabledModels?.find(m => m.id === data.ai_model_id);
       const exchange = enabledExchanges?.find(e => e.id === data.exchange_id);
 
       if (!model) {
@@ -1060,7 +1054,7 @@ function ModelConfigModal({
                   type="text"
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
-                  placeholder="例如: deepseek-chat, qwen-plus, gpt-4"
+                  placeholder="例如: deepseek-chat, qwen-max, gpt-5"
                   className="w-full px-3 py-2 rounded"
                   style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
                 />

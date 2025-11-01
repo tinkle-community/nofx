@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -182,10 +183,11 @@ func (d *Database) createTables() error {
 		`ALTER TABLE traders ADD COLUMN btc_eth_leverage INTEGER DEFAULT 5`, // BTC/ETH杠杆倍数
 		`ALTER TABLE traders ADD COLUMN altcoin_leverage INTEGER DEFAULT 5`, // 山寨币杠杆倍数
 		`ALTER TABLE traders ADD COLUMN trading_symbols TEXT DEFAULT ''`, // 交易币种，逗号分隔
-		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`, // 是否使用COIN POOL信号源
-		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`, // 是否使用OI TOP信号源
-		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`, // 自定义API地址
-		`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`, // 自定义模型名称
+		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`,           // 是否使用COIN POOL信号源
+		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`,             // 是否使用OI TOP信号源
+		`ALTER TABLE traders ADD COLUMN system_prompt_template TEXT DEFAULT 'default'`, // 系统提示词模板名称
+		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`,        // 自定义API地址
+		`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`,     // 自定义模型名称
 	}
 
 	for _, query := range alterQueries {
@@ -407,14 +409,15 @@ type TraderRecord struct {
 	IsRunning          bool      `json:"is_running"`
 	BTCETHLeverage     int       `json:"btc_eth_leverage"`     // BTC/ETH杠杆倍数
 	AltcoinLeverage    int       `json:"altcoin_leverage"`     // 山寨币杠杆倍数
-	TradingSymbols     string    `json:"trading_symbols"`      // 交易币种，逗号分隔
-	UseCoinPool        bool      `json:"use_coin_pool"`        // 是否使用COIN POOL信号源
-	UseOITop           bool      `json:"use_oi_top"`           // 是否使用OI TOP信号源
-	CustomPrompt       string    `json:"custom_prompt"`        // 自定义交易策略prompt
-	OverrideBasePrompt bool      `json:"override_base_prompt"` // 是否覆盖基础prompt
-	IsCrossMargin      bool      `json:"is_cross_margin"`      // 是否为全仓模式（true=全仓，false=逐仓）
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	TradingSymbols       string    `json:"trading_symbols"`        // 交易币种，逗号分隔
+	UseCoinPool          bool      `json:"use_coin_pool"`          // 是否使用COIN POOL信号源
+	UseOITop             bool      `json:"use_oi_top"`             // 是否使用OI TOP信号源
+	CustomPrompt         string    `json:"custom_prompt"`          // 自定义交易策略prompt
+	OverrideBasePrompt   bool      `json:"override_base_prompt"`   // 是否覆盖基础prompt
+	SystemPromptTemplate string    `json:"system_prompt_template"` // 系统提示词模板名称
+	IsCrossMargin        bool      `json:"is_cross_margin"`        // 是否为全仓模式（true=全仓，false=逐仓）
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // UserSignalSource 用户信号源配置
@@ -563,17 +566,14 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 
 // UpdateAIModel 更新AI模型配置，如果不存在则创建用户特定配置
 func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string) error {
-	// id 参数实际上是 provider（如 "deepseek", "qwen"）
-	provider := id
-
-	// 先查找用户是否已有这个 provider 的配置
+	// 先尝试精确匹配 ID（新版逻辑，支持多个相同 provider 的模型）
 	var existingID string
 	err := d.db.QueryRow(`
-		SELECT id FROM ai_models WHERE user_id = ? AND provider = ? LIMIT 1
-	`, userID, provider).Scan(&existingID)
+		SELECT id FROM ai_models WHERE user_id = ? AND id = ? LIMIT 1
+	`, userID, id).Scan(&existingID)
 
 	if err == nil {
-		// 找到了现有配置，更新它
+		// 找到了现有配置（精确匹配 ID），更新它
 		_, err = d.db.Exec(`
 			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
 			WHERE id = ? AND user_id = ?
@@ -581,7 +581,37 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 		return err
 	}
 
-	// 没有找到现有配置，创建新的
+	// ID 不存在，尝试兼容旧逻辑：将 id 作为 provider 查找
+	provider := id
+	err = d.db.QueryRow(`
+		SELECT id FROM ai_models WHERE user_id = ? AND provider = ? LIMIT 1
+	`, userID, provider).Scan(&existingID)
+
+	if err == nil {
+		// 找到了现有配置（通过 provider 匹配，兼容旧版），更新它
+		log.Printf("⚠️  使用旧版 provider 匹配更新模型: %s -> %s", provider, existingID)
+		_, err = d.db.Exec(`
+			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+			WHERE id = ? AND user_id = ?
+		`, enabled, apiKey, customAPIURL, customModelName, existingID, userID)
+		return err
+	}
+
+	// 没有找到任何现有配置，创建新的
+	// 推断 provider（从 id 中提取，或者直接使用 id）
+	if provider == id && (provider == "deepseek" || provider == "qwen") {
+		// id 本身就是 provider
+		provider = id
+	} else {
+		// 从 id 中提取 provider（假设格式是 userID_provider 或 timestamp_userID_provider）
+		parts := strings.Split(id, "_")
+		if len(parts) >= 2 {
+			provider = parts[len(parts)-1] // 取最后一部分作为 provider
+		} else {
+			provider = id
+		}
+	}
+
 	// 获取模型的基本信息
 	var name string
 	err = d.db.QueryRow(`
@@ -598,12 +628,19 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 		}
 	}
 
-	// 创建用户特定的配置
-	userModelID := fmt.Sprintf("%s_%s", userID, provider)
+	// 如果传入的 ID 已经是完整格式（如 "admin_deepseek_custom1"），直接使用
+	// 否则生成新的 ID
+	newModelID := id
+	if id == provider {
+		// id 就是 provider，生成新的用户特定 ID
+		newModelID = fmt.Sprintf("%s_%s", userID, provider)
+	}
+
+	log.Printf("✓ 创建新的 AI 模型配置: ID=%s, Provider=%s, Name=%s", newModelID, provider, name)
 	_, err = d.db.Exec(`
 		INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, userModelID, userID, name, provider, enabled, apiKey, customAPIURL, customModelName)
+	`, newModelID, userID, name, provider, enabled, apiKey, customAPIURL, customModelName)
 
 	return err
 }
@@ -730,20 +767,21 @@ func (d *Database) CreateExchange(userID, id, name, typ string, enabled bool, ap
 // CreateTrader 创建交易员
 func (d *Database) CreateTrader(trader *TraderRecord) error {
 	_, err := d.db.Exec(`
-		INSERT INTO traders (id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, btc_eth_leverage, altcoin_leverage, trading_symbols, use_coin_pool, use_oi_top, custom_prompt, override_base_prompt, is_cross_margin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, trader.ID, trader.UserID, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance, trader.ScanIntervalMinutes, trader.IsRunning, trader.BTCETHLeverage, trader.AltcoinLeverage, trader.TradingSymbols, trader.UseCoinPool, trader.UseOITop, trader.CustomPrompt, trader.OverrideBasePrompt, trader.IsCrossMargin)
+		INSERT INTO traders (id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, btc_eth_leverage, altcoin_leverage, trading_symbols, use_coin_pool, use_oi_top, custom_prompt, override_base_prompt, system_prompt_template, is_cross_margin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, trader.ID, trader.UserID, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance, trader.ScanIntervalMinutes, trader.IsRunning, trader.BTCETHLeverage, trader.AltcoinLeverage, trader.TradingSymbols, trader.UseCoinPool, trader.UseOITop, trader.CustomPrompt, trader.OverrideBasePrompt, trader.SystemPromptTemplate, trader.IsCrossMargin)
 	return err
 }
 
 // GetTraders 获取用户的交易员
 func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 	rows, err := d.db.Query(`
-		SELECT id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, 
+		SELECT id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running,
 		       COALESCE(btc_eth_leverage, 5) as btc_eth_leverage, COALESCE(altcoin_leverage, 5) as altcoin_leverage,
 		       COALESCE(trading_symbols, '') as trading_symbols,
 		       COALESCE(use_coin_pool, 0) as use_coin_pool, COALESCE(use_oi_top, 0) as use_oi_top,
-		       COALESCE(custom_prompt, '') as custom_prompt, COALESCE(override_base_prompt, 0) as override_base_prompt, 
+		       COALESCE(custom_prompt, '') as custom_prompt, COALESCE(override_base_prompt, 0) as override_base_prompt,
+		       COALESCE(system_prompt_template, 'default') as system_prompt_template,
 		       COALESCE(is_cross_margin, 1) as is_cross_margin, created_at, updated_at
 		FROM traders WHERE user_id = ? ORDER BY created_at DESC
 	`, userID)
@@ -760,7 +798,8 @@ func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 			&trader.InitialBalance, &trader.ScanIntervalMinutes, &trader.IsRunning,
 			&trader.BTCETHLeverage, &trader.AltcoinLeverage, &trader.TradingSymbols,
 			&trader.UseCoinPool, &trader.UseOITop,
-			&trader.CustomPrompt, &trader.OverrideBasePrompt, &trader.IsCrossMargin,
+			&trader.CustomPrompt, &trader.OverrideBasePrompt, &trader.SystemPromptTemplate,
+			&trader.IsCrossMargin,
 			&trader.CreatedAt, &trader.UpdatedAt,
 		)
 		if err != nil {
@@ -781,16 +820,16 @@ func (d *Database) UpdateTraderStatus(userID, id string, isRunning bool) error {
 // UpdateTrader 更新交易员配置
 func (d *Database) UpdateTrader(trader *TraderRecord) error {
 	_, err := d.db.Exec(`
-		UPDATE traders SET 
-			name = ?, ai_model_id = ?, exchange_id = ?, initial_balance = ?, 
-			scan_interval_minutes = ?, btc_eth_leverage = ?, altcoin_leverage = ?, 
-			trading_symbols = ?, custom_prompt = ?, override_base_prompt = ?, 
-			is_cross_margin = ?, updated_at = CURRENT_TIMESTAMP
+		UPDATE traders SET
+			name = ?, ai_model_id = ?, exchange_id = ?, initial_balance = ?,
+			scan_interval_minutes = ?, btc_eth_leverage = ?, altcoin_leverage = ?,
+			trading_symbols = ?, custom_prompt = ?, override_base_prompt = ?,
+			system_prompt_template = ?, is_cross_margin = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND user_id = ?
 	`, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance,
 		trader.ScanIntervalMinutes, trader.BTCETHLeverage, trader.AltcoinLeverage,
 		trader.TradingSymbols, trader.CustomPrompt, trader.OverrideBasePrompt,
-		trader.IsCrossMargin, trader.ID, trader.UserID)
+		trader.SystemPromptTemplate, trader.IsCrossMargin, trader.ID, trader.UserID)
 	return err
 }
 

@@ -93,12 +93,21 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		}
 
 		var aiModelCfg *config.AIModelConfig
+		// 优先精确匹配 model.ID（新版逻辑）
 		for _, model := range aiModels {
-			// 使用 provider 来匹配，因为 AIModelID 存储的是 provider（如 "deepseek"）
-			// 而 model.ID 可能是 "admin_deepseek"
-			if model.Provider == traderCfg.AIModelID {
+			if model.ID == traderCfg.AIModelID {
 				aiModelCfg = model
 				break
+			}
+		}
+		// 如果没有精确匹配，尝试匹配 provider（兼容旧数据）
+		if aiModelCfg == nil {
+			for _, model := range aiModels {
+				if model.Provider == traderCfg.AIModelID {
+					aiModelCfg = model
+					log.Printf("⚠️  交易员 %s 使用旧版 provider 匹配: %s -> %s", traderCfg.Name, traderCfg.AIModelID, model.ID)
+					break
+				}
 			}
 		}
 
@@ -216,6 +225,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		IsCrossMargin:         traderCfg.IsCrossMargin,
 		DefaultCoins:          defaultCoins,
 		TradingCoins:          tradingCoins,
+		SystemPromptTemplate:  traderCfg.SystemPromptTemplate, // 系统提示词模板
 	}
 
 	// 根据交易所类型设置API密钥
@@ -621,11 +631,21 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 		}
 
 		var aiModelCfg *config.AIModelConfig
+		// 优先精确匹配 model.ID（新版逻辑）
 		for _, model := range aiModels {
-			// 使用 provider 来匹配，因为 AIModelID 存储的是 provider（如 "deepseek"）
-			if model.Provider == traderCfg.AIModelID {
+			if model.ID == traderCfg.AIModelID {
 				aiModelCfg = model
 				break
+			}
+		}
+		// 如果没有精确匹配，尝试匹配 provider（兼容旧数据）
+		if aiModelCfg == nil {
+			for _, model := range aiModels {
+				if model.Provider == traderCfg.AIModelID {
+					aiModelCfg = model
+					log.Printf("⚠️  交易员 %s 使用旧版 provider 匹配: %s -> %s", traderCfg.Name, traderCfg.AIModelID, model.ID)
+					break
+				}
 			}
 		}
 
@@ -712,12 +732,16 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 		AltcoinLeverage:       traderCfg.AltcoinLeverage,
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		CoinPoolAPIURL:        effectiveCoinPoolURL,
+		CustomAPIURL:          aiModelCfg.CustomAPIURL,    // 自定义API URL
+		CustomModelName:       aiModelCfg.CustomModelName, // 自定义模型名称
+		UseQwen:               aiModelCfg.Provider == "qwen",
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		IsCrossMargin:         traderCfg.IsCrossMargin,
 		DefaultCoins:          defaultCoins,
 		TradingCoins:          tradingCoins,
+		SystemPromptTemplate:  traderCfg.SystemPromptTemplate, // 系统提示词模板
 	}
 
 	// 根据交易所类型设置API密钥

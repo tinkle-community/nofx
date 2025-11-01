@@ -66,10 +66,13 @@ type AutoTraderConfig struct {
 
 	// 仓位模式
 	IsCrossMargin bool // true=全仓模式, false=逐仓模式
-	
+
 	// 币种配置
 	DefaultCoins    []string // 默认币种列表（从数据库获取）
 	TradingCoins    []string // 实际交易币种列表
+
+	// 系统提示词模板
+	SystemPromptTemplate string // 系统提示词模板名称（如 "default", "aggressive"）
 }
 
 // AutoTrader 自动交易器
@@ -86,6 +89,7 @@ type AutoTrader struct {
 	dailyPnL              float64
 	customPrompt          string // 自定义交易策略prompt
 	overrideBasePrompt    bool   // 是否覆盖基础prompt
+	systemPromptTemplate  string // 系统提示词模板名称
 	defaultCoins          []string // 默认币种列表（从数据库获取）
 	tradingCoins          []string // 实际交易币种列表
 	lastResetTime         time.Time
@@ -188,6 +192,12 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
+	// 设置默认系统提示词模板
+	systemPromptTemplate := config.SystemPromptTemplate
+	if systemPromptTemplate == "" {
+		systemPromptTemplate = "default" // 默认使用 default 模板
+	}
+
 	return &AutoTrader{
 		id:                    config.ID,
 		name:                  config.Name,
@@ -198,6 +208,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		mcpClient:             mcpClient,
 		decisionLogger:        decisionLogger,
 		initialBalance:        config.InitialBalance,
+		systemPromptTemplate:  systemPromptTemplate,
 		defaultCoins:          config.DefaultCoins,
 		tradingCoins:          config.TradingCoins,
 		lastResetTime:         time.Now(),
@@ -314,11 +325,12 @@ func (at *AutoTrader) runCycle() error {
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
 	// 4. 调用AI获取完整决策
-	log.Println("🤖 正在请求AI分析并决策...")
-	decision, err := decision.GetFullDecisionWithCustomPrompt(ctx, at.mcpClient, at.customPrompt, at.overrideBasePrompt)
+	log.Printf("🤖 正在请求AI分析并决策... [模板: %s]", at.systemPromptTemplate)
+	decision, err := decision.GetFullDecisionWithCustomPrompt(ctx, at.mcpClient, at.customPrompt, at.overrideBasePrompt, at.systemPromptTemplate)
 
 	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
 	if decision != nil {
+		record.SystemPrompt = decision.SystemPrompt // 保存系统提示词
 		record.InputPrompt = decision.UserPrompt
 		record.CoTTrace = decision.CoTTrace
 		if len(decision.Decisions) > 0 {
@@ -331,38 +343,55 @@ func (at *AutoTrader) runCycle() error {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("获取AI决策失败: %v", err)
 
-		// 打印AI思维链（即使有错误）
-		if decision != nil && decision.CoTTrace != "" {
-			log.Printf("\n" + strings.Repeat("-", 70))
-			log.Println("💭 AI思维链分析（错误情况）:")
-			log.Println(strings.Repeat("-", 70))
-			log.Println(decision.CoTTrace)
-			log.Printf(strings.Repeat("-", 70) + "\n")
+		// 打印系统提示词和AI思维链（即使有错误，也要输出以便调试）
+		if decision != nil {
+			if decision.SystemPrompt != "" {
+				log.Printf("\n" + strings.Repeat("=", 70))
+				log.Printf("📋 系统提示词 [模板: %s] (错误情况)", at.systemPromptTemplate)
+				log.Println(strings.Repeat("=", 70))
+				log.Println(decision.SystemPrompt)
+				log.Printf(strings.Repeat("=", 70) + "\n")
+			}
+
+			if decision.CoTTrace != "" {
+				log.Printf("\n" + strings.Repeat("-", 70))
+				log.Println("💭 AI思维链分析（错误情况）:")
+				log.Println(strings.Repeat("-", 70))
+				log.Println(decision.CoTTrace)
+				log.Printf(strings.Repeat("-", 70) + "\n")
+			}
 		}
 
 		at.decisionLogger.LogDecision(record)
 		return fmt.Errorf("获取AI决策失败: %w", err)
 	}
 
-	// 5. 打印AI思维链
-	log.Printf("\n" + strings.Repeat("-", 70))
-	log.Println("💭 AI思维链分析:")
-	log.Println(strings.Repeat("-", 70))
-	log.Println(decision.CoTTrace)
-	log.Printf(strings.Repeat("-", 70) + "\n")
+	// // 5. 打印系统提示词
+	// log.Printf("\n" + strings.Repeat("=", 70))
+	// log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
+	// log.Println(strings.Repeat("=", 70))
+	// log.Println(decision.SystemPrompt)
+	// log.Printf(strings.Repeat("=", 70) + "\n")
 
-	// 6. 打印AI决策
-	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
-	for i, d := range decision.Decisions {
-		log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
-		if d.Action == "open_long" || d.Action == "open_short" {
-			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
-				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-		}
-	}
+	// 6. 打印AI思维链
+	// log.Printf("\n" + strings.Repeat("-", 70))
+	// log.Println("💭 AI思维链分析:")
+	// log.Println(strings.Repeat("-", 70))
+	// log.Println(decision.CoTTrace)
+	// log.Printf(strings.Repeat("-", 70) + "\n")
+
+	// 7. 打印AI决策
+	// log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+	// for i, d := range decision.Decisions {
+	// 	log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
+	// 	if d.Action == "open_long" || d.Action == "open_short" {
+	// 		log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
+	// 			d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
+	// 	}
+	// }
 	log.Println()
 
-	// 7. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
+	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
 	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
 
 	log.Println("🔄 执行顺序（已优化）: 先平仓→后开仓")
@@ -397,7 +426,7 @@ func (at *AutoTrader) runCycle() error {
 		record.Decisions = append(record.Decisions, actionRecord)
 	}
 
-	// 8. 保存决策记录
+	// 9. 保存决策记录
 	if err := at.decisionLogger.LogDecision(record); err != nil {
 		log.Printf("⚠ 保存决策记录失败: %v", err)
 	}
@@ -770,6 +799,16 @@ func (at *AutoTrader) SetCustomPrompt(prompt string) {
 // SetOverrideBasePrompt 设置是否覆盖基础prompt
 func (at *AutoTrader) SetOverrideBasePrompt(override bool) {
 	at.overrideBasePrompt = override
+}
+
+// SetSystemPromptTemplate 设置系统提示词模板
+func (at *AutoTrader) SetSystemPromptTemplate(templateName string) {
+	at.systemPromptTemplate = templateName
+}
+
+// GetSystemPromptTemplate 获取当前系统提示词模板名称
+func (at *AutoTrader) GetSystemPromptTemplate() string {
+	return at.systemPromptTemplate
 }
 
 // GetDecisionLogger 获取决策日志记录器

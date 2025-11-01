@@ -31,12 +31,6 @@ function getModelDisplayName(modelId: string): string {
       return 'Qwen';
     case 'claude':
       return 'Claude';
-    case 'gpt4':
-    case 'gpt-4':
-      return 'GPT-4';
-    case 'gpt3.5':
-    case 'gpt-3.5':
-      return 'GPT-3.5';
     default:
       return modelId.toUpperCase();
   }
