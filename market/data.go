@@ -3,12 +3,50 @@ package market
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// httpClient 全局HTTP客户端，支持代理
+var httpClient *http.Client
+
+// InitHTTPClient 初始化HTTP客户端，支持代理配置
+func InitHTTPClient(proxyURL string) error {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
+	}
+
+	// 如果配置了代理
+	if proxyURL != "" {
+		proxyURLParsed, err := url.Parse(proxyURL)
+		if err != nil {
+			return fmt.Errorf("解析代理URL失败: %v", err)
+		}
+		transport.Proxy = http.ProxyURL(proxyURLParsed)
+	}
+
+	httpClient = &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+
+	return nil
+}
+
+// getHTTPClient 获取HTTP客户端，如果未初始化则使用默认客户端
+func getHTTPClient() *http.Client {
+	if httpClient == nil {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+	return httpClient
+}
 
 // Data 市场数据结构
 type Data struct {
@@ -141,13 +179,14 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=%s&limit=%d",
 		symbol, interval, limit)
 
-	resp, err := http.Get(url)
+	client := getHTTPClient()
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -390,13 +429,14 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 func getOpenInterestData(symbol string) (*OIData, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
 
-	resp, err := http.Get(url)
+	client := getHTTPClient()
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -423,13 +463,14 @@ func getOpenInterestData(symbol string) (*OIData, error) {
 func getFundingRate(symbol string) (float64, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
 
-	resp, err := http.Get(url)
+	client := getHTTPClient()
+	resp, err := client.Get(url)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, err
 	}

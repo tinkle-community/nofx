@@ -11,7 +11,7 @@ import (
 type TraderConfig struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"` // 是否启用该trader
+	Enabled bool   `json:"enabled"`  // 是否启用该trader
 	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
@@ -61,7 +61,8 @@ type Config struct {
 	MaxDailyLoss       float64        `json:"max_daily_loss"`
 	MaxDrawdown        float64        `json:"max_drawdown"`
 	StopTradingMinutes int            `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+	Leverage           LeverageConfig `json:"leverage"`            // 杠杆配置
+	ProxyURL           string         `json:"proxy_url,omitempty"` // 代理服务器URL，格式: http://host:port 或 socks5://host:port，留空则不使用代理
 }
 
 // LoadConfig 从文件加载配置
