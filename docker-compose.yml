@@ -12,6 +12,7 @@ services:
       - ./config.json:/app/config.json:ro
       - ./config.db:/app/config.db
       - ./decision_logs:/app/decision_logs
+      - ./prompts:/app/prompts
       - /etc/localtime:/etc/localtime:ro  # Sync host time
     environment:
       - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
