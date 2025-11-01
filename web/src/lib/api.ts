@@ -122,7 +122,18 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
-    if (!res.ok) throw new Error('更新模型配置失败');
+    if (!res.ok) {
+      let message = '更新模型配置失败';
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          message = data.error;
+        }
+      } catch (_) {
+        // ignore json parse error
+      }
+      throw new Error(message);
+    }
   },
 
   // 交易所配置接口
@@ -147,7 +158,18 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
-    if (!res.ok) throw new Error('更新交易所配置失败');
+    if (!res.ok) {
+      let message = '更新交易所配置失败';
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          message = data.error;
+        }
+      } catch (_) {
+        // ignore json parse error
+      }
+      throw new Error(message);
+    }
   },
 
   // 获取系统状态（支持trader_id）
