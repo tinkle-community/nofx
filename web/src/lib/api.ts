@@ -125,6 +125,17 @@ export const api = {
     if (!res.ok) throw new Error('更新模型配置失败');
   },
 
+  async deleteModelConfig(modelId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/models/${modelId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || '删除模型配置失败');
+    }
+  },
+
   // 交易所配置接口
   async getExchangeConfigs(): Promise<Exchange[]> {
     const res = await fetch(`${API_BASE}/exchanges`, {
@@ -148,6 +159,17 @@ export const api = {
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('更新交易所配置失败');
+  },
+
+  async deleteExchangeConfig(exchangeId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/exchanges/${exchangeId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || '删除交易所配置失败');
+    }
   },
 
   // 获取系统状态（支持trader_id）

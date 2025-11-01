@@ -940,6 +940,18 @@ func (d *Database) UpdateUserSignalSource(userID, coinPoolURL, oiTopURL string) 
 	return err
 }
 
+// DeleteAIModel 删除AI模型配置
+func (d *Database) DeleteAIModel(userID, id string) error {
+	_, err := d.db.Exec(`DELETE FROM ai_models WHERE id = ? AND user_id = ?`, id, userID)
+	return err
+}
+
+// DeleteExchange 删除交易所配置
+func (d *Database) DeleteExchange(userID, id string) error {
+	_, err := d.db.Exec(`DELETE FROM exchanges WHERE id = ? AND user_id = ?`, id, userID)
+	return err
+}
+
 // Close 关闭数据库连接
 func (d *Database) Close() error {
 	return d.db.Close()

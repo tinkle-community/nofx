@@ -244,34 +244,22 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   };
 
   const handleDeleteModelConfig = async (modelId: string) => {
-    if (!confirm(t('confirmDeleteModel', language))) return;
-
     try {
-      const updatedModels = allModels?.map(m =>
-        m.id === modelId ? { ...m, apiKey: '', customApiUrl: '', customModelName: '', enabled: false } : m
-      ) || [];
-
-      const request = {
-        models: Object.fromEntries(
-          updatedModels.map(model => [
-            model.provider, // 使用 provider 而不是 id
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || ''
-            }
-          ])
-        )
-      };
-
-      await api.updateModelConfigs(request);
-      setAllModels(updatedModels);
+      // 调用真正的删除API
+      await api.deleteModelConfig(modelId);
+      
+      // 重新获取模型配置列表以更新界面
+      const refreshedModels = await api.getModelConfigs();
+      setAllModels(refreshedModels);
+      
       setShowModelModal(false);
       setEditingModel(null);
-    } catch (error) {
+      
+      // 重新加载交易员列表
+      mutateTraders();
+    } catch (error: any) {
       console.error('Failed to delete model config:', error);
-      alert(t('deleteConfigFailed', language));
+      alert(error.message || t('deleteConfigFailed', language));
     }
   };
 
@@ -328,34 +316,22 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   };
 
   const handleDeleteExchangeConfig = async (exchangeId: string) => {
-    if (!confirm(t('confirmDeleteExchange', language))) return;
-    
     try {
-      const updatedExchanges = allExchanges?.map(e => 
-        e.id === exchangeId ? { ...e, apiKey: '', secretKey: '', enabled: false } : e
-      ) || [];
+      // 调用真正的删除API
+      await api.deleteExchangeConfig(exchangeId);
       
-      const request = {
-        exchanges: Object.fromEntries(
-          updatedExchanges.map(exchange => [
-            exchange.id,
-            {
-              enabled: exchange.enabled,
-              api_key: exchange.apiKey || '',
-              secret_key: exchange.secretKey || '',
-              testnet: exchange.testnet || false
-            }
-          ])
-        )
-      };
+      // 重新获取交易所配置列表以更新界面
+      const refreshedExchanges = await api.getExchangeConfigs();
+      setAllExchanges(refreshedExchanges);
       
-      await api.updateExchangeConfigs(request);
-      setAllExchanges(updatedExchanges);
       setShowExchangeModal(false);
       setEditingExchange(null);
-    } catch (error) {
+      
+      // 重新加载交易员列表
+      mutateTraders();
+    } catch (error: any) {
       console.error('Failed to delete exchange config:', error);
-      alert(t('deleteExchangeConfigFailed', language));
+      alert(error.message || t('deleteExchangeConfigFailed', language));
     }
   };
 
