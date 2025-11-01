@@ -118,7 +118,12 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
   // 检查模型是否正在被运行中的交易员使用
   const isModelInUse = (modelId: string) => {
-    return traders?.some(t => t.ai_model === modelId && t.is_running) || false;
+    const targetModel = allModels?.find(m => m.id === modelId);
+    const legacyId = targetModel?.provider;
+    return traders?.some(t => {
+      if (!t.is_running) return false;
+      return t.ai_model === modelId || (legacyId && t.ai_model === legacyId);
+    }) || false;
   };
 
   // 检查交易所是否正在被运行中的交易员使用
@@ -128,7 +133,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
   const handleCreateTrader = async (data: CreateTraderRequest) => {
     try {
-      const model = allModels?.find(m => m.id === data.ai_model_id);
+      const model = allModels?.find(m => m.id === data.ai_model_id || m.provider === data.ai_model_id);
       const exchange = allExchanges?.find(e => e.id === data.exchange_id);
 
       if (!model?.enabled) {
@@ -153,6 +158,10 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const handleEditTrader = async (traderId: string) => {
     try {
       const traderConfig = await api.getTraderConfig(traderId);
+      const matchedModel = allModels?.find(m => m.id === traderConfig.ai_model || m.provider === traderConfig.ai_model);
+      if (matchedModel) {
+        traderConfig.ai_model = matchedModel.id;
+      }
       setEditingTrader(traderConfig);
       setShowEditModal(true);
     } catch (error) {
@@ -165,7 +174,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!editingTrader) return;
 
     try {
-      const model = enabledModels?.find(m => m.id === data.ai_model_id);
+      const model = enabledModels?.find(m => m.id === data.ai_model_id || m.provider === data.ai_model_id);
       const exchange = enabledExchanges?.find(e => e.id === data.exchange_id);
 
       if (!model) {
@@ -247,31 +256,33 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!confirm(t('confirmDeleteModel', language))) return;
 
     try {
-      const updatedModels = allModels?.map(m =>
-        m.id === modelId ? { ...m, apiKey: '', customApiUrl: '', customModelName: '', enabled: false } : m
-      ) || [];
+      const targetModel = allModels?.find(m => m.id === modelId || m.provider === modelId);
+      if (!targetModel) {
+        alert(t('modelNotExist', language));
+        return;
+      }
 
       const request = {
-        models: Object.fromEntries(
-          updatedModels.map(model => [
-            model.provider, // 使用 provider 而不是 id
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || ''
-            }
-          ])
-        )
+        models: {
+          [targetModel.provider]: {
+            enabled: false,
+            api_key: '',
+            custom_api_url: '',
+            custom_model_name: '',
+            delete: true
+          }
+        }
       };
 
       await api.updateModelConfigs(request);
-      setAllModels(updatedModels);
+      const refreshedModels = await api.getModelConfigs();
+      setAllModels(refreshedModels);
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {
       console.error('Failed to delete model config:', error);
-      alert(t('deleteConfigFailed', language));
+      const message = error instanceof Error ? error.message : t('deleteConfigFailed', language);
+      alert(message);
     }
   };
 
@@ -331,31 +342,31 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!confirm(t('confirmDeleteExchange', language))) return;
     
     try {
-      const updatedExchanges = allExchanges?.map(e => 
-        e.id === exchangeId ? { ...e, apiKey: '', secretKey: '', enabled: false } : e
-      ) || [];
-      
       const request = {
-        exchanges: Object.fromEntries(
-          updatedExchanges.map(exchange => [
-            exchange.id,
-            {
-              enabled: exchange.enabled,
-              api_key: exchange.apiKey || '',
-              secret_key: exchange.secretKey || '',
-              testnet: exchange.testnet || false
-            }
-          ])
-        )
+        exchanges: {
+          [exchangeId]: {
+            enabled: false,
+            api_key: '',
+            secret_key: '',
+            testnet: false,
+            hyperliquid_wallet_addr: '',
+            aster_user: '',
+            aster_signer: '',
+            aster_private_key: '',
+            delete: true
+          }
+        }
       };
       
       await api.updateExchangeConfigs(request);
-      setAllExchanges(updatedExchanges);
+      const refreshedExchanges = await api.getExchangeConfigs();
+      setAllExchanges(refreshedExchanges);
       setShowExchangeModal(false);
       setEditingExchange(null);
     } catch (error) {
       console.error('Failed to delete exchange config:', error);
-      alert(t('deleteExchangeConfigFailed', language));
+      const message = error instanceof Error ? error.message : t('deleteExchangeConfigFailed', language);
+      alert(message);
     }
   };
 
@@ -975,9 +986,7 @@ function ModelConfigModal({
             <button
               type="button"
               onClick={() => {
-                if (confirm(t('confirmDeleteModel', language))) {
-                  onDelete(editingModelId);
-                }
+                onDelete(editingModelId);
               }}
               className="p-2 rounded hover:bg-red-100 transition-colors"
               style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}
@@ -1212,9 +1221,7 @@ function ExchangeConfigModal({
             <button
               type="button"
               onClick={() => {
-                if (confirm(t('confirmDeleteExchange', language))) {
-                  onDelete(editingExchangeId);
-                }
+                onDelete(editingExchangeId);
               }}
               className="p-2 rounded hover:bg-red-100 transition-colors"
               style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}

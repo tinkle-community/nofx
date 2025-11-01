@@ -47,6 +47,7 @@ func (d *Database) createTables() error {
 			provider TEXT NOT NULL,
 			enabled BOOLEAN DEFAULT 0,
 			api_key TEXT DEFAULT '',
+			is_deleted BOOLEAN DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -62,6 +63,7 @@ func (d *Database) createTables() error {
 			api_key TEXT DEFAULT '',
 			secret_key TEXT DEFAULT '',
 			testnet BOOLEAN DEFAULT 0,
+			is_deleted BOOLEAN DEFAULT 0,
 			-- Hyperliquid 特定字段
 			hyperliquid_wallet_addr TEXT DEFAULT '',
 			-- Aster 特定字段
@@ -177,17 +179,19 @@ func (d *Database) createTables() error {
 		`ALTER TABLE exchanges ADD COLUMN aster_private_key TEXT DEFAULT ''`,
 		`ALTER TABLE traders ADD COLUMN custom_prompt TEXT DEFAULT ''`,
 		`ALTER TABLE traders ADD COLUMN override_base_prompt BOOLEAN DEFAULT 0`,
-		`ALTER TABLE traders ADD COLUMN is_cross_margin BOOLEAN DEFAULT 1`, // 默认为全仓模式
-		`ALTER TABLE traders ADD COLUMN use_default_coins BOOLEAN DEFAULT 1`, // 默认使用默认币种
-		`ALTER TABLE traders ADD COLUMN custom_coins TEXT DEFAULT ''`, // 自定义币种列表（JSON格式）
-		`ALTER TABLE traders ADD COLUMN btc_eth_leverage INTEGER DEFAULT 5`, // BTC/ETH杠杆倍数
-		`ALTER TABLE traders ADD COLUMN altcoin_leverage INTEGER DEFAULT 5`, // 山寨币杠杆倍数
-		`ALTER TABLE traders ADD COLUMN trading_symbols TEXT DEFAULT ''`, // 交易币种，逗号分隔
-		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`,           // 是否使用COIN POOL信号源
-		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`,             // 是否使用OI TOP信号源
+		`ALTER TABLE traders ADD COLUMN is_cross_margin BOOLEAN DEFAULT 1`,             // 默认为全仓模式
+		`ALTER TABLE traders ADD COLUMN use_default_coins BOOLEAN DEFAULT 1`,           // 默认使用默认币种
+		`ALTER TABLE traders ADD COLUMN custom_coins TEXT DEFAULT ''`,                  // 自定义币种列表（JSON格式）
+		`ALTER TABLE traders ADD COLUMN btc_eth_leverage INTEGER DEFAULT 5`,            // BTC/ETH杠杆倍数
+		`ALTER TABLE traders ADD COLUMN altcoin_leverage INTEGER DEFAULT 5`,            // 山寨币杠杆倍数
+		`ALTER TABLE traders ADD COLUMN trading_symbols TEXT DEFAULT ''`,               // 交易币种，逗号分隔
+		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`,               // 是否使用COIN POOL信号源
+		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`,                  // 是否使用OI TOP信号源
 		`ALTER TABLE traders ADD COLUMN system_prompt_template TEXT DEFAULT 'default'`, // 系统提示词模板名称
-		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`,        // 自定义API地址
-		`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`,     // 自定义模型名称
+		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`,              // 自定义API地址
+		`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`,           // 自定义模型名称
+		`ALTER TABLE ai_models ADD COLUMN is_deleted BOOLEAN DEFAULT 0`,
+		`ALTER TABLE exchanges ADD COLUMN is_deleted BOOLEAN DEFAULT 0`,
 	}
 
 	for _, query := range alterQueries {
@@ -245,16 +249,16 @@ func (d *Database) initDefaultData() error {
 
 	// 初始化系统配置 - 创建所有字段，设置默认值，后续由config.json同步更新
 	systemConfigs := map[string]string{
-		"admin_mode":            "true",                                                               // 默认开启管理员模式，便于首次使用
-		"api_server_port":       "8080",                                                              // 默认API端口
-		"use_default_coins":     "true",                                                              // 默认使用内置币种列表
-		"default_coins":         `["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","HYPEUSDT"]`, // 默认币种列表（JSON格式）
-		"max_daily_loss":        "10.0",                                                              // 最大日损失百分比
-		"max_drawdown":          "20.0",                                                              // 最大回撤百分比
-		"stop_trading_minutes":  "60",                                                                // 停止交易时间（分钟）
-		"btc_eth_leverage":      "5",                                                                 // BTC/ETH杠杆倍数
-		"altcoin_leverage":      "5",                                                                 // 山寨币杠杆倍数
-		"jwt_secret":            "",                                                                  // JWT密钥，默认为空，由config.json或系统生成
+		"admin_mode":           "true",                                                                                // 默认开启管理员模式，便于首次使用
+		"api_server_port":      "8080",                                                                                // 默认API端口
+		"use_default_coins":    "true",                                                                                // 默认使用内置币种列表
+		"default_coins":        `["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","HYPEUSDT"]`, // 默认币种列表（JSON格式）
+		"max_daily_loss":       "10.0",                                                                                // 最大日损失百分比
+		"max_drawdown":         "20.0",                                                                                // 最大回撤百分比
+		"stop_trading_minutes": "60",                                                                                  // 停止交易时间（分钟）
+		"btc_eth_leverage":     "5",                                                                                   // BTC/ETH杠杆倍数
+		"altcoin_leverage":     "5",                                                                                   // 山寨币杠杆倍数
+		"jwt_secret":           "",                                                                                    // JWT密钥，默认为空，由config.json或系统生成
 	}
 
 	for key, value := range systemConfigs {
@@ -281,14 +285,14 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 如果已经迁移过，直接返回
 	if count > 0 {
 		return nil
 	}
-	
+
 	log.Printf("🔄 开始迁移exchanges表...")
-	
+
 	// 创建新的exchanges表，使用复合主键
 	_, err = d.db.Exec(`
 		CREATE TABLE exchanges_new (
@@ -300,6 +304,7 @@ func (d *Database) migrateExchangesTable() error {
 			api_key TEXT DEFAULT '',
 			secret_key TEXT DEFAULT '',
 			testnet BOOLEAN DEFAULT 0,
+			is_deleted BOOLEAN DEFAULT 0,
 			hyperliquid_wallet_addr TEXT DEFAULT '',
 			aster_user TEXT DEFAULT '',
 			aster_signer TEXT DEFAULT '',
@@ -313,28 +318,35 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return fmt.Errorf("创建新exchanges表失败: %w", err)
 	}
-	
+
 	// 复制数据到新表
 	_, err = d.db.Exec(`
-		INSERT INTO exchanges_new 
-		SELECT * FROM exchanges
+		INSERT INTO exchanges_new (
+			id, user_id, name, type, enabled, api_key, secret_key, testnet, is_deleted,
+			hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key, created_at, updated_at
+		)
+		SELECT 
+			id, user_id, name, type, enabled, api_key, secret_key, testnet,
+			COALESCE(is_deleted, 0),
+			hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key, created_at, updated_at
+		FROM exchanges
 	`)
 	if err != nil {
 		return fmt.Errorf("复制数据失败: %w", err)
 	}
-	
+
 	// 删除旧表
 	_, err = d.db.Exec(`DROP TABLE exchanges`)
 	if err != nil {
 		return fmt.Errorf("删除旧表失败: %w", err)
 	}
-	
+
 	// 重命名新表
 	_, err = d.db.Exec(`ALTER TABLE exchanges_new RENAME TO exchanges`)
 	if err != nil {
 		return fmt.Errorf("重命名表失败: %w", err)
 	}
-	
+
 	// 重新创建触发器
 	_, err = d.db.Exec(`
 		CREATE TRIGGER IF NOT EXISTS update_exchanges_updated_at
@@ -347,20 +359,20 @@ func (d *Database) migrateExchangesTable() error {
 	if err != nil {
 		return fmt.Errorf("创建触发器失败: %w", err)
 	}
-	
+
 	log.Printf("✅ exchanges表迁移完成")
 	return nil
 }
 
 // User 用户配置
 type User struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	PasswordHash string   `json:"-"` // 不返回到前端
-	OTPSecret   string    `json:"-"` // 不返回到前端
-	OTPVerified bool      `json:"otp_verified"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"` // 不返回到前端
+	OTPSecret    string    `json:"-"` // 不返回到前端
+	OTPVerified  bool      `json:"otp_verified"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // AIModelConfig AI模型配置
@@ -379,36 +391,36 @@ type AIModelConfig struct {
 
 // ExchangeConfig 交易所配置
 type ExchangeConfig struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`
-	Enabled   bool      `json:"enabled"`
-	APIKey    string    `json:"apiKey"`
-	SecretKey string    `json:"secretKey"`
-	Testnet   bool      `json:"testnet"`
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Enabled   bool   `json:"enabled"`
+	APIKey    string `json:"apiKey"`
+	SecretKey string `json:"secretKey"`
+	Testnet   bool   `json:"testnet"`
 	// Hyperliquid 特定字段
 	HyperliquidWalletAddr string `json:"hyperliquidWalletAddr"`
 	// Aster 特定字段
-	AsterUser       string `json:"asterUser"`
-	AsterSigner     string `json:"asterSigner"`
-	AsterPrivateKey string `json:"asterPrivateKey"`
+	AsterUser       string    `json:"asterUser"`
+	AsterSigner     string    `json:"asterSigner"`
+	AsterPrivateKey string    `json:"asterPrivateKey"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // TraderRecord 交易员配置（数据库实体）
 type TraderRecord struct {
-	ID                 string    `json:"id"`
-	UserID             string    `json:"user_id"`
-	Name               string    `json:"name"`
-	AIModelID          string    `json:"ai_model_id"`
-	ExchangeID         string    `json:"exchange_id"`
-	InitialBalance     float64   `json:"initial_balance"`
-	ScanIntervalMinutes int      `json:"scan_interval_minutes"`
-	IsRunning          bool      `json:"is_running"`
-	BTCETHLeverage     int       `json:"btc_eth_leverage"`     // BTC/ETH杠杆倍数
-	AltcoinLeverage    int       `json:"altcoin_leverage"`     // 山寨币杠杆倍数
+	ID                   string    `json:"id"`
+	UserID               string    `json:"user_id"`
+	Name                 string    `json:"name"`
+	AIModelID            string    `json:"ai_model_id"`
+	ExchangeID           string    `json:"exchange_id"`
+	InitialBalance       float64   `json:"initial_balance"`
+	ScanIntervalMinutes  int       `json:"scan_interval_minutes"`
+	IsRunning            bool      `json:"is_running"`
+	BTCETHLeverage       int       `json:"btc_eth_leverage"`       // BTC/ETH杠杆倍数
+	AltcoinLeverage      int       `json:"altcoin_leverage"`       // 山寨币杠杆倍数
 	TradingSymbols       string    `json:"trading_symbols"`        // 交易币种，逗号分隔
 	UseCoinPool          bool      `json:"use_coin_pool"`          // 是否使用COIN POOL信号源
 	UseOITop             bool      `json:"use_oi_top"`             // 是否使用OI TOP信号源
@@ -422,12 +434,12 @@ type TraderRecord struct {
 
 // UserSignalSource 用户信号源配置
 type UserSignalSource struct {
-	ID           int       `json:"id"`
-	UserID       string    `json:"user_id"`
-	CoinPoolURL  string    `json:"coin_pool_url"`
-	OITopURL     string    `json:"oi_top_url"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          int       `json:"id"`
+	UserID      string    `json:"user_id"`
+	CoinPoolURL string    `json:"coin_pool_url"`
+	OITopURL    string    `json:"oi_top_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // GenerateOTPSecret 生成OTP密钥
@@ -457,12 +469,12 @@ func (d *Database) EnsureAdminUser() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 如果已存在，直接返回
 	if count > 0 {
 		return nil
 	}
-	
+
 	// 创建admin用户（密码为空，因为管理员模式下不需要密码）
 	adminUser := &User{
 		ID:           "admin",
@@ -471,7 +483,7 @@ func (d *Database) EnsureAdminUser() error {
 		OTPSecret:    "",
 		OTPVerified:  true,
 	}
-	
+
 	return d.CreateUser(adminUser)
 }
 
@@ -482,7 +494,7 @@ func (d *Database) GetUserByEmail(email string) (*User, error) {
 		SELECT id, email, password_hash, otp_secret, otp_verified, created_at, updated_at
 		FROM users WHERE email = ?
 	`, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret, 
+		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret,
 		&user.OTPVerified, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -498,7 +510,7 @@ func (d *Database) GetUserByID(userID string) (*User, error) {
 		SELECT id, email, password_hash, otp_secret, otp_verified, created_at, updated_at
 		FROM users WHERE id = ?
 	`, userID).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret, 
+		&user.ID, &user.Email, &user.PasswordHash, &user.OTPSecret,
 		&user.OTPVerified, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -539,7 +551,9 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 		       COALESCE(custom_api_url, '') as custom_api_url,
 		       COALESCE(custom_model_name, '') as custom_model_name,
 		       created_at, updated_at
-		FROM ai_models WHERE user_id = ? ORDER BY id
+		FROM ai_models 
+		WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0
+		ORDER BY id
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -565,53 +579,53 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 }
 
 // UpdateAIModel 更新AI模型配置，如果不存在则创建用户特定配置
-func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string) error {
-	// 先尝试精确匹配 ID（新版逻辑，支持多个相同 provider 的模型）
+func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string, deleteFlag bool) error {
+	// id 参数实际上是 provider（如 "deepseek", "qwen"）
+	provider := id
+
+	// 先查找用户是否已有这个 provider 的配置
 	var existingID string
 	err := d.db.QueryRow(`
 		SELECT id FROM ai_models WHERE user_id = ? AND id = ? LIMIT 1
 	`, userID, id).Scan(&existingID)
 
 	if err == nil {
-		// 找到了现有配置（精确匹配 ID），更新它
-		_, err = d.db.Exec(`
-			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-			WHERE id = ? AND user_id = ?
-		`, enabled, apiKey, customAPIURL, customModelName, existingID, userID)
-		return err
-	}
-
-	// ID 不存在，尝试兼容旧逻辑：将 id 作为 provider 查找
-	provider := id
-	err = d.db.QueryRow(`
-		SELECT id FROM ai_models WHERE user_id = ? AND provider = ? LIMIT 1
-	`, userID, provider).Scan(&existingID)
-
-	if err == nil {
-		// 找到了现有配置（通过 provider 匹配，兼容旧版），更新它
-		log.Printf("⚠️  使用旧版 provider 匹配更新模型: %s -> %s", provider, existingID)
-		_, err = d.db.Exec(`
-			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-			WHERE id = ? AND user_id = ?
-		`, enabled, apiKey, customAPIURL, customModelName, existingID, userID)
-		return err
-	}
-
-	// 没有找到任何现有配置，创建新的
-	// 推断 provider（从 id 中提取，或者直接使用 id）
-	if provider == id && (provider == "deepseek" || provider == "qwen") {
-		// id 本身就是 provider
-		provider = id
-	} else {
-		// 从 id 中提取 provider（假设格式是 userID_provider 或 timestamp_userID_provider）
-		parts := strings.Split(id, "_")
-		if len(parts) >= 2 {
-			provider = parts[len(parts)-1] // 取最后一部分作为 provider
-		} else {
-			provider = id
+		if deleteFlag {
+			names, err := d.tradersUsingAIModel(userID, existingID, provider)
+			if err != nil {
+				return err
+			}
+			if len(names) > 0 {
+				return fmt.Errorf("AI模型正在被交易员使用，需先删除交易员：{%s}", strings.Join(names, "、"))
+			}
 		}
+
+		if deleteFlag {
+			_, err = d.db.Exec(`
+				UPDATE ai_models 
+				SET api_key = '', custom_api_url = '', custom_model_name = '', 
+				    is_deleted = 1, updated_at = datetime('now')
+				WHERE id = ? AND user_id = ?
+			`, existingID, userID)
+			return err
+		}
+
+		// 找到了现有配置，更新它并确保标记为未删除
+		_, err = d.db.Exec(`
+			UPDATE ai_models 
+			SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, 
+		    is_deleted = 0, updated_at = datetime('now')
+			WHERE id = ? AND user_id = ?
+		`, enabled, apiKey, customAPIURL, customModelName, existingID, userID)
+		return err
 	}
 
+	if deleteFlag {
+		// 请求是删除操作且不存在记录时无需创建
+		return nil
+	}
+
+	// 没有找到现有配置，创建新的
 	// 获取模型的基本信息
 	var name string
 	err = d.db.QueryRow(`
@@ -654,7 +668,9 @@ func (d *Database) GetExchanges(userID string) ([]*ExchangeConfig, error) {
 		       COALESCE(aster_signer, '') as aster_signer,
 		       COALESCE(aster_private_key, '') as aster_private_key,
 		       created_at, updated_at 
-		FROM exchanges WHERE user_id = ? ORDER BY id
+		FROM exchanges 
+		WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0
+		ORDER BY id
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -668,7 +684,7 @@ func (d *Database) GetExchanges(userID string) ([]*ExchangeConfig, error) {
 		err := rows.Scan(
 			&exchange.ID, &exchange.UserID, &exchange.Name, &exchange.Type,
 			&exchange.Enabled, &exchange.APIKey, &exchange.SecretKey, &exchange.Testnet,
-			&exchange.HyperliquidWalletAddr, &exchange.AsterUser, 
+			&exchange.HyperliquidWalletAddr, &exchange.AsterUser,
 			&exchange.AsterSigner, &exchange.AsterPrivateKey,
 			&exchange.CreatedAt, &exchange.UpdatedAt,
 		)
@@ -682,33 +698,76 @@ func (d *Database) GetExchanges(userID string) ([]*ExchangeConfig, error) {
 }
 
 // UpdateExchange 更新交易所配置，如果不存在则创建用户特定配置
-func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secretKey string, testnet bool, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey string) error {
+func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secretKey string, testnet bool, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey string, deleteFlag bool) error {
 	log.Printf("🔧 UpdateExchange: userID=%s, id=%s, enabled=%v", userID, id, enabled)
-	
+
+	if deleteFlag {
+		names, err := d.tradersUsingExchange(userID, id)
+		if err != nil {
+			return err
+		}
+		if len(names) > 0 {
+			return fmt.Errorf("交易所正在被交易员使用，需先删除交易员：{%s}", strings.Join(names, "、"))
+		}
+
+		result, err := d.db.Exec(`
+			UPDATE exchanges
+			SET api_key = '',
+				secret_key = '',
+				testnet = 0,
+				hyperliquid_wallet_addr = '',
+				aster_user = '',
+				aster_signer = '',
+				aster_private_key = '',
+				is_deleted = 1,
+				updated_at = datetime('now')
+			WHERE id = ? AND user_id = ?
+		`, id, userID)
+		if err != nil {
+			log.Printf("❌ UpdateExchange: 删除标记失败: %v", err)
+			return err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			log.Printf("❌ UpdateExchange: 获取删除影响行数失败: %v", err)
+			return err
+		}
+
+		if rowsAffected == 0 {
+			log.Printf("ℹ️ UpdateExchange: 删除请求未找到记录 id=%s user=%s", id, userID)
+		} else {
+			log.Printf("🗑️ UpdateExchange: 已标记交易所 %s 为删除状态", id)
+		}
+		return nil
+	}
+
 	// 首先尝试更新现有的用户配置
 	result, err := d.db.Exec(`
 		UPDATE exchanges SET enabled = ?, api_key = ?, secret_key = ?, testnet = ?, 
-		       hyperliquid_wallet_addr = ?, aster_user = ?, aster_signer = ?, aster_private_key = ?, updated_at = datetime('now')
+		       hyperliquid_wallet_addr = ?, aster_user = ?, aster_signer = ?, aster_private_key = ?, 
+		       is_deleted = 0,
+		       updated_at = datetime('now')
 		WHERE id = ? AND user_id = ?
 	`, enabled, apiKey, secretKey, testnet, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, id, userID)
 	if err != nil {
 		log.Printf("❌ UpdateExchange: 更新失败: %v", err)
 		return err
 	}
-	
+
 	// 检查是否有行被更新
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		log.Printf("❌ UpdateExchange: 获取影响行数失败: %v", err)
 		return err
 	}
-	
+
 	log.Printf("📊 UpdateExchange: 影响行数 = %d", rowsAffected)
-	
+
 	// 如果没有行被更新，说明用户没有这个交易所的配置，需要创建
 	if rowsAffected == 0 {
 		log.Printf("💡 UpdateExchange: 没有现有记录，创建新记录")
-		
+
 		// 根据交易所ID确定基本信息
 		var name, typ string
 		if id == "binance" {
@@ -724,16 +783,16 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 			name = id + " Exchange"
 			typ = "cex"
 		}
-		
+
 		log.Printf("🆕 UpdateExchange: 创建新记录 ID=%s, name=%s, type=%s", id, name, typ)
-		
+
 		// 创建用户特定的配置，使用原始的交易所ID
 		_, err = d.db.Exec(`
 			INSERT INTO exchanges (id, user_id, name, type, enabled, api_key, secret_key, testnet, 
-			                       hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+			                       hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key, created_at, updated_at, is_deleted)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)
 		`, id, userID, name, typ, enabled, apiKey, secretKey, testnet, hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey)
-		
+
 		if err != nil {
 			log.Printf("❌ UpdateExchange: 创建记录失败: %v", err)
 		} else {
@@ -741,9 +800,79 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 		}
 		return err
 	}
-	
+
 	log.Printf("✅ UpdateExchange: 更新现有记录成功")
 	return nil
+}
+
+func (d *Database) tradersUsingAIModel(userID, modelID, provider string) ([]string, error) {
+	var rows *sql.Rows
+	var err error
+
+	switch {
+	case modelID != "" && provider != "" && modelID != provider:
+		rows, err = d.db.Query(`
+			SELECT name FROM traders 
+			WHERE user_id = ? AND (ai_model_id = ? OR ai_model_id = ?)
+		`, userID, modelID, provider)
+	case modelID != "":
+		rows, err = d.db.Query(`
+			SELECT name FROM traders 
+			WHERE user_id = ? AND ai_model_id = ?
+		`, userID, modelID)
+	case provider != "":
+		rows, err = d.db.Query(`
+			SELECT name FROM traders 
+			WHERE user_id = ? AND ai_model_id = ?
+		`, userID, provider)
+	default:
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	namesMap := make(map[string]struct{})
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		if _, exists := namesMap[name]; !exists {
+			namesMap[name] = struct{}{}
+			names = append(names, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+func (d *Database) tradersUsingExchange(userID, exchangeID string) ([]string, error) {
+	rows, err := d.db.Query(`
+		SELECT name FROM traders 
+		WHERE user_id = ? AND exchange_id = ?
+	`, userID, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return names, nil
 }
 
 // CreateAIModel 创建AI模型配置
@@ -790,9 +919,9 @@ func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 	}
 	defer rows.Close()
 
-    var traders []*TraderRecord
+	var traders []*TraderRecord
 	for rows.Next() {
-        var trader TraderRecord
+		var trader TraderRecord
 		err := rows.Scan(
 			&trader.ID, &trader.UserID, &trader.Name, &trader.AIModelID, &trader.ExchangeID,
 			&trader.InitialBalance, &trader.ScanIntervalMinutes, &trader.IsRunning,
@@ -847,7 +976,7 @@ func (d *Database) DeleteTrader(userID, id string) error {
 
 // GetTraderConfig 获取交易员完整配置（包含AI模型和交易所信息）
 func (d *Database) GetTraderConfig(userID, traderID string) (*TraderRecord, *AIModelConfig, *ExchangeConfig, error) {
-    var trader TraderRecord
+	var trader TraderRecord
 	var aiModel AIModelConfig
 	var exchange ExchangeConfig
 
@@ -867,13 +996,13 @@ func (d *Database) GetTraderConfig(userID, traderID string) (*TraderRecord, *AIM
 			COALESCE(e.aster_private_key, '') as aster_private_key,
 			e.created_at, e.updated_at
 		FROM traders t
-		JOIN ai_models a ON t.ai_model_id = a.id AND t.user_id = a.user_id
-		JOIN exchanges e ON t.exchange_id = e.id AND t.user_id = e.user_id
+		JOIN ai_models a ON t.ai_model_id = a.id AND t.user_id = a.user_id AND COALESCE(a.is_deleted, 0) = 0
+		JOIN exchanges e ON t.exchange_id = e.id AND t.user_id = e.user_id AND COALESCE(e.is_deleted, 0) = 0
 		WHERE t.id = ? AND t.user_id = ?
 	`, traderID, userID).Scan(
 		&trader.ID, &trader.UserID, &trader.Name, &trader.AIModelID, &trader.ExchangeID,
 		&trader.InitialBalance, &trader.ScanIntervalMinutes, &trader.IsRunning,
-		&trader.BTCETHLeverage, &trader.AltcoinLeverage, &trader.TradingSymbols, &trader.UseCoinPool, 
+		&trader.BTCETHLeverage, &trader.AltcoinLeverage, &trader.TradingSymbols, &trader.UseCoinPool,
 		&trader.UseOITop, &trader.CustomPrompt, &trader.OverrideBasePrompt, &trader.IsCrossMargin,
 		&trader.CreatedAt, &trader.UpdatedAt,
 		&aiModel.ID, &aiModel.UserID, &aiModel.Name, &aiModel.Provider, &aiModel.Enabled, &aiModel.APIKey,

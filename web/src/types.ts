@@ -143,6 +143,7 @@ export interface UpdateModelConfigRequest {
       api_key: string;
       custom_api_url?: string;
       custom_model_name?: string;
+      delete?: boolean;
     };
   };
 }
@@ -160,6 +161,7 @@ export interface UpdateExchangeConfigRequest {
       aster_user?: string;
       aster_signer?: string;
       aster_private_key?: string;
+      delete?: boolean;
     };
   };
 }
