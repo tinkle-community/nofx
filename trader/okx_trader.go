@@ -665,14 +665,22 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 
 	// 创建市价卖出订单（平多）
 	body := map[string]interface{}{
-		"instId":     instId,
-		"tdMode":     "isolated",
-		"side":       "sell",
-		"posSide":    actualPosSide, // 🔧 isolated模式下必须提供posSide，即使是net mode也要设置为"net"
-		"ordType":    "market",
-		"sz":         quantityStr,
-		"reduceOnly": true, // 🔧 明确标识这是平仓操作，不会开新仓
+		"instId":  instId,
+		"tdMode":  "isolated",
+		"side":    "sell",
+		"ordType": "market",
+		"sz":      quantityStr,
 	}
+
+	// 🔧 posSide 处理：与开仓逻辑保持一致
+	// net mode: 省略posSide参数（默认为net）
+	// long/short mode: 必须提供posSide
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
+	}
+
+	// 注意：根据OKX文档，开平仓模式下平仓单自动具有只减仓逻辑
+	// 买卖模式下可使用reduceOnly，但我们通过side方向来平仓，不需要额外设置
 
 	// 📊 调试日志：打印请求详情
 	debugMode := os.Getenv("DEBUG_MODE") == "true"
@@ -783,14 +791,22 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 
 	// 创建市价买入订单（平空）
 	body := map[string]interface{}{
-		"instId":     instId,
-		"tdMode":     "isolated",
-		"side":       "buy",
-		"posSide":    actualPosSide, // 🔧 isolated模式下必须提供posSide，即使是net mode也要设置为"net"
-		"ordType":    "market",
-		"sz":         quantityStr,
-		"reduceOnly": true, // 🔧 明确标识这是平仓操作，不会开新仓
+		"instId":  instId,
+		"tdMode":  "isolated",
+		"side":    "buy",
+		"ordType": "market",
+		"sz":      quantityStr,
 	}
+
+	// 🔧 posSide 处理：与开仓逻辑保持一致
+	// net mode: 省略posSide参数（默认为net）
+	// long/short mode: 必须提供posSide
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
+	}
+
+	// 注意：根据OKX文档，开平仓模式下平仓单自动具有只减仓逻辑
+	// 买卖模式下可使用reduceOnly，但我们通过side方向来平仓，不需要额外设置
 
 	// 📊 调试日志：打印请求详情
 	debugMode := os.Getenv("DEBUG_MODE") == "true"
