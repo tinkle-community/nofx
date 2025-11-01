@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -67,8 +68,18 @@ type Kline struct {
 
 // Get 获取指定代币的市场数据
 func Get(symbol string) (*Data, error) {
+	// 调试模式：打印原始输入
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+	if debugMode {
+		log.Printf("[DEBUG] market.Get 原始输入: symbol=%s", symbol)
+	}
+
 	// 标准化symbol
 	symbol = Normalize(symbol)
+
+	if debugMode {
+		log.Printf("[DEBUG] market.Get 标准化后: symbol=%s", symbol)
+	}
 
 	// 获取3分钟K线数据 (最近10个)
 	klines3m, err := getKlines(symbol, "3m", 40) // 多获取一些用于计算
@@ -199,6 +210,8 @@ func getKlinesBinance(symbol, interval string, limit int) ([]Kline, error) {
 
 // getKlinesOKX 从OKX获取K线数据
 func getKlinesOKX(symbol, interval string, limit int) ([]Kline, error) {
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+
 	// 转换时间间隔格式：3m -> 3m, 4h -> 4H (OKX要求大写H)
 	okxInterval := interval
 	if strings.HasSuffix(interval, "h") {
@@ -207,6 +220,10 @@ func getKlinesOKX(symbol, interval string, limit int) ([]Kline, error) {
 
 	url := fmt.Sprintf("https://www.okx.com/api/v5/market/candles?instId=%s&bar=%s&limit=%d",
 		symbol, okxInterval, limit)
+
+	if debugMode {
+		log.Printf("[DEBUG] OKX K线请求: URL=%s", url)
+	}
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -231,6 +248,10 @@ func getKlinesOKX(symbol, interval string, limit int) ([]Kline, error) {
 	}
 
 	if okxResp.Code != "0" {
+		if debugMode {
+			log.Printf("[DEBUG] OKX API错误详情: symbol=%s, interval=%s, code=%s, msg=%s, body=%s",
+				symbol, interval, okxResp.Code, okxResp.Msg, string(body))
+		}
 		return nil, fmt.Errorf("OKX API错误: code=%s, msg=%s", okxResp.Code, okxResp.Msg)
 	}
 

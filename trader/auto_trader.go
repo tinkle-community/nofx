@@ -9,6 +9,7 @@ import (
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"os"
 	"strings"
 	"time"
 )
@@ -598,24 +599,34 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		})
 	}
 
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+
 	if excludedCount > 0 {
 		log.Printf("🚫 已过滤黑名单币种 %d 个", excludedCount)
 	}
 	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种 (黑名单后: %d个)",
 		ai500Limit, len(mergedPool.AllSymbols), len(candidateCoins))
 
-	// 显示前10个候选币种，帮助确认格式
-	displayCount := len(candidateCoins)
-	if displayCount > 10 {
-		displayCount = 10
-	}
-	if displayCount > 0 {
-		log.Printf("  候选币种示例 (前%d个):", displayCount)
-		for i := 0; i < displayCount; i++ {
-			log.Printf("    %d. %s (来源: %v)", i+1, candidateCoins[i].Symbol, candidateCoins[i].Sources)
+	// DEBUG模式：显示所有候选币种
+	if debugMode {
+		log.Printf("[DEBUG] 所有候选币种列表 (共%d个):", len(candidateCoins))
+		for i, coin := range candidateCoins {
+			log.Printf("[DEBUG]   %d. %s (来源: %v)", i+1, coin.Symbol, coin.Sources)
 		}
-		if len(candidateCoins) > 10 {
-			log.Printf("    ... 还有 %d 个币种", len(candidateCoins)-10)
+	} else {
+		// 显示前10个候选币种，帮助确认格式
+		displayCount := len(candidateCoins)
+		if displayCount > 10 {
+			displayCount = 10
+		}
+		if displayCount > 0 {
+			log.Printf("  候选币种示例 (前%d个):", displayCount)
+			for i := 0; i < displayCount; i++ {
+				log.Printf("    %d. %s (来源: %v)", i+1, candidateCoins[i].Symbol, candidateCoins[i].Sources)
+			}
+			if len(candidateCoins) > 10 {
+				log.Printf("    ... 还有 %d 个币种", len(candidateCoins)-10)
+			}
 		}
 	}
 

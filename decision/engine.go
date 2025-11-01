@@ -7,6 +7,7 @@ import (
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"os"
 	"strings"
 	"time"
 )
@@ -146,10 +147,19 @@ func fetchMarketDataForContext(ctx *Context) error {
 		positionSymbols[pos.Symbol] = true
 	}
 
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+
 	for symbol := range symbolSet {
+		if debugMode {
+			log.Printf("[DEBUG] decision.fetchMarketDataForContext: 正在获取 symbol=%s 的市场数据", symbol)
+		}
+
 		data, err := market.Get(symbol)
 		if err != nil {
 			// 单个币种失败不影响整体，只记录错误
+			if debugMode {
+				log.Printf("[DEBUG] decision.fetchMarketDataForContext: symbol=%s 获取失败: %v", symbol, err)
+			}
 			continue
 		}
 
