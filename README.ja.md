@@ -321,9 +321,10 @@ docker compose up -d --build
 ./start.sh restart   # サービスを再起動
 ```
 
-**📖 詳細なDockerデプロイガイド、トラブルシューティング、高度な設定については：**
-- **English**: [DOCKER_DEPLOY.en.md](DOCKER_DEPLOY.en.md)を参照
-- **中文**: [DOCKER_DEPLOY.md](DOCKER_DEPLOY.md)を参照
+**📖 詳細なDockerデプロイガイド、トラブルシューティング、高度な設定について：**
+- **English**: See [DOCKER_DEPLOY.en.md](DOCKER_DEPLOY.en.md)
+- **中文**: 查看 [DOCKER_DEPLOY.md](DOCKER_DEPLOY.md)
+- **日本語**: [DOCKER_DEPLOY.ja.md](DOCKER_DEPLOY.ja.md)を参照
 
 ---
 

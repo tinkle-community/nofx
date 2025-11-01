@@ -320,6 +320,7 @@ Open your browser and visit: **http://localhost:3000**
 **📖 For detailed Docker deployment guide, troubleshooting, and advanced configuration:**
 - **English**: See [DOCKER_DEPLOY.en.md](DOCKER_DEPLOY.en.md)
 - **中文**: 查看 [DOCKER_DEPLOY.md](DOCKER_DEPLOY.md)
+- **日本語**: [DOCKER_DEPLOY.ja.md](DOCKER_DEPLOY.ja.md)を参照
 
 ---
 
