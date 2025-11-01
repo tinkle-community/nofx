@@ -185,12 +185,19 @@ func (d *Database) createTables() error {
 		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`, // 是否使用COIN POOL信号源
 		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`, // 是否使用OI TOP信号源
 		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`, // 自定义API地址
+		`ALTER TABLE ai_models ADD COLUMN custom_model_name TEXT DEFAULT ''`, // 自定义模型名称
 	}
 
 	for _, query := range alterQueries {
 		// 忽略已存在字段的错误
 		d.db.Exec(query)
 	}
+
+	// 确保custom模型存在（用于已有数据库的升级）
+	d.db.Exec(`
+		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled) 
+		VALUES ('custom', 'default', 'Custom API', 'custom', 0)
+	`)
 
 	// 检查是否需要迁移exchanges表的主键结构
 	err := d.migrateExchangesTable()
@@ -209,6 +216,7 @@ func (d *Database) initDefaultData() error {
 	}{
 		{"deepseek", "DeepSeek", "deepseek"},
 		{"qwen", "Qwen", "qwen"},
+		{"custom", "Custom API", "custom"},
 	}
 
 	for _, model := range aiModels {
@@ -362,15 +370,16 @@ type User struct {
 
 // AIModelConfig AI模型配置
 type AIModelConfig struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	Name         string    `json:"name"`
-	Provider     string    `json:"provider"`
-	Enabled      bool      `json:"enabled"`
-	APIKey       string    `json:"apiKey"`
-	CustomAPIURL string    `json:"customApiUrl"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                string    `json:"id"`
+	UserID            string    `json:"user_id"`
+	Name              string    `json:"name"`
+	Provider          string    `json:"provider"`
+	Enabled           bool      `json:"enabled"`
+	APIKey            string    `json:"apiKey"`
+	CustomAPIURL      string    `json:"customApiUrl"`
+	CustomModelName   string    `json:"customModelName"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // ExchangeConfig 交易所配置
@@ -530,7 +539,10 @@ func (d *Database) UpdateUserOTPVerified(userID string, verified bool) error {
 // GetAIModels 获取用户的AI模型配置
 func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 	rows, err := d.db.Query(`
-		SELECT id, user_id, name, provider, enabled, api_key, COALESCE(custom_api_url, '') as custom_api_url, created_at, updated_at 
+		SELECT id, user_id, name, provider, enabled, api_key, 
+		       COALESCE(custom_api_url, '') as custom_api_url, 
+		       COALESCE(custom_model_name, '') as custom_model_name,
+		       created_at, updated_at 
 		FROM ai_models WHERE user_id = ? ORDER BY id
 	`, userID)
 	if err != nil {
@@ -544,7 +556,7 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 		var model AIModelConfig
 		err := rows.Scan(
 			&model.ID, &model.UserID, &model.Name, &model.Provider, 
-			&model.Enabled, &model.APIKey, &model.CustomAPIURL,
+			&model.Enabled, &model.APIKey, &model.CustomAPIURL, &model.CustomModelName,
 			&model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
@@ -557,11 +569,11 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 }
 
 // UpdateAIModel 更新AI模型配置，如果不存在则创建用户特定配置
-func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL string) error {
+func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string) error {
 	// 首先尝试更新现有的用户配置
 	result, err := d.db.Exec(`
-		UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ? WHERE id = ? AND user_id = ?
-	`, enabled, apiKey, customAPIURL, id, userID)
+		UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ? WHERE id = ? AND user_id = ?
+	`, enabled, apiKey, customAPIURL, customModelName, id, userID)
 	if err != nil {
 		return err
 	}
@@ -596,9 +608,9 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 		// 创建用户特定的配置
 		userModelID := fmt.Sprintf("%s_%s", userID, id)
 		_, err = d.db.Exec(`
-			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-		`, userModelID, userID, name, provider, enabled, apiKey, customAPIURL)
+			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, userModelID, userID, name, provider, enabled, apiKey, customAPIURL, customModelName)
 		return err
 	}
 	
@@ -707,11 +719,11 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 }
 
 // CreateAIModel 创建AI模型配置
-func (d *Database) CreateAIModel(userID, id, name, provider string, enabled bool, apiKey, customAPIURL string) error {
+func (d *Database) CreateAIModel(userID, id, name, provider string, enabled bool, apiKey, customAPIURL, customModelName string) error {
 	_, err := d.db.Exec(`
-		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, id, userID, name, provider, enabled, apiKey, customAPIURL)
+		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, userID, name, provider, enabled, apiKey, customAPIURL, customModelName)
 	return err
 }
 

@@ -235,9 +235,10 @@ type ExchangeConfig struct {
 
 type UpdateModelConfigRequest struct {
 	Models map[string]struct {
-		Enabled      bool   `json:"enabled"`
-		APIKey       string `json:"api_key"`
-		CustomAPIURL string `json:"custom_api_url"`
+		Enabled          bool   `json:"enabled"`
+		APIKey           string `json:"api_key"`
+		CustomAPIURL     string `json:"custom_api_url"`
+		CustomModelName  string `json:"custom_model_name"`
 	} `json:"models"`
 }
 
@@ -615,7 +616,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 	
 	// 更新每个模型的配置
 	for modelID, modelData := range req.Models {
-		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL)
+		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("更新模型 %s 失败: %v", modelID, err)})
 			return

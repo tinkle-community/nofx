@@ -76,11 +76,11 @@ func (client *Client) SetCustomAPI(apiURL, apiKey, modelName string) {
 }
 
 // SetClient 设置完整的AI配置（高级用户）
-func (client *Client) SetClient(Client Client) {
-	if Client.Timeout == 0 {
-		Client.Timeout = 30 * time.Second
+func (client *Client) SetClient(cfg Client) {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
 	}
-	client = &Client
+	*client = cfg
 }
 
 // CallWithMessages 使用 system + user prompt 调用AI API（推荐）

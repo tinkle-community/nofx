@@ -228,11 +228,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
-		traderConfig.QwenKey = aiModelCfg.APIKey
-	} else if aiModelCfg.Provider == "deepseek" {
-		traderConfig.DeepSeekKey = aiModelCfg.APIKey
-	}
+	configureAIModel(&traderConfig, aiModelCfg)
 
 	// 创建trader实例
 	at, err := trader.NewAutoTrader(traderConfig)
@@ -332,11 +328,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
-		traderConfig.QwenKey = aiModelCfg.APIKey
-	} else if aiModelCfg.Provider == "deepseek" {
-		traderConfig.DeepSeekKey = aiModelCfg.APIKey
-	}
+	configureAIModel(&traderConfig, aiModelCfg)
 
 	// 创建trader实例
 	at, err := trader.NewAutoTrader(traderConfig)
@@ -727,11 +719,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
-		traderConfig.QwenKey = aiModelCfg.APIKey
-	} else if aiModelCfg.Provider == "deepseek" {
-		traderConfig.DeepSeekKey = aiModelCfg.APIKey
-	}
+	configureAIModel(&traderConfig, aiModelCfg)
 
 	// 创建trader实例
 	at, err := trader.NewAutoTrader(traderConfig)
@@ -753,4 +741,37 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	tm.traders[traderCfg.ID] = at
 	log.Printf("✓ Trader '%s' (%s + %s) 已为用户加载到内存", traderCfg.Name, aiModelCfg.Provider, exchangeCfg.ID)
 	return nil
+}
+
+// configureAIModel 配置AI模型的API密钥和自定义API设置
+func configureAIModel(traderConfig *trader.AutoTraderConfig, aiModelCfg *config.AIModelConfig) {
+	// 如果配置了自定义API URL，则统一使用自定义API模式
+	if aiModelCfg.CustomAPIURL != "" {
+		traderConfig.AIModel = "custom"
+		traderConfig.CustomAPIURL = aiModelCfg.CustomAPIURL
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		
+		// 根据provider设置默认的model name（如果没有自定义）
+		if aiModelCfg.CustomModelName != "" {
+			traderConfig.CustomModelName = aiModelCfg.CustomModelName
+		} else if aiModelCfg.Provider == "deepseek" {
+			traderConfig.CustomModelName = "deepseek-chat"
+		} else if aiModelCfg.Provider == "qwen" {
+			traderConfig.CustomModelName = "qwen-plus"
+		} else {
+			traderConfig.CustomModelName = aiModelCfg.Name
+		}
+		
+		log.Printf("🔧 配置自定义AI API: Provider=%s, URL=%s, Model=%s", 
+			aiModelCfg.Provider, aiModelCfg.CustomAPIURL, traderConfig.CustomModelName)
+	} else if aiModelCfg.Provider == "qwen" {
+		// 使用默认Qwen配置
+		traderConfig.QwenKey = aiModelCfg.APIKey
+	} else if aiModelCfg.Provider == "deepseek" {
+		// 使用默认DeepSeek配置
+		traderConfig.DeepSeekKey = aiModelCfg.APIKey
+	} else if aiModelCfg.Provider == "custom" {
+		// custom provider但没有URL，报错
+		log.Printf("⚠️ Custom provider需要配置custom_api_url")
+	}
 }

@@ -276,7 +276,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }
   };
 
-  const handleSaveModelConfig = async (modelId: string, apiKey: string, customApiUrl?: string) => {
+  const handleSaveModelConfig = async (modelId: string, apiKey: string, customApiUrl?: string, customModelName?: string) => {
     try {
       // 找到要配置的模型（从supportedModels中）
       const modelToUpdate = supportedModels?.find(m => m.id === modelId);
@@ -292,11 +292,11 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       if (existingModel) {
         // 更新现有配置
         updatedModels = allModels?.map(m => 
-          m.id === modelId ? { ...m, apiKey, customApiUrl: customApiUrl || '', enabled: true } : m
+          m.id === modelId ? { ...m, apiKey, customApiUrl: customApiUrl || '', customModelName: customModelName || '' } : m
         ) || [];
       } else {
         // 添加新配置
-        const newModel = { ...modelToUpdate, apiKey, customApiUrl: customApiUrl || '', enabled: true };
+        const newModel = { ...modelToUpdate, apiKey, customApiUrl: customApiUrl || '', customModelName: customModelName || '', enabled: true };
         updatedModels = [...(allModels || []), newModel];
       }
       
@@ -307,7 +307,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             {
               enabled: model.enabled,
               api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || ''
+              custom_api_url: model.customApiUrl || '',
+              custom_model_name: (model as any).customModelName || ''
             }
           ])
         )
@@ -910,7 +911,7 @@ function ModelConfigModal({
   allModels: AIModel[];
   configuredModels: AIModel[];
   editingModelId: string | null;
-  onSave: (modelId: string, apiKey: string, baseUrl?: string) => void;
+  onSave: (modelId: string, apiKey: string, baseUrl?: string, modelName?: string) => void;
   onDelete: (modelId: string) => void;
   onClose: () => void;
   language: Language;
@@ -918,17 +919,19 @@ function ModelConfigModal({
   const [selectedModelId, setSelectedModelId] = useState(editingModelId || '');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
+  const [modelName, setModelName] = useState('');
 
   // 获取当前编辑的模型信息 - 编辑时从已配置的模型中查找，新建时从所有支持的模型中查找
   const selectedModel = editingModelId 
     ? configuredModels?.find(m => m.id === selectedModelId) 
     : allModels?.find(m => m.id === selectedModelId);
 
-  // 如果是编辑现有模型，初始化API Key和Base URL
+  // 如果是编辑现有模型，初始化API Key、Base URL和Model Name
   useEffect(() => {
     if (editingModelId && selectedModel) {
       setApiKey(selectedModel.apiKey || '');
       setBaseUrl(selectedModel.customApiUrl || '');
+      setModelName((selectedModel as any).customModelName || '');
     }
   }, [editingModelId, selectedModel]);
 
@@ -936,7 +939,13 @@ function ModelConfigModal({
     e.preventDefault();
     if (!selectedModelId || !apiKey.trim()) return;
     
-    onSave(selectedModelId, apiKey.trim(), baseUrl.trim() || undefined);
+    // 对于custom provider，modelName是必填的
+    if (selectedModel?.provider === 'custom' && !modelName.trim()) {
+      alert('请输入模型名称');
+      return;
+    }
+    
+    onSave(selectedModelId, apiKey.trim(), baseUrl.trim() || undefined, modelName.trim() || undefined);
   };
 
   // 可选择的模型列表（所有支持的模型）
@@ -1047,6 +1056,26 @@ function ModelConfigModal({
                 </div>
               </div>
 
+              {selectedModel?.provider === 'custom' && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                    模型名称 (Model Name)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    placeholder="例如: gpt-4o, claude-3-opus-20240229"
+                    className="w-full px-3 py-2 rounded"
+                    style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                    required
+                  />
+                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                    用于API请求的模型标识符
+                  </div>
+                </div>
+              )}
+
               <div className="p-4 rounded" style={{ background: 'rgba(240, 185, 11, 0.1)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
                 <div className="text-sm font-semibold mb-2" style={{ color: '#F0B90B' }}>
                   ℹ️ {t('information', language)}
@@ -1071,7 +1100,7 @@ function ModelConfigModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedModel || !apiKey.trim()}
+              disabled={!selectedModel || !apiKey.trim() || (selectedModel?.provider === 'custom' && !modelName.trim())}
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
               style={{ background: '#F0B90B', color: '#000' }}
             >
