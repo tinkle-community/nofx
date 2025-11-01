@@ -484,20 +484,18 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		unrealizedPnl := pos["unRealizedProfit"].(float64)
 		liquidationPrice := pos["liquidationPrice"].(float64)
 
-		// 计算盈亏百分比
-		pnlPct := 0.0
-		if side == "long" {
-			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100
-		} else {
-			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
-		}
-
 		// 计算占用保证金（估算）
 		leverage := 10 // 默认值，实际应该从持仓信息获取
 		if lev, ok := pos["leverage"].(float64); ok {
 			leverage = int(lev)
 		}
 		marginUsed := (quantity * markPrice) / float64(leverage)
+
+		// 计算盈亏百分比（基于实际盈亏和保证金）
+		pnlPct := 0.0
+		if marginUsed > 0 {
+			pnlPct = (unrealizedPnl / marginUsed) * 100
+		}
 		totalMarginUsed += marginUsed
 
 		// 跟踪持仓首次出现时间
