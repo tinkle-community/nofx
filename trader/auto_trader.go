@@ -208,7 +208,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		log.Printf("🚫 [%s] 已配置币种黑名单 (%d个): %v", config.Name, len(config.ExcludedSymbols), config.ExcludedSymbols)
 	}
 
-	return &AutoTrader{
+	at := &AutoTrader{
 		id:                    config.ID,
 		name:                  config.Name,
 		aiModel:               config.AIModel,
@@ -224,7 +224,14 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
 		excludedSymbolsMap:    excludedSymbolsMap,
-	}, nil
+	}
+
+	// 加载持仓时间记录
+	if err := at.loadPositionTimes(); err != nil {
+		log.Printf("⚠️  加载持仓时间记录失败（将从零开始）: %v", err)
+	}
+
+	return at, nil
 }
 
 // Run 运行自动交易主循环
@@ -554,9 +561,18 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 	}
 
 	// 清理已平仓的持仓记录
+	hasChanges := false
 	for key := range at.positionFirstSeenTime {
 		if !currentPositionKeys[key] {
 			delete(at.positionFirstSeenTime, key)
+			hasChanges = true
+		}
+	}
+
+	// 如果有新持仓或持仓被清理，保存持仓时间记录
+	if hasChanges || len(currentPositionKeys) > len(at.positionFirstSeenTime) {
+		if err := at.savePositionTimes(); err != nil {
+			log.Printf("⚠️  保存持仓时间记录失败: %v", err)
 		}
 	}
 
@@ -737,9 +753,12 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓时间并保存
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	if err := at.savePositionTimes(); err != nil {
+		log.Printf("⚠️  保存持仓时间记录失败: %v", err)
+	}
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
@@ -795,9 +814,12 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓时间并保存
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	if err := at.savePositionTimes(); err != nil {
+		log.Printf("⚠️  保存持仓时间记录失败: %v", err)
+	}
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
@@ -1084,4 +1106,56 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 	}
 
 	return sorted
+}
+
+// loadPositionTimes 从文件加载持仓时间记录
+func (at *AutoTrader) loadPositionTimes() error {
+	filePath := fmt.Sprintf("decision_logs/%s/position_times.json", at.id)
+
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// 文件不存在，这是正常情况（首次运行）
+		log.Printf("📝 持仓时间记录文件不存在，将创建新的记录")
+		return nil
+	}
+
+	// 读取文件
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("读取持仓时间文件失败: %w", err)
+	}
+
+	// 解析JSON
+	var times map[string]int64
+	if err := json.Unmarshal(data, &times); err != nil {
+		return fmt.Errorf("解析持仓时间文件失败: %w", err)
+	}
+
+	at.positionFirstSeenTime = times
+	log.Printf("✅ 已加载 %d 条持仓时间记录", len(times))
+	return nil
+}
+
+// savePositionTimes 保存持仓时间记录到文件
+func (at *AutoTrader) savePositionTimes() error {
+	filePath := fmt.Sprintf("decision_logs/%s/position_times.json", at.id)
+
+	// 确保目录存在
+	dir := fmt.Sprintf("decision_logs/%s", at.id)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	// 序列化为JSON
+	data, err := json.MarshalIndent(at.positionFirstSeenTime, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化持仓时间失败: %w", err)
+	}
+
+	// 写入文件
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("写入持仓时间文件失败: %w", err)
+	}
+
+	return nil
 }
