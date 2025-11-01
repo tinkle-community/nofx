@@ -284,7 +284,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("- BuySellRatio > 0.75 连续 3 根以上 → 强趋势（多）\n")
 	sb.WriteString("- BuySellRatio < 0.25 连续 3 根以上 → 强趋势（空）\n")
 	sb.WriteString("- BuySellRatio 在 0.4-0.6 波动 → 震荡\n\n")
-	sb.WriteString("判断结论: 综合以上 3 个指标，判定当前市场状态为"趋势市场"或"震荡市场"\n\n")
+	sb.WriteString("判断结论: 综合以上 3 个指标，判定当前市场状态为'趋势市场'或'震荡市场'\n\n")
 
 	// 双策略系统
 	sb.WriteString("# 双策略系统（根据市场状态选择）\n\n")
@@ -362,11 +362,11 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	// 策略选择指导
 	sb.WriteString("## 策略选择指导\n\n")
 	sb.WriteString("必须在思维链中明确说明：\n")
-	sb.WriteString("1. 市场状态判断: "当前市场状态：震荡/趋势（理由：...）"\n")
-	sb.WriteString("2. 策略选择: "选择策略 A/B（理由：...）"\n")
-	sb.WriteString("3. 技术位分析: "上方压力位：101,200（15m EMA20），下方支撑位：99,500（最近低点）"\n")
-	sb.WriteString("4. 止盈止损: "止盈 101,100（技术位前 0.1%），止损 99,200（-0.8%）"\n")
-	sb.WriteString("5. 追踪止损计划: "浮盈 0.8% 时移动止损到成本价"\n\n")
+	sb.WriteString("1. 市场状态判断: '当前市场状态：震荡/趋势（理由：...）'\n")
+	sb.WriteString("2. 策略选择: '选择策略 A/B（理由：...）'\n")
+	sb.WriteString("3. 技术位分析: '上方压力位：101,200（15m EMA20），下方支撑位：99,500（最近低点）'\n")
+	sb.WriteString("4. 止盈止损: '止盈 101,100（技术位前 0.1%），止损 99,200（-0.8%）'\n")
+	sb.WriteString("5. 追踪止损计划: '浮盈 0.8% 时移动止损到成本价'\n\n")
 	sb.WriteString("重要提醒：\n")
 	sb.WriteString("- 价格很可能在技术位（EMA20、前高前低、整数关口）遇阻或反弹\n")
 	sb.WriteString("- 宁可少赚 0.5%，也不要从 +1.5% 回撤到止损\n")
