@@ -989,3 +989,31 @@ func (t *AsterTrader) FormatQuantity(symbol string, quantity float64) (string, e
 	}
 	return fmt.Sprintf("%v", formatted), nil
 }
+
+// SetMarginMode 设置保证金模式（全仓/逐仓）
+func (t *AsterTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	marginType := "ISOLATED"
+	if isCrossMargin {
+		marginType = "CROSSED"
+	}
+
+	params := map[string]interface{}{
+		"symbol":     symbol,
+		"marginType": marginType,
+	}
+
+	_, err := t.request("POST", "/fapi/v3/marginType", params)
+	if err != nil {
+		// 如果错误信息包含已经是目标模式，则忽略该错误
+		errStr := err.Error()
+		if len(errStr) > 0 && (strings.Contains(errStr, "No need to change margin type") || 
+			strings.Contains(errStr, "margin mode is already")) {
+			log.Printf("  ℹ️ %s 保证金模式已经是目标模式，无需更改", symbol)
+			return nil
+		}
+		return fmt.Errorf("设置保证金模式失败: %v", err)
+	}
+
+	log.Printf("  ✓ 成功设置 %s 保证金模式为: %s", symbol, marginType)
+	return nil
+}

@@ -621,3 +621,28 @@ func stringContains(s, substr string) bool {
 	}
 	return false
 }
+
+// SetMarginMode 设置保证金模式（全仓/逐仓）
+func (t *FuturesTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	marginType := futures.MarginTypeIsolated
+	if isCrossMargin {
+		marginType = futures.MarginTypeCrossed
+	}
+
+	err := t.client.NewChangeMarginTypeService().
+		Symbol(symbol).
+		MarginType(marginType).
+		Do(context.Background())
+
+	if err != nil {
+		// 如果错误信息包含 "No need to change margin type"，则忽略该错误
+		if contains(err.Error(), "No need to change margin type") || contains(err.Error(), "margin mode is already") {
+			log.Printf("  ℹ️ %s 保证金模式已经是目标模式，无需更改", symbol)
+			return nil
+		}
+		return fmt.Errorf("设置保证金模式失败: %v", err)
+	}
+
+	log.Printf("  ✓ 成功设置 %s 保证金模式为: %s", symbol, marginType)
+	return nil
+}
