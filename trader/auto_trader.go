@@ -737,6 +737,36 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 		}
 	}
 
+	// 💰 余额安全检查：确保不会用光所有余额
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("获取账户余额失败: %w", err)
+	}
+
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+
+	// 计算需要的保证金（仓位价值 / 杠杆）
+	requiredMargin := decision.PositionSizeUSD / float64(decision.Leverage)
+
+	// 检查：需要的保证金不能超过可用余额的80%（保留20%安全边际）
+	maxAllowedMargin := availableBalance * 0.8
+	if requiredMargin > maxAllowedMargin {
+		return fmt.Errorf("❌ 余额不足：需要保证金 %.2f USDT，但只有 %.2f USDT 可用（最多使用80%% = %.2f USDT，需保留20%%安全边际）",
+			requiredMargin, availableBalance, maxAllowedMargin)
+	}
+
+	// 检查：如果剩余余额太少（<10 USDT），也拒绝开仓
+	remainingBalance := availableBalance - requiredMargin
+	if remainingBalance < 10 {
+		return fmt.Errorf("❌ 开仓后剩余余额过低（%.2f USDT < 10 USDT），为保障账户安全，拒绝开仓", remainingBalance)
+	}
+
+	log.Printf("  💰 余额检查通过: 可用=%.2f, 需要保证金=%.2f, 剩余=%.2f USDT",
+		availableBalance, requiredMargin, remainingBalance)
+
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
 	if err != nil {
@@ -794,6 +824,36 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 			}
 		}
 	}
+
+	// 💰 余额安全检查：确保不会用光所有余额
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("获取账户余额失败: %w", err)
+	}
+
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+
+	// 计算需要的保证金（仓位价值 / 杠杆）
+	requiredMargin := decision.PositionSizeUSD / float64(decision.Leverage)
+
+	// 检查：需要的保证金不能超过可用余额的80%（保留20%安全边际）
+	maxAllowedMargin := availableBalance * 0.8
+	if requiredMargin > maxAllowedMargin {
+		return fmt.Errorf("❌ 余额不足：需要保证金 %.2f USDT，但只有 %.2f USDT 可用（最多使用80%% = %.2f USDT，需保留20%%安全边际）",
+			requiredMargin, availableBalance, maxAllowedMargin)
+	}
+
+	// 检查：如果剩余余额太少（<10 USDT），也拒绝开仓
+	remainingBalance := availableBalance - requiredMargin
+	if remainingBalance < 10 {
+		return fmt.Errorf("❌ 开仓后剩余余额过低（%.2f USDT < 10 USDT），为保障账户安全，拒绝开仓", remainingBalance)
+	}
+
+	log.Printf("  💰 余额检查通过: 可用=%.2f, 需要保证金=%.2f, 剩余=%.2f USDT",
+		availableBalance, requiredMargin, remainingBalance)
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)

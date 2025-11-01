@@ -244,10 +244,21 @@ func buildSystemPrompt(accountEquity, availableBalance float64, btcEthLeverage, 
 	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
 	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString(fmt.Sprintf("2. **最多持仓**: %d个币种（质量>数量）\n", maxPositions))
-	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
-		availableBalance*0.8, availableBalance*1.5, altcoinLeverage, availableBalance*5, availableBalance*10, btcEthLeverage))
-	sb.WriteString("   **重要**: 仓位大小基于可用余额，不是账户净值！已占用的保证金不能用于开新仓。\n")
-	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
+
+	// 🔧 修正后的仓位建议：更保守，确保不会用光所有余额
+	// 单币种仓位价值 = 需要的保证金 × 杠杆
+	// 例如：100 USDT 可用余额，5x杠杆，最大仓位价值 = 60 USDT，需要保证金 = 12 USDT
+	maxAltcoinPositionValue := availableBalance * 0.6 * float64(altcoinLeverage)  // 山寨币：最多用60%余额作为保证金
+	maxBTCETHPositionValue := availableBalance * 0.8 * float64(btcEthLeverage)    // BTC/ETH：最多用80%余额作为保证金
+
+	sb.WriteString("3. **单币仓位价值上限**:\n")
+	sb.WriteString(fmt.Sprintf("   - 山寨币: 最大 %.0f USDT (%.0fx杠杆 × 最多%.0f%%可用余额)\n",
+		maxAltcoinPositionValue, float64(altcoinLeverage), 60.0))
+	sb.WriteString(fmt.Sprintf("   - BTC/ETH: 最大 %.0f USDT (%.0fx杠杆 × 最多%.0f%%可用余额)\n",
+		maxBTCETHPositionValue, float64(btcEthLeverage), 80.0))
+	sb.WriteString(fmt.Sprintf("   - **可用余额**: %.0f USDT (必须至少保留20%%%%作为安全边际)\n", availableBalance))
+	sb.WriteString("   - **重要**: 开仓会锁定保证金，请务必留出足够余额应对市场波动！\n")
+	sb.WriteString("4. **保证金**: 总使用率 ≤ 80%% (留出20%%安全边际)\n\n")
 
 	// === 做空激励 ===
 	sb.WriteString("# 📉 做多做空平衡\n\n")

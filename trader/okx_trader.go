@@ -37,6 +37,11 @@ type OKXTrader struct {
 	positionsCacheTime  time.Time
 	positionsCacheMutex sync.RWMutex
 
+	// 持仓模式配置（从 API 获取的真实配置）
+	positionMode      string // "long_short_mode" 或 "net_mode"
+	positionModeCache time.Time
+	posModeMutex      sync.RWMutex
+
 	// 缓存有效期（15秒）
 	cacheDuration time.Duration
 }
@@ -292,6 +297,7 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		}
 
 		posMap["side"] = side
+		posMap["posSide"] = pos.PosSide // 🔧 保存原始 posSide（用于平仓时判断持仓模式）
 
 		// 解析开仓时间（cTime是Unix毫秒时间戳）
 		if pos.CTime != "" {
@@ -301,7 +307,7 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 			}
 		}
 
-		log.Printf("  └─ ✓ 解析成功: symbol=%s, side=%s, amount=%.4f, openTime=%s", pos.InstId, side, posAmt, pos.CTime)
+		log.Printf("  └─ ✓ 解析成功: symbol=%s, side=%s, posSide=%s, amount=%.4f, openTime=%s", pos.InstId, side, pos.PosSide, posAmt, pos.CTime)
 
 		result = append(result, posMap)
 	}
@@ -315,8 +321,72 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// SetLeverage 设置杠杆
-func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
+// GetAccountConfig 获取账户配置（包含持仓模式）
+func (t *OKXTrader) GetAccountConfig() (string, error) {
+	// 🔥 Dry Run 模式：返回默认配置
+	if t.dryRun {
+		return "net_mode", nil
+	}
+
+	// 先检查缓存是否有效（缓存1小时，持仓模式不会频繁变化）
+	t.posModeMutex.RLock()
+	if t.positionMode != "" && time.Since(t.positionModeCache) < time.Hour {
+		posMode := t.positionMode
+		t.posModeMutex.RUnlock()
+		return posMode, nil
+	}
+	t.posModeMutex.RUnlock()
+
+	// 缓存过期或不存在，调用API
+	data, err := t.request(context.Background(), "GET", "/api/v5/account/config", nil)
+	if err != nil {
+		return "", fmt.Errorf("获取账户配置失败: %w", err)
+	}
+
+	var configs []struct {
+		PosMode string `json:"posMode"` // "long_short_mode" 或 "net_mode"
+	}
+
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return "", fmt.Errorf("解析账户配置失败: %w", err)
+	}
+
+	if len(configs) == 0 {
+		return "", fmt.Errorf("账户配置数据为空")
+	}
+
+	posMode := configs[0].PosMode
+	log.Printf("📋 OKX 账户持仓模式: %s", posMode)
+
+	// 更新缓存
+	t.posModeMutex.Lock()
+	t.positionMode = posMode
+	t.positionModeCache = time.Now()
+	t.posModeMutex.Unlock()
+
+	return posMode, nil
+}
+
+// getPosSideForTrade 获取交易时应该使用的 posSide
+// 根据账户真实配置的持仓模式和方向（long/short）返回正确的 posSide
+func (t *OKXTrader) getPosSideForTrade(direction string) string {
+	// 获取账户配置的持仓模式
+	posMode, err := t.GetAccountConfig()
+	if err != nil {
+		log.Printf("⚠️  获取持仓模式失败，默认使用单向持仓: %v", err)
+		return "net" // 出错时默认使用单向持仓
+	}
+
+	// 根据持仓模式返回正确的 posSide
+	if posMode == "net_mode" {
+		return "net" // 单向持仓模式
+	}
+	// long_short_mode - 双向持仓模式
+	return direction // 返回 "long" 或 "short"
+}
+
+// setLeverageInternal 设置杠杆（内部方法，带持仓方向）
+func (t *OKXTrader) setLeverageInternal(symbol string, leverage int, positionSide string) error {
 	// 先尝试获取当前杠杆（从持仓信息）
 	currentLeverage := 0
 	positions, err := t.GetPositions()
@@ -342,6 +412,7 @@ func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
 		"instId":  symbol,
 		"lever":   strconv.Itoa(leverage),
 		"mgnMode": "isolated", // 逐仓模式
+		"posSide": positionSide, // 持仓方向：long 或 short
 	}
 
 	_, err = t.request(context.Background(), "POST", "/api/v5/account/set-leverage", body)
@@ -349,11 +420,28 @@ func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
 		return fmt.Errorf("设置杠杆失败: %w", err)
 	}
 
-	log.Printf("  ✓ %s 杠杆已切换为 %dx", symbol, leverage)
+	log.Printf("  ✓ %s 杠杆已切换为 %dx (%s)", symbol, leverage, positionSide)
 
 	// 切换杠杆后等待3秒
 	log.Printf("  ⏱ 等待3秒冷却期...")
 	time.Sleep(3 * time.Second)
+
+	return nil
+}
+
+// SetLeverage 设置杠杆（实现Trader接口）
+// 对于OKX，由于需要指定posSide，这里尝试同时设置long和short方向的杠杆
+func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
+	// 尝试设置long方向
+	errLong := t.setLeverageInternal(symbol, leverage, "long")
+
+	// 尝试设置short方向
+	errShort := t.setLeverageInternal(symbol, leverage, "short")
+
+	// 如果两个都失败，返回错误
+	if errLong != nil && errShort != nil {
+		return fmt.Errorf("设置杠杆失败: long方向=%v, short方向=%v", errLong, errShort)
+	}
 
 	return nil
 }
@@ -375,8 +463,12 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
 	}
 
+	// 🔧 获取正确的 posSide（基于账户真实配置）
+	posSide := t.getPosSideForTrade("long")
+	log.Printf("  📊 开多仓使用 posSide=%s", posSide)
+
 	// 设置杠杆
-	if err := t.SetLeverage(symbol, leverage); err != nil {
+	if err := t.setLeverageInternal(symbol, leverage, posSide); err != nil {
 		return nil, err
 	}
 
@@ -391,7 +483,7 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 		"instId":  symbol,
 		"tdMode":  "isolated", // 逐仓模式
 		"side":    "buy",
-		"posSide": "long",
+		"posSide": posSide, // 🔧 使用检测到的正确 posSide
 		"ordType": "market",
 		"sz":      quantityStr,
 	}
@@ -447,8 +539,12 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
 	}
 
+	// 🔧 获取正确的 posSide（基于账户真实配置）
+	posSide := t.getPosSideForTrade("short")
+	log.Printf("  📊 开空仓使用 posSide=%s", posSide)
+
 	// 设置杠杆
-	if err := t.SetLeverage(symbol, leverage); err != nil {
+	if err := t.setLeverageInternal(symbol, leverage, posSide); err != nil {
 		return nil, err
 	}
 
@@ -463,7 +559,7 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 		"instId":  symbol,
 		"tdMode":  "isolated", // 逐仓模式
 		"side":    "sell",
-		"posSide": "short",
+		"posSide": posSide, // 🔧 使用检测到的正确 posSide
 		"ordType": "market",
 		"sz":      quantityStr,
 	}
@@ -514,23 +610,33 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		}, nil
 	}
 
-	// 如果数量为0，获取当前持仓数量
-	if quantity == 0 {
-		positions, err := t.GetPositions()
-		if err != nil {
-			return nil, err
-		}
+	// 获取当前持仓信息（用于获取数量和持仓模式）
+	positions, err := t.GetPositions()
+	if err != nil {
+		return nil, err
+	}
 
-		for _, pos := range positions {
-			if pos["symbol"] == symbol && pos["side"] == "long" {
+	// 查找对应的持仓，获取数量和原始 posSide
+	var actualPosSide string
+	foundPosition := false
+	for _, pos := range positions {
+		if pos["symbol"] == symbol && pos["side"] == "long" {
+			if quantity == 0 {
 				quantity = pos["positionAmt"].(float64)
-				break
 			}
+			// 获取原始的 posSide（可能是 "long" 或 "net"）
+			if posSide, ok := pos["posSide"].(string); ok {
+				actualPosSide = posSide
+			} else {
+				actualPosSide = "long" // 默认值
+			}
+			foundPosition = true
+			break
 		}
+	}
 
-		if quantity == 0 {
-			return nil, fmt.Errorf("没有找到 %s 的多仓", symbol)
-		}
+	if !foundPosition || quantity == 0 {
+		return nil, fmt.Errorf("没有找到 %s 的多仓", symbol)
 	}
 
 	// 🔧 转换symbol格式：PENGU-USDT → PENGU-USDT-SWAP
@@ -546,14 +652,15 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		return nil, err
 	}
 
-	log.Printf("  📊 准备平多仓: symbol=%s, instId=%s, 原始数量=%.4f, 格式化数量=%s", symbol, instId, quantity, quantityStr)
+	log.Printf("  📊 准备平多仓: symbol=%s, instId=%s, posSide=%s, 原始数量=%.4f, 格式化数量=%s",
+		symbol, instId, actualPosSide, quantity, quantityStr)
 
 	// 创建市价卖出订单（平多）
 	body := map[string]interface{}{
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "sell",
-		"posSide": "long",
+		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "long" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
 	}
@@ -620,23 +727,33 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		}, nil
 	}
 
-	// 如果数量为0，获取当前持仓数量
-	if quantity == 0 {
-		positions, err := t.GetPositions()
-		if err != nil {
-			return nil, err
-		}
+	// 获取当前持仓信息（用于获取数量和持仓模式）
+	positions, err := t.GetPositions()
+	if err != nil {
+		return nil, err
+	}
 
-		for _, pos := range positions {
-			if pos["symbol"] == symbol && pos["side"] == "short" {
+	// 查找对应的持仓，获取数量和原始 posSide
+	var actualPosSide string
+	foundPosition := false
+	for _, pos := range positions {
+		if pos["symbol"] == symbol && pos["side"] == "short" {
+			if quantity == 0 {
 				quantity = pos["positionAmt"].(float64)
-				break
 			}
+			// 获取原始的 posSide（可能是 "short" 或 "net"）
+			if posSide, ok := pos["posSide"].(string); ok {
+				actualPosSide = posSide
+			} else {
+				actualPosSide = "short" // 默认值
+			}
+			foundPosition = true
+			break
 		}
+	}
 
-		if quantity == 0 {
-			return nil, fmt.Errorf("没有找到 %s 的空仓", symbol)
-		}
+	if !foundPosition || quantity == 0 {
+		return nil, fmt.Errorf("没有找到 %s 的空仓", symbol)
 	}
 
 	// 🔧 转换symbol格式：PENGU-USDT → PENGU-USDT-SWAP
@@ -652,12 +769,15 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		return nil, err
 	}
 
+	log.Printf("  📊 准备平空仓: symbol=%s, instId=%s, posSide=%s, 原始数量=%.4f, 格式化数量=%s",
+		symbol, instId, actualPosSide, quantity, quantityStr)
+
 	// 创建市价买入订单（平空）
 	body := map[string]interface{}{
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "buy",
-		"posSide": "short",
+		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "short" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
 	}
