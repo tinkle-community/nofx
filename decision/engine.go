@@ -218,13 +218,15 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("**关键认知**: 系统每3分钟扫描一次，但不意味着每次都要交易！\n")
 	sb.WriteString("大多数时候应该是 `wait` 或 `hold`，只在极佳机会时才开仓。\n\n")
 
-	// === 硬约束（风险控制）===
-	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
-	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
-	sb.WriteString("2. **最多持仓**: 3个币种（质量>数量）\n")
-	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
-		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
-	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
+	// 2. 硬约束（风险控制）- 动态生成
+	sb.WriteString("# 硬约束（风险控制）\n\n")
+	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
+	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
+	sb.WriteString(fmt.Sprintf("3. 单币仓位: 山寨币 %.0f USDT(%dx杠杆) | BTC/ETH %.0f USDT(%dx杠杆)\n",
+		accountEquity*float64(altcoinLeverage), altcoinLeverage,
+		accountEquity*float64(btcEthLeverage), btcEthLeverage))
+	sb.WriteString("4. 保证金: 总使用率 ≤ 90%\n")
+	sb.WriteString(fmt.Sprintf("5. 当前账户净值: %.2f USDT\n\n", accountEquity))
 
 	// === 做空激励 ===
 	sb.WriteString("# 📉 做多做空平衡\n\n")
@@ -338,6 +340,21 @@ func buildUserPrompt(ctx *Context) string {
 		ctx.Account.TotalPnLPct,
 		ctx.Account.MarginUsedPct,
 		ctx.Account.PositionCount))
+
+	//  账户信息 - 更明确显示仓位限制
+	sb.WriteString(fmt.Sprintf("## 账户状态与限制\n"))
+	sb.WriteString(fmt.Sprintf("净值: %.2f USDT | 可用余额: %.2f USDT\n",
+		ctx.Account.TotalEquity, ctx.Account.AvailableBalance))
+	sb.WriteString(fmt.Sprintf("盈亏: %+.2f%% | 保证金使用率: %.1f%% | 持仓: %d个\n\n",
+		ctx.Account.TotalPnLPct, ctx.Account.MarginUsedPct, ctx.Account.PositionCount))
+
+	//  明确显示仓位限制（使用杠杆倍数）
+	sb.WriteString(fmt.Sprintf("### 仓位限制（必须遵守）\n"))
+	sb.WriteString(fmt.Sprintf("- 山寨币最大仓位: %.0f USDT (%dx杠杆)\n",
+		ctx.Account.TotalEquity*float64(ctx.AltcoinLeverage), ctx.AltcoinLeverage))
+	sb.WriteString(fmt.Sprintf("- BTC/ETH最大仓位: %.0f USDT (%dx杠杆)\n",
+		ctx.Account.TotalEquity*float64(ctx.BTCETHLeverage), ctx.BTCETHLeverage))
+	sb.WriteString(fmt.Sprintf("- 最大持仓币种: 3个\n\n"))
 
 	// 持仓（完整市场数据）
 	if len(ctx.Positions) > 0 {
@@ -549,19 +566,24 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 	// 开仓操作必须提供完整参数
 	if d.Action == "open_long" || d.Action == "open_short" {
 		// 根据币种使用配置的杠杆上限
-		maxLeverage := altcoinLeverage          // 山寨币使用配置的杠杆
-		maxPositionValue := accountEquity * 1.5 // 山寨币最多1.5倍账户净值
+		maxLeverage := altcoinLeverage                               // 山寨币使用配置的杠杆
+		maxPositionValue := accountEquity * float64(altcoinLeverage) // 山寨币最大仓位 = 账户净值 × 杠杆倍数
 		if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-			maxLeverage = btcEthLeverage          // BTC和ETH使用配置的杠杆
-			maxPositionValue = accountEquity * 10 // BTC/ETH最多10倍账户净值
+			maxLeverage = btcEthLeverage                               // BTC和ETH使用配置的杠杆
+			maxPositionValue = accountEquity * float64(btcEthLeverage) // 主流币最大仓位 = 账户净值 × 杠杆倍数
 		}
 
 		if d.Leverage <= 0 || d.Leverage > maxLeverage {
 			return fmt.Errorf("杠杆必须在1-%d之间（%s，当前配置上限%d倍）: %d", maxLeverage, d.Symbol, maxLeverage, d.Leverage)
 		}
-		if d.PositionSizeUSD <= 0 {
-			return fmt.Errorf("仓位大小必须大于0: %.2f", d.PositionSizeUSD)
+
+		// 🔧 自动调整仓位大小到允许的最大值
+		if d.PositionSizeUSD > maxPositionValue {
+			log.Printf("⚠️  自动调整 %s 仓位大小: %.0f → %.0f USDT (账户净值: %.2f, 杠杆倍数: %d)",
+				d.Symbol, d.PositionSizeUSD, maxPositionValue, accountEquity, maxLeverage)
+			d.PositionSizeUSD = maxPositionValue
 		}
+
 		// 验证仓位价值上限（加1%容差以避免浮点数精度问题）
 		tolerance := maxPositionValue * 0.01 // 1%容差
 		if d.PositionSizeUSD > maxPositionValue+tolerance {
