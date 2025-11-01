@@ -250,24 +250,13 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!confirm(t('confirmDeleteModel', language))) return;
     
     try {
-      const updatedModels = allModels?.map(m => 
-        m.id === modelId ? { ...m, apiKey: '', enabled: false } : m
-      ) || [];
+      // 使用DELETE接口真正删除数据库记录
+      await api.deleteModelConfig(modelId);
       
-      const request = {
-        models: Object.fromEntries(
-          updatedModels.map(model => [
-            model.id,
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || ''
-            }
-          ])
-        )
-      };
+      // 重新获取用户配置以确保数据同步
+      const refreshedModels = await api.getModelConfigs();
+      setAllModels(refreshedModels);
       
-      await api.updateModelConfigs(request);
-      setAllModels(updatedModels);
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {
@@ -276,7 +265,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }
   };
 
-  const handleSaveModelConfig = async (modelId: string, apiKey: string, customApiUrl?: string) => {
+  const handleSaveModelConfig = async (modelId: string, apiKey: string, customApiUrl?: string, customModelName?: string) => {
     try {
       // 找到要配置的模型（从supportedModels中）
       const modelToUpdate = supportedModels?.find(m => m.id === modelId);
@@ -292,11 +281,11 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       if (existingModel) {
         // 更新现有配置
         updatedModels = allModels?.map(m => 
-          m.id === modelId ? { ...m, apiKey, customApiUrl: customApiUrl || '', enabled: true } : m
+          m.id === modelId ? { ...m, apiKey, customApiUrl: customApiUrl || '', customModelName: customModelName || '', enabled: true } : m
         ) || [];
       } else {
         // 添加新配置
-        const newModel = { ...modelToUpdate, apiKey, customApiUrl: customApiUrl || '', enabled: true };
+        const newModel = { ...modelToUpdate, apiKey, customApiUrl: customApiUrl || '', customModelName: customModelName || '', enabled: true };
         updatedModels = [...(allModels || []), newModel];
       }
       
@@ -307,7 +296,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             {
               enabled: model.enabled,
               api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || ''
+              custom_api_url: model.customApiUrl || '',
+              custom_model_name: model.customModelName || ''
             }
           ])
         )
@@ -910,7 +900,7 @@ function ModelConfigModal({
   allModels: AIModel[];
   configuredModels: AIModel[];
   editingModelId: string | null;
-  onSave: (modelId: string, apiKey: string, baseUrl?: string) => void;
+  onSave: (modelId: string, apiKey: string, baseUrl?: string, customModelName?: string) => void;
   onDelete: (modelId: string) => void;
   onClose: () => void;
   language: Language;
@@ -918,6 +908,7 @@ function ModelConfigModal({
   const [selectedModelId, setSelectedModelId] = useState(editingModelId || '');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
+  const [customModelName, setCustomModelName] = useState('');
 
   // 获取当前编辑的模型信息 - 编辑时从已配置的模型中查找，新建时从所有支持的模型中查找
   const selectedModel = editingModelId 
@@ -929,6 +920,7 @@ function ModelConfigModal({
     if (editingModelId && selectedModel) {
       setApiKey(selectedModel.apiKey || '');
       setBaseUrl(selectedModel.customApiUrl || '');
+      setCustomModelName(selectedModel.customModelName || '');
     }
   }, [editingModelId, selectedModel]);
 
@@ -936,7 +928,7 @@ function ModelConfigModal({
     e.preventDefault();
     if (!selectedModelId || !apiKey.trim()) return;
     
-    onSave(selectedModelId, apiKey.trim(), baseUrl.trim() || undefined);
+    onSave(selectedModelId, apiKey.trim(), baseUrl.trim() || undefined, customModelName.trim() || undefined);
   };
 
   // 可选择的模型列表（所有支持的模型）
@@ -1046,6 +1038,25 @@ function ModelConfigModal({
                   {t('leaveBlankForDefault', language)}
                 </div>
               </div>
+
+              {baseUrl && baseUrl.trim() !== '' && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                    自定义模型名称
+                  </label>
+                  <input
+                    type="text"
+                    value={customModelName}
+                    onChange={(e) => setCustomModelName(e.target.value)}
+                    placeholder="例如: gpt-4, claude-3-opus, qwen-plus"
+                    className="w-full px-3 py-2 rounded"
+                    style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                  />
+                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                    当使用自定义API URL时，请输入对应的模型名称。留空将使用默认值。
+                  </div>
+                </div>
+              )}
 
               <div className="p-4 rounded" style={{ background: 'rgba(240, 185, 11, 0.1)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
                 <div className="text-sm font-semibold mb-2" style={{ color: '#F0B90B' }}>

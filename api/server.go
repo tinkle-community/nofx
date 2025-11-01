@@ -100,6 +100,7 @@ func (s *Server) setupRoutes() {
 			// AI模型配置
 			protected.GET("/models", s.handleGetModelConfigs)
 			protected.PUT("/models", s.handleUpdateModelConfigs)
+			protected.DELETE("/models/:id", s.handleDeleteModelConfig)
 
 			// 交易所配置
 			protected.GET("/exchanges", s.handleGetExchangeConfigs)
@@ -235,9 +236,10 @@ type ExchangeConfig struct {
 
 type UpdateModelConfigRequest struct {
 	Models map[string]struct {
-		Enabled      bool   `json:"enabled"`
-		APIKey       string `json:"api_key"`
-		CustomAPIURL string `json:"custom_api_url"`
+		Enabled         bool   `json:"enabled"`
+		APIKey          string `json:"api_key"`
+		CustomAPIURL    string `json:"custom_api_url"`
+		CustomModelName string `json:"custom_model_name"`
 	} `json:"models"`
 }
 
@@ -615,7 +617,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 	
 	// 更新每个模型的配置
 	for modelID, modelData := range req.Models {
-		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL)
+		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("更新模型 %s 失败: %v", modelID, err)})
 			return
@@ -624,6 +626,29 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 	
 	log.Printf("✓ AI模型配置已更新: %+v", req.Models)
 	c.JSON(http.StatusOK, gin.H{"message": "模型配置已更新"})
+}
+
+// handleDeleteModelConfig 删除AI模型配置
+func (s *Server) handleDeleteModelConfig(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+	
+	if modelID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "模型ID不能为空"})
+		return
+	}
+	
+	log.Printf("🗑️  删除用户 %s 的AI模型配置: %s", userID, modelID)
+	
+	err := s.database.DeleteAIModel(userID, modelID)
+	if err != nil {
+		log.Printf("❌ 删除AI模型配置失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("删除AI模型配置失败: %v", err)})
+		return
+	}
+	
+	log.Printf("✅ AI模型配置已删除: user=%s, model=%s", userID, modelID)
+	c.JSON(http.StatusOK, gin.H{"message": "AI模型配置已删除"})
 }
 
 // handleGetExchangeConfigs 获取交易所配置

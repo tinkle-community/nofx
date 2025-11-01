@@ -101,6 +101,7 @@ export interface AIModel {
   enabled: boolean;
   apiKey?: string;
   customApiUrl?: string;
+  customModelName?: string;
 }
 
 export interface Exchange {
@@ -140,6 +141,7 @@ export interface UpdateModelConfigRequest {
       enabled: boolean;
       api_key: string;
       custom_api_url?: string;
+      custom_model_name?: string;
     };
   };
 }
