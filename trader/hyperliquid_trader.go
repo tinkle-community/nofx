@@ -13,10 +13,11 @@ import (
 
 // HyperliquidTrader Hyperliquid交易器
 type HyperliquidTrader struct {
-	exchange   *hyperliquid.Exchange
-	ctx        context.Context
-	walletAddr string
-	meta       *hyperliquid.Meta // 缓存meta信息（包含精度等）
+	exchange      *hyperliquid.Exchange
+	ctx           context.Context
+	walletAddr    string
+	meta          *hyperliquid.Meta // 缓存meta信息（包含精度等）
+	isCrossMargin bool             // 是否为全仓模式
 }
 
 // NewHyperliquidTrader 创建Hyperliquid交易器
@@ -63,10 +64,11 @@ func NewHyperliquidTrader(privateKeyHex string, walletAddr string, testnet bool)
 	}
 
 	return &HyperliquidTrader{
-		exchange:   exchange,
-		ctx:        ctx,
-		walletAddr: walletAddr,
-		meta:       meta,
+		exchange:      exchange,
+		ctx:           ctx,
+		walletAddr:    walletAddr,
+		meta:          meta,
+		isCrossMargin: true, // 默认使用全仓模式
 	}, nil
 }
 
@@ -187,13 +189,26 @@ func (t *HyperliquidTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// SetMarginMode 设置仓位模式 (在SetLeverage时一并设置)
+func (t *HyperliquidTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	// Hyperliquid的仓位模式在SetLeverage时设置，这里只记录
+	t.isCrossMargin = isCrossMargin
+	marginModeStr := "全仓"
+	if !isCrossMargin {
+		marginModeStr = "逐仓"
+	}
+	log.Printf("  ✓ %s 将使用 %s 模式", symbol, marginModeStr)
+	return nil
+}
+
 // SetLeverage 设置杠杆
 func (t *HyperliquidTrader) SetLeverage(symbol string, leverage int) error {
 	// Hyperliquid symbol格式（去掉USDT后缀）
 	coin := convertSymbolToHyperliquid(symbol)
 
 	// 调用UpdateLeverage (leverage int, name string, isCross bool)
-	_, err := t.exchange.UpdateLeverage(t.ctx, leverage, coin, false) // false = 逐仓模式
+	// 第三个参数: true=全仓模式, false=逐仓模式
+	_, err := t.exchange.UpdateLeverage(t.ctx, leverage, coin, t.isCrossMargin)
 	if err != nil {
 		return fmt.Errorf("设置杠杆失败: %w", err)
 	}

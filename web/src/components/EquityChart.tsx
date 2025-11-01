@@ -13,6 +13,7 @@ import useSWR from 'swr';
 import { api } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
+import { AlertTriangle, BarChart3, DollarSign, Percent, TrendingUp as ArrowUp, TrendingDown as ArrowDown } from 'lucide-react'
 
 interface EquityPoint {
   timestamp: string;
@@ -52,16 +53,26 @@ export function EquityChart({ traderId }: EquityChartProps) {
 
   if (error) {
     return (
-      <div className="binance-card p-6">
-        <div className="flex items-center gap-3 p-4 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', border: '1px solid rgba(246, 70, 93, 0.2)' }}>
-          <div className="text-2xl">⚠️</div>
+      <div className='binance-card p-6'>
+        <div
+          className='flex items-center gap-3 p-4 rounded'
+          style={{
+            background: 'rgba(246, 70, 93, 0.1)',
+            border: '1px solid rgba(246, 70, 93, 0.2)',
+          }}
+        >
+          <AlertTriangle className='w-6 h-6' style={{ color: '#F6465D' }} />
           <div>
-            <div className="font-semibold" style={{ color: '#F6465D' }}>{t('loadingError', language)}</div>
-            <div className="text-sm" style={{ color: '#848E9C' }}>{error.message}</div>
+            <div className='font-semibold' style={{ color: '#F6465D' }}>
+              {t('loadingError', language)}
+            </div>
+            <div className='text-sm' style={{ color: '#848E9C' }}>
+              {error.message}
+            </div>
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   // 过滤掉无效数据：total_equity为0或小于1的数据点（API失败导致）
@@ -69,15 +80,21 @@ export function EquityChart({ traderId }: EquityChartProps) {
 
   if (!validHistory || validHistory.length === 0) {
     return (
-      <div className="binance-card p-6">
-        <h3 className="text-lg font-semibold mb-6" style={{ color: '#EAECEF' }}>{t('accountEquityCurve', language)}</h3>
-        <div className="text-center py-16" style={{ color: '#848E9C' }}>
-          <div className="text-6xl mb-4 opacity-50">📊</div>
-          <div className="text-lg font-semibold mb-2">{t('noHistoricalData', language)}</div>
-          <div className="text-sm">{t('dataWillAppear', language)}</div>
+      <div className='binance-card p-6'>
+        <h3 className='text-lg font-semibold mb-6' style={{ color: '#EAECEF' }}>
+          {t('accountEquityCurve', language)}
+        </h3>
+        <div className='text-center py-16' style={{ color: '#848E9C' }}>
+          <div className='mb-4 flex justify-center opacity-50'>
+            <BarChart3 className='w-16 h-16' />
+          </div>
+          <div className='text-lg font-semibold mb-2'>
+            {t('noHistoricalData', language)}
+          </div>
+          <div className='text-sm'>{t('dataWillAppear', language)}</div>
         </div>
       </div>
-    );
+    )
   }
 
   // 限制显示最近的数据点（性能优化）
@@ -161,142 +178,238 @@ export function EquityChart({ traderId }: EquityChartProps) {
   };
 
   return (
-    <div className="binance-card p-3 sm:p-5 animate-fade-in">
+    <div className='binance-card p-3 sm:p-5 animate-fade-in'>
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-        <div className="flex-1">
-          <h3 className="text-base sm:text-lg font-bold mb-2" style={{ color: '#EAECEF' }}>{t('accountEquityCurve', language)}</h3>
-          <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4">
-            <span className="text-2xl sm:text-3xl font-bold mono" style={{ color: '#EAECEF' }}>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4'>
+        <div className='flex-1'>
+          <h3
+            className='text-base sm:text-lg font-bold mb-2'
+            style={{ color: '#EAECEF' }}
+          >
+            {t('accountEquityCurve', language)}
+          </h3>
+          <div className='flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4'>
+            <span
+              className='text-2xl sm:text-3xl font-bold mono'
+              style={{ color: '#EAECEF' }}
+            >
               {account?.total_equity.toFixed(2) || '0.00'}
-              <span className="text-base sm:text-lg ml-1" style={{ color: '#848E9C' }}>USDT</span>
-            </span>
-            <div className="flex items-center gap-2 flex-wrap">
               <span
-                className="text-sm sm:text-lg font-bold mono px-2 sm:px-3 py-1 rounded"
+                className='text-base sm:text-lg ml-1'
+                style={{ color: '#848E9C' }}
+              >
+                USDT
+              </span>
+            </span>
+            <div className='flex items-center gap-2 flex-wrap'>
+              <span
+                className='text-sm sm:text-lg font-bold mono px-2 sm:px-3 py-1 rounded flex items-center gap-1'
                 style={{
                   color: isProfit ? '#0ECB81' : '#F6465D',
-                  background: isProfit ? 'rgba(14, 203, 129, 0.1)' : 'rgba(246, 70, 93, 0.1)',
-                  border: `1px solid ${isProfit ? 'rgba(14, 203, 129, 0.2)' : 'rgba(246, 70, 93, 0.2)'}`
+                  background: isProfit
+                    ? 'rgba(14, 203, 129, 0.1)'
+                    : 'rgba(246, 70, 93, 0.1)',
+                  border: `1px solid ${
+                    isProfit
+                      ? 'rgba(14, 203, 129, 0.2)'
+                      : 'rgba(246, 70, 93, 0.2)'
+                  }`,
                 }}
               >
-                {isProfit ? '▲' : '▼'} {isProfit ? '+' : ''}
+                {isProfit ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+                {isProfit ? '+' : ''}
                 {currentValue.raw_pnl_pct}%
               </span>
-              <span className="text-xs sm:text-sm mono" style={{ color: '#848E9C' }}>
-                ({isProfit ? '+' : ''}{currentValue.raw_pnl.toFixed(2)} USDT)
+              <span
+                className='text-xs sm:text-sm mono'
+                style={{ color: '#848E9C' }}
+              >
+                ({isProfit ? '+' : ''}
+                {currentValue.raw_pnl.toFixed(2)} USDT)
               </span>
             </div>
           </div>
         </div>
 
         {/* Display Mode Toggle */}
-        <div className="flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1 self-start sm:self-auto" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
+        <div
+          className='flex gap-0.5 sm:gap-1 rounded p-0.5 sm:p-1 self-start sm:self-auto'
+          style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+        >
           <button
             onClick={() => setDisplayMode('dollar')}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all"
-            style={displayMode === 'dollar'
-              ? { background: '#F0B90B', color: '#000', boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)' }
-              : { background: 'transparent', color: '#848E9C' }
+            className='px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all flex items-center gap-1'
+            style={
+              displayMode === 'dollar'
+                ? {
+                    background: '#F0B90B',
+                    color: '#000',
+                    boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
+                  }
+                : { background: 'transparent', color: '#848E9C' }
             }
           >
-            💵 USDT
+            <DollarSign className='w-4 h-4' /> USDT
           </button>
           <button
             onClick={() => setDisplayMode('percent')}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all"
-            style={displayMode === 'percent'
-              ? { background: '#F0B90B', color: '#000', boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)' }
-              : { background: 'transparent', color: '#848E9C' }
+            className='px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm font-bold transition-all flex items-center gap-1'
+            style={
+              displayMode === 'percent'
+                ? {
+                    background: '#F0B90B',
+                    color: '#000',
+                    boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)',
+                  }
+                : { background: 'transparent', color: '#848E9C' }
             }
           >
-            📊 %
+            <Percent className='w-4 h-4' />
           </button>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="my-2" style={{ borderRadius: '8px', overflow: 'hidden' }}>
-        <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={chartData} margin={{ top: 10, right: 20, left: 5, bottom: 30 }}>
-          <defs>
-            <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#F0B90B" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="#FCD535" stopOpacity={0.2} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" />
-          <XAxis
-            dataKey="time"
-            stroke="#5E6673"
-            tick={{ fill: '#848E9C', fontSize: 11 }}
-            tickLine={{ stroke: '#2B3139' }}
-            interval={Math.floor(chartData.length / 10)}
-            angle={-15}
-            textAnchor="end"
-            height={60}
-          />
-          <YAxis
-            stroke="#5E6673"
-            tick={{ fill: '#848E9C', fontSize: 12 }}
-            tickLine={{ stroke: '#2B3139' }}
-            domain={calculateYDomain()}
-            tickFormatter={(value) =>
-              displayMode === 'dollar' ? `$${value.toFixed(0)}` : `${value}%`
-            }
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <ReferenceLine
-            y={displayMode === 'dollar' ? initialBalance : 0}
-            stroke="#474D57"
-            strokeDasharray="3 3"
-            label={{
-              value: displayMode === 'dollar' ? t('initialBalance', language).split(' ')[0] : '0%',
-              fill: '#848E9C',
-              fontSize: 12,
-            }}
-          />
-          <Line
-            type="natural"
-            dataKey="value"
-            stroke="url(#colorGradient)"
-            strokeWidth={3}
-            dot={chartData.length > 50 ? false : { fill: '#F0B90B', r: 3 }}
-            activeDot={{ r: 6, fill: '#FCD535', stroke: '#F0B90B', strokeWidth: 2 }}
-            connectNulls={true}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className='my-2' style={{ borderRadius: '8px', overflow: 'hidden' }}>
+        <ResponsiveContainer width='100%' height={280}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 10, right: 20, left: 5, bottom: 30 }}
+          >
+            <defs>
+              <linearGradient id='colorGradient' x1='0' y1='0' x2='0' y2='1'>
+                <stop offset='5%' stopColor='#F0B90B' stopOpacity={0.8} />
+                <stop offset='95%' stopColor='#FCD535' stopOpacity={0.2} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray='3 3' stroke='#2B3139' />
+            <XAxis
+              dataKey='time'
+              stroke='#5E6673'
+              tick={{ fill: '#848E9C', fontSize: 11 }}
+              tickLine={{ stroke: '#2B3139' }}
+              interval={Math.floor(chartData.length / 10)}
+              angle={-15}
+              textAnchor='end'
+              height={60}
+            />
+            <YAxis
+              stroke='#5E6673'
+              tick={{ fill: '#848E9C', fontSize: 12 }}
+              tickLine={{ stroke: '#2B3139' }}
+              domain={calculateYDomain()}
+              tickFormatter={(value) =>
+                displayMode === 'dollar' ? `$${value.toFixed(0)}` : `${value}%`
+              }
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine
+              y={displayMode === 'dollar' ? initialBalance : 0}
+              stroke='#474D57'
+              strokeDasharray='3 3'
+              label={{
+                value:
+                  displayMode === 'dollar'
+                    ? t('initialBalance', language).split(' ')[0]
+                    : '0%',
+                fill: '#848E9C',
+                fontSize: 12,
+              }}
+            />
+            <Line
+              type='natural'
+              dataKey='value'
+              stroke='url(#colorGradient)'
+              strokeWidth={3}
+              dot={chartData.length > 50 ? false : { fill: '#F0B90B', r: 3 }}
+              activeDot={{
+                r: 6,
+                fill: '#FCD535',
+                stroke: '#F0B90B',
+                strokeWidth: 2,
+              }}
+              connectNulls={true}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Footer Stats */}
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
-        <div className="p-2 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('initialBalance', language)}</div>
-          <div className="text-xs sm:text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+      <div
+        className='mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pt-3'
+        style={{ borderTop: '1px solid #2B3139' }}
+      >
+        <div
+          className='p-2 rounded transition-all hover:bg-opacity-50'
+          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+        >
+          <div
+            className='text-xs mb-1 uppercase tracking-wider'
+            style={{ color: '#848E9C' }}
+          >
+            {t('initialBalance', language)}
+          </div>
+          <div
+            className='text-xs sm:text-sm font-bold mono'
+            style={{ color: '#EAECEF' }}
+          >
             {initialBalance.toFixed(2)} USDT
           </div>
         </div>
-        <div className="p-2 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('currentEquity', language)}</div>
-          <div className="text-xs sm:text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+        <div
+          className='p-2 rounded transition-all hover:bg-opacity-50'
+          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+        >
+          <div
+            className='text-xs mb-1 uppercase tracking-wider'
+            style={{ color: '#848E9C' }}
+          >
+            {t('currentEquity', language)}
+          </div>
+          <div
+            className='text-xs sm:text-sm font-bold mono'
+            style={{ color: '#EAECEF' }}
+          >
             {currentValue.raw_equity.toFixed(2)} USDT
           </div>
         </div>
-        <div className="p-2 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('historicalCycles', language)}</div>
-          <div className="text-xs sm:text-sm font-bold mono" style={{ color: '#EAECEF' }}>{validHistory.length} {t('cycles', language)}</div>
+        <div
+          className='p-2 rounded transition-all hover:bg-opacity-50'
+          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+        >
+          <div
+            className='text-xs mb-1 uppercase tracking-wider'
+            style={{ color: '#848E9C' }}
+          >
+            {t('historicalCycles', language)}
+          </div>
+          <div
+            className='text-xs sm:text-sm font-bold mono'
+            style={{ color: '#EAECEF' }}
+          >
+            {validHistory.length} {t('cycles', language)}
+          </div>
         </div>
-        <div className="p-2 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>{t('displayRange', language)}</div>
-          <div className="text-xs sm:text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+        <div
+          className='p-2 rounded transition-all hover:bg-opacity-50'
+          style={{ background: 'rgba(240, 185, 11, 0.05)' }}
+        >
+          <div
+            className='text-xs mb-1 uppercase tracking-wider'
+            style={{ color: '#848E9C' }}
+          >
+            {t('displayRange', language)}
+          </div>
+          <div
+            className='text-xs sm:text-sm font-bold mono'
+            style={{ color: '#EAECEF' }}
+          >
             {validHistory.length > MAX_DISPLAY_POINTS
               ? `${t('recent', language)} ${MAX_DISPLAY_POINTS}`
-              : t('allData', language)
-            }
+              : t('allData', language)}
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }

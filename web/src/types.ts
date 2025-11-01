@@ -84,27 +84,119 @@ export interface Statistics {
   total_close_positions: number;
 }
 
-// 新增：竞赛相关类型
+// AI Trading相关类型
 export interface TraderInfo {
   trader_id: string;
   trader_name: string;
   ai_model: string;
+  exchange_id?: string;
+  is_running?: boolean;
+  custom_prompt?: string;
 }
 
+export interface AIModel {
+  id: string;
+  name: string;
+  provider: string;
+  enabled: boolean;
+  apiKey?: string;
+  customApiUrl?: string;
+  customModelName?: string;
+}
+
+export interface Exchange {
+  id: string;
+  name: string;
+  type: 'cex' | 'dex';
+  enabled: boolean;
+  apiKey?: string;
+  secretKey?: string;
+  testnet?: boolean;
+  // Hyperliquid 特定字段
+  hyperliquidWalletAddr?: string;
+  // Aster 特定字段
+  asterUser?: string;
+  asterSigner?: string;
+  asterPrivateKey?: string;
+}
+
+export interface CreateTraderRequest {
+  name: string;
+  ai_model_id: string;
+  exchange_id: string;
+  initial_balance: number;
+  btc_eth_leverage?: number;
+  altcoin_leverage?: number;
+  trading_symbols?: string;
+  custom_prompt?: string;
+  override_base_prompt?: boolean;
+  system_prompt_template?: string;
+  is_cross_margin?: boolean;
+  use_coin_pool?: boolean;
+  use_oi_top?: boolean;
+}
+
+export interface UpdateModelConfigRequest {
+  models: {
+    [key: string]: {
+      enabled: boolean;
+      api_key: string;
+      custom_api_url?: string;
+      custom_model_name?: string;
+    };
+  };
+}
+
+export interface UpdateExchangeConfigRequest {
+  exchanges: {
+    [key: string]: {
+      enabled: boolean;
+      api_key: string;
+      secret_key: string;
+      testnet?: boolean;
+      // Hyperliquid 特定字段
+      hyperliquid_wallet_addr?: string;
+      // Aster 特定字段
+      aster_user?: string;
+      aster_signer?: string;
+      aster_private_key?: string;
+    };
+  };
+}
+
+// Competition related types
 export interface CompetitionTraderData {
   trader_id: string;
   trader_name: string;
   ai_model: string;
+  exchange: string;
   total_equity: number;
   total_pnl: number;
   total_pnl_pct: number;
   position_count: number;
   margin_used_pct: number;
-  call_count: number;
   is_running: boolean;
 }
 
 export interface CompetitionData {
   traders: CompetitionTraderData[];
   count: number;
+}
+
+// Trader Configuration Data for View Modal
+export interface TraderConfigData {
+  trader_id?: string;
+  trader_name: string;
+  ai_model: string;
+  exchange_id: string;
+  btc_eth_leverage: number;
+  altcoin_leverage: number;
+  trading_symbols: string;
+  custom_prompt: string;
+  override_base_prompt: boolean;
+  is_cross_margin: boolean;
+  use_coin_pool: boolean;
+  use_oi_top: boolean;
+  initial_balance: number;
+  is_running: boolean;
 }

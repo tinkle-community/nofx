@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Backend service (API and core logic)
   nofx:
@@ -12,14 +10,16 @@ services:
       - "${NOFX_BACKEND_PORT:-8080}:8080"
     volumes:
       - ./config.json:/app/config.json:ro
+      - ./config.db:/app/config.db
       - ./decision_logs:/app/decision_logs
+      - ./prompts:/app/prompts
       - /etc/localtime:/etc/localtime:ro  # Sync host time
     environment:
       - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
     networks:
       - nofx-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
