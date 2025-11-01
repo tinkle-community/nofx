@@ -100,6 +100,7 @@ export interface AIModel {
   provider: string;
   enabled: boolean;
   apiKey?: string;
+  customApiUrl?: string;
 }
 
 export interface Exchange {
@@ -123,9 +124,14 @@ export interface CreateTraderRequest {
   ai_model_id: string;
   exchange_id: string;
   initial_balance: number;
+  btc_eth_leverage?: number;
+  altcoin_leverage?: number;
+  trading_symbols?: string;
   custom_prompt?: string;
   override_base_prompt?: boolean;
   is_cross_margin?: boolean;
+  use_coin_pool?: boolean;
+  use_oi_top?: boolean;
 }
 
 export interface UpdateModelConfigRequest {
@@ -133,6 +139,7 @@ export interface UpdateModelConfigRequest {
     [key: string]: {
       enabled: boolean;
       api_key: string;
+      custom_api_url?: string;
     };
   };
 }
@@ -159,6 +166,7 @@ export interface CompetitionTraderData {
   trader_id: string;
   trader_name: string;
   ai_model: string;
+  exchange: string;
   total_equity: number;
   total_pnl: number;
   total_pnl_pct: number;

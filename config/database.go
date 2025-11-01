@@ -72,6 +72,18 @@ func (d *Database) createTables() error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 
+		// 用户信号源配置表
+		`CREATE TABLE IF NOT EXISTS user_signal_sources (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL,
+			coin_pool_url TEXT DEFAULT '',
+			oi_top_url TEXT DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE(user_id)
+		)`,
+
 		// 交易员配置表
 		`CREATE TABLE IF NOT EXISTS traders (
 			id TEXT PRIMARY KEY,
@@ -82,6 +94,11 @@ func (d *Database) createTables() error {
 			initial_balance REAL NOT NULL,
 			scan_interval_minutes INTEGER DEFAULT 3,
 			is_running BOOLEAN DEFAULT 0,
+			btc_eth_leverage INTEGER DEFAULT 5,
+			altcoin_leverage INTEGER DEFAULT 5,
+			trading_symbols TEXT DEFAULT '',
+			use_coin_pool BOOLEAN DEFAULT 0,
+			use_oi_top BOOLEAN DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -132,6 +149,12 @@ func (d *Database) createTables() error {
 				UPDATE traders SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 			END`,
 
+		`CREATE TRIGGER IF NOT EXISTS update_user_signal_sources_updated_at
+			AFTER UPDATE ON user_signal_sources
+			BEGIN
+				UPDATE user_signal_sources SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+			END`,
+
 		`CREATE TRIGGER IF NOT EXISTS update_system_config_updated_at
 			AFTER UPDATE ON system_config
 			BEGIN
@@ -154,6 +177,14 @@ func (d *Database) createTables() error {
 		`ALTER TABLE traders ADD COLUMN custom_prompt TEXT DEFAULT ''`,
 		`ALTER TABLE traders ADD COLUMN override_base_prompt BOOLEAN DEFAULT 0`,
 		`ALTER TABLE traders ADD COLUMN is_cross_margin BOOLEAN DEFAULT 1`, // 默认为全仓模式
+		`ALTER TABLE traders ADD COLUMN use_default_coins BOOLEAN DEFAULT 1`, // 默认使用默认币种
+		`ALTER TABLE traders ADD COLUMN custom_coins TEXT DEFAULT ''`, // 自定义币种列表（JSON格式）
+		`ALTER TABLE traders ADD COLUMN btc_eth_leverage INTEGER DEFAULT 5`, // BTC/ETH杠杆倍数
+		`ALTER TABLE traders ADD COLUMN altcoin_leverage INTEGER DEFAULT 5`, // 山寨币杠杆倍数
+		`ALTER TABLE traders ADD COLUMN trading_symbols TEXT DEFAULT ''`, // 交易币种，逗号分隔
+		`ALTER TABLE traders ADD COLUMN use_coin_pool BOOLEAN DEFAULT 0`, // 是否使用COIN POOL信号源
+		`ALTER TABLE traders ADD COLUMN use_oi_top BOOLEAN DEFAULT 0`, // 是否使用OI TOP信号源
+		`ALTER TABLE ai_models ADD COLUMN custom_api_url TEXT DEFAULT ''`, // 自定义API地址
 	}
 
 	for _, query := range alterQueries {
@@ -215,8 +246,6 @@ func (d *Database) initDefaultData() error {
 		"api_server_port":       "8080",                                                              // 默认API端口
 		"use_default_coins":     "true",                                                              // 默认使用内置币种列表
 		"default_coins":         `["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","HYPEUSDT"]`, // 默认币种列表（JSON格式）
-		"coin_pool_api_url":     "",                                                                  // 币种池API URL，默认为空
-		"oi_top_api_url":        "",                                                                  // 持仓量API URL，默认为空
 		"max_daily_loss":        "10.0",                                                              // 最大日损失百分比
 		"max_drawdown":          "20.0",                                                              // 最大回撤百分比
 		"stop_trading_minutes":  "60",                                                                // 停止交易时间（分钟）
@@ -333,14 +362,15 @@ type User struct {
 
 // AIModelConfig AI模型配置
 type AIModelConfig struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	Name      string    `json:"name"`
-	Provider  string    `json:"provider"`
-	Enabled   bool      `json:"enabled"`
-	APIKey    string    `json:"apiKey"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Name         string    `json:"name"`
+	Provider     string    `json:"provider"`
+	Enabled      bool      `json:"enabled"`
+	APIKey       string    `json:"apiKey"`
+	CustomAPIURL string    `json:"customApiUrl"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // ExchangeConfig 交易所配置
@@ -373,11 +403,26 @@ type TraderRecord struct {
 	InitialBalance     float64   `json:"initial_balance"`
 	ScanIntervalMinutes int      `json:"scan_interval_minutes"`
 	IsRunning          bool      `json:"is_running"`
-	CustomPrompt       string    `json:"custom_prompt"` // 自定义交易策略prompt
-	OverrideBasePrompt bool   `json:"override_base_prompt"` // 是否覆盖基础prompt
-	IsCrossMargin      bool   `json:"is_cross_margin"` // 是否为全仓模式（true=全仓，false=逐仓）
+	BTCETHLeverage     int       `json:"btc_eth_leverage"`     // BTC/ETH杠杆倍数
+	AltcoinLeverage    int       `json:"altcoin_leverage"`     // 山寨币杠杆倍数
+	TradingSymbols     string    `json:"trading_symbols"`      // 交易币种，逗号分隔
+	UseCoinPool        bool      `json:"use_coin_pool"`        // 是否使用COIN POOL信号源
+	UseOITop           bool      `json:"use_oi_top"`           // 是否使用OI TOP信号源
+	CustomPrompt       string    `json:"custom_prompt"`        // 自定义交易策略prompt
+	OverrideBasePrompt bool      `json:"override_base_prompt"` // 是否覆盖基础prompt
+	IsCrossMargin      bool      `json:"is_cross_margin"`      // 是否为全仓模式（true=全仓，false=逐仓）
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// UserSignalSource 用户信号源配置
+type UserSignalSource struct {
+	ID           int       `json:"id"`
+	UserID       string    `json:"user_id"`
+	CoinPoolURL  string    `json:"coin_pool_url"`
+	OITopURL     string    `json:"oi_top_url"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // GenerateOTPSecret 生成OTP密钥
@@ -457,6 +502,25 @@ func (d *Database) GetUserByID(userID string) (*User, error) {
 	return &user, nil
 }
 
+// GetAllUsers 获取所有用户ID列表
+func (d *Database) GetAllUsers() ([]string, error) {
+	rows, err := d.db.Query(`SELECT id FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userIDs []string
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, nil
+}
+
 // UpdateUserOTPVerified 更新用户OTP验证状态
 func (d *Database) UpdateUserOTPVerified(userID string, verified bool) error {
 	_, err := d.db.Exec(`UPDATE users SET otp_verified = ? WHERE id = ?`, verified, userID)
@@ -466,7 +530,7 @@ func (d *Database) UpdateUserOTPVerified(userID string, verified bool) error {
 // GetAIModels 获取用户的AI模型配置
 func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 	rows, err := d.db.Query(`
-		SELECT id, user_id, name, provider, enabled, api_key, created_at, updated_at 
+		SELECT id, user_id, name, provider, enabled, api_key, COALESCE(custom_api_url, '') as custom_api_url, created_at, updated_at 
 		FROM ai_models WHERE user_id = ? ORDER BY id
 	`, userID)
 	if err != nil {
@@ -480,7 +544,7 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 		var model AIModelConfig
 		err := rows.Scan(
 			&model.ID, &model.UserID, &model.Name, &model.Provider, 
-			&model.Enabled, &model.APIKey,
+			&model.Enabled, &model.APIKey, &model.CustomAPIURL,
 			&model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
@@ -493,11 +557,11 @@ func (d *Database) GetAIModels(userID string) ([]*AIModelConfig, error) {
 }
 
 // UpdateAIModel 更新AI模型配置，如果不存在则创建用户特定配置
-func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey string) error {
+func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, customAPIURL string) error {
 	// 首先尝试更新现有的用户配置
 	result, err := d.db.Exec(`
-		UPDATE ai_models SET enabled = ?, api_key = ? WHERE id = ? AND user_id = ?
-	`, enabled, apiKey, id, userID)
+		UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ? WHERE id = ? AND user_id = ?
+	`, enabled, apiKey, customAPIURL, id, userID)
 	if err != nil {
 		return err
 	}
@@ -532,9 +596,9 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey string)
 		// 创建用户特定的配置
 		userModelID := fmt.Sprintf("%s_%s", userID, id)
 		_, err = d.db.Exec(`
-			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-		`, userModelID, userID, name, provider, enabled, apiKey)
+			INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, userModelID, userID, name, provider, enabled, apiKey, customAPIURL)
 		return err
 	}
 	
@@ -643,11 +707,11 @@ func (d *Database) UpdateExchange(userID, id string, enabled bool, apiKey, secre
 }
 
 // CreateAIModel 创建AI模型配置
-func (d *Database) CreateAIModel(userID, id, name, provider string, enabled bool, apiKey string) error {
+func (d *Database) CreateAIModel(userID, id, name, provider string, enabled bool, apiKey, customAPIURL string) error {
 	_, err := d.db.Exec(`
-		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled, api_key) 
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, userID, name, provider, enabled, apiKey)
+		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, id, userID, name, provider, enabled, apiKey, customAPIURL)
 	return err
 }
 
@@ -663,9 +727,9 @@ func (d *Database) CreateExchange(userID, id, name, typ string, enabled bool, ap
 // CreateTrader 创建交易员
 func (d *Database) CreateTrader(trader *TraderRecord) error {
 	_, err := d.db.Exec(`
-		INSERT INTO traders (id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, custom_prompt, override_base_prompt, is_cross_margin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, trader.ID, trader.UserID, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance, trader.ScanIntervalMinutes, trader.IsRunning, trader.CustomPrompt, trader.OverrideBasePrompt, trader.IsCrossMargin)
+		INSERT INTO traders (id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, btc_eth_leverage, altcoin_leverage, trading_symbols, use_coin_pool, use_oi_top, custom_prompt, override_base_prompt, is_cross_margin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, trader.ID, trader.UserID, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance, trader.ScanIntervalMinutes, trader.IsRunning, trader.BTCETHLeverage, trader.AltcoinLeverage, trader.TradingSymbols, trader.UseCoinPool, trader.UseOITop, trader.CustomPrompt, trader.OverrideBasePrompt, trader.IsCrossMargin)
 	return err
 }
 
@@ -673,6 +737,9 @@ func (d *Database) CreateTrader(trader *TraderRecord) error {
 func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 	rows, err := d.db.Query(`
 		SELECT id, user_id, name, ai_model_id, exchange_id, initial_balance, scan_interval_minutes, is_running, 
+		       COALESCE(btc_eth_leverage, 5) as btc_eth_leverage, COALESCE(altcoin_leverage, 5) as altcoin_leverage,
+		       COALESCE(trading_symbols, '') as trading_symbols,
+		       COALESCE(use_coin_pool, 0) as use_coin_pool, COALESCE(use_oi_top, 0) as use_oi_top,
 		       COALESCE(custom_prompt, '') as custom_prompt, COALESCE(override_base_prompt, 0) as override_base_prompt, 
 		       COALESCE(is_cross_margin, 1) as is_cross_margin, created_at, updated_at
 		FROM traders WHERE user_id = ? ORDER BY created_at DESC
@@ -688,6 +755,8 @@ func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 		err := rows.Scan(
 			&trader.ID, &trader.UserID, &trader.Name, &trader.AIModelID, &trader.ExchangeID,
 			&trader.InitialBalance, &trader.ScanIntervalMinutes, &trader.IsRunning,
+			&trader.BTCETHLeverage, &trader.AltcoinLeverage, &trader.TradingSymbols,
+			&trader.UseCoinPool, &trader.UseOITop,
 			&trader.CustomPrompt, &trader.OverrideBasePrompt, &trader.IsCrossMargin,
 			&trader.CreatedAt, &trader.UpdatedAt,
 		)
@@ -703,6 +772,22 @@ func (d *Database) GetTraders(userID string) ([]*TraderRecord, error) {
 // UpdateTraderStatus 更新交易员状态
 func (d *Database) UpdateTraderStatus(userID, id string, isRunning bool) error {
 	_, err := d.db.Exec(`UPDATE traders SET is_running = ? WHERE id = ? AND user_id = ?`, isRunning, id, userID)
+	return err
+}
+
+// UpdateTrader 更新交易员配置
+func (d *Database) UpdateTrader(trader *TraderRecord) error {
+	_, err := d.db.Exec(`
+		UPDATE traders SET 
+			name = ?, ai_model_id = ?, exchange_id = ?, initial_balance = ?, 
+			scan_interval_minutes = ?, btc_eth_leverage = ?, altcoin_leverage = ?, 
+			trading_symbols = ?, custom_prompt = ?, override_base_prompt = ?, 
+			is_cross_margin = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND user_id = ?
+	`, trader.Name, trader.AIModelID, trader.ExchangeID, trader.InitialBalance,
+		trader.ScanIntervalMinutes, trader.BTCETHLeverage, trader.AltcoinLeverage,
+		trader.TradingSymbols, trader.CustomPrompt, trader.OverrideBasePrompt,
+		trader.IsCrossMargin, trader.ID, trader.UserID)
 	return err
 }
 
@@ -769,6 +854,40 @@ func (d *Database) SetSystemConfig(key, value string) error {
 	_, err := d.db.Exec(`
 		INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)
 	`, key, value)
+	return err
+}
+
+// CreateUserSignalSource 创建用户信号源配置
+func (d *Database) CreateUserSignalSource(userID, coinPoolURL, oiTopURL string) error {
+	_, err := d.db.Exec(`
+		INSERT OR REPLACE INTO user_signal_sources (user_id, coin_pool_url, oi_top_url, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+	`, userID, coinPoolURL, oiTopURL)
+	return err
+}
+
+// GetUserSignalSource 获取用户信号源配置
+func (d *Database) GetUserSignalSource(userID string) (*UserSignalSource, error) {
+	var source UserSignalSource
+	err := d.db.QueryRow(`
+		SELECT id, user_id, coin_pool_url, oi_top_url, created_at, updated_at
+		FROM user_signal_sources WHERE user_id = ?
+	`, userID).Scan(
+		&source.ID, &source.UserID, &source.CoinPoolURL, &source.OITopURL,
+		&source.CreatedAt, &source.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &source, nil
+}
+
+// UpdateUserSignalSource 更新用户信号源配置
+func (d *Database) UpdateUserSignalSource(userID, coinPoolURL, oiTopURL string) error {
+	_, err := d.db.Exec(`
+		UPDATE user_signal_sources SET coin_pool_url = ?, oi_top_url = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ?
+	`, coinPoolURL, oiTopURL, userID)
 	return err
 }
 

@@ -82,6 +82,24 @@ export const api = {
     if (!res.ok) throw new Error('更新自定义策略失败');
   },
 
+  async getTraderConfig(traderId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/traders/${traderId}/config`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('获取交易员配置失败');
+    return res.json();
+  },
+
+  async updateTrader(traderId: string, request: CreateTraderRequest): Promise<TraderInfo> {
+    const res = await fetch(`${API_BASE}/traders/${traderId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) throw new Error('更新交易员失败');
+    return res.json();
+  },
+
   // AI模型配置接口
   async getModelConfigs(): Promise<AIModel[]> {
     const res = await fetch(`${API_BASE}/models`, {
@@ -241,5 +259,26 @@ export const api = {
     });
     if (!res.ok) throw new Error('获取竞赛数据失败');
     return res.json();
+  },
+
+  // 用户信号源配置接口
+  async getUserSignalSource(): Promise<{coin_pool_url: string, oi_top_url: string}> {
+    const res = await fetch(`${API_BASE}/user/signal-sources`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('获取用户信号源配置失败');
+    return res.json();
+  },
+
+  async saveUserSignalSource(coinPoolUrl: string, oiTopUrl: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/user/signal-sources`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        coin_pool_url: coinPoolUrl,
+        oi_top_url: oiTopUrl,
+      }),
+    });
+    if (!res.ok) throw new Error('保存用户信号源配置失败');
   },
 };
