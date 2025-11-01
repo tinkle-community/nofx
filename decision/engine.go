@@ -248,7 +248,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
 		template, err = GetPromptTemplate("default")
 		if err != nil {
-			// 如果连 default 都不存在，使用内置的简化版本
+			// 如果连 default 都不存在，使用内置的简化版本（最后防线）
 			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
 			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
 		} else {
@@ -260,7 +260,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		sb.WriteString("\n\n")
 	}
 
-	// 2. 硬约束（风险控制）- 动态生成
+	// 2. 硬约束（风险控制）- 动态生成（始终追加）
 	sb.WriteString("# 硬约束（风险控制）\n\n")
 	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
@@ -268,7 +268,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. 保证金: 总使用率 ≤ 90%\n\n")
 
-	// 3. 输出格式 - 动态生成
+	// 3. 输出格式 - 动态生成（始终追加）
 	sb.WriteString("#输出格式\n\n")
 	sb.WriteString("第一步: 思维链（纯文本）\n")
 	sb.WriteString("简洁分析你的思考过程\n\n")

@@ -165,34 +165,60 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!editingTrader) return;
 
     try {
-      const model = enabledModels?.find(m => m.id === data.ai_model_id);
-      const exchange = enabledExchanges?.find(e => e.id === data.exchange_id);
-
-      if (!model) {
-        alert(t('modelConfigNotExist', language));
+      // 1. 确保 ai_model_id 有值（使用 fallback）
+      const ai_model_id = data.ai_model_id || editingTrader.ai_model;
+      if (!ai_model_id) {
+        console.error('缺少 AI 模型配置', { data, editingTrader });
+        alert('错误：缺少 AI 模型配置');
         return;
       }
 
+      // 2. 确保 exchange_id 有值（使用 fallback）
+      const exchange_id = data.exchange_id || editingTrader.exchange_id;
+      if (!exchange_id) {
+        console.error('缺少交易所配置', { data, editingTrader });
+        alert('错误：缺少交易所配置');
+        return;
+      }
+
+      // 3. 验证模型存在
+      console.log('验证 AI 模型:', { ai_model_id, enabledModels: enabledModels?.map(m => m.id) });
+      const model = enabledModels?.find(m => m.id === ai_model_id);
+      if (!model) {
+        console.error('找不到模型:', {
+          ai_model_id,
+          availableModels: enabledModels?.map(m => ({ id: m.id, name: m.name }))
+        });
+        alert(`AI模型配置不存在或未启用: ${ai_model_id}\n\n可用的模型: ${enabledModels?.map(m => m.name).join(', ')}`);
+        return;
+      }
+
+      // 4. 验证交易所存在
+      const exchange = enabledExchanges?.find(e => e.id === exchange_id);
       if (!exchange) {
+        console.error('找不到交易所:', { exchange_id });
         alert(t('exchangeConfigNotExist', language));
         return;
       }
-      
+
+      // 5. 构建请求（使用修正后的值）
       const request = {
         name: data.name,
-        ai_model_id: data.ai_model_id,
-        exchange_id: data.exchange_id,
+        ai_model_id: ai_model_id,  // 使用修正后的值
+        exchange_id: exchange_id,  // 使用修正后的值
         initial_balance: data.initial_balance,
         btc_eth_leverage: data.btc_eth_leverage,
         altcoin_leverage: data.altcoin_leverage,
         trading_symbols: data.trading_symbols,
         custom_prompt: data.custom_prompt,
         override_base_prompt: data.override_base_prompt,
+        system_prompt_template: data.system_prompt_template, // 添加此字段
         is_cross_margin: data.is_cross_margin,
         use_coin_pool: data.use_coin_pool,
         use_oi_top: data.use_oi_top
       };
-      
+
+      console.log('保存交易员配置:', request);
       await api.updateTrader(editingTrader.trader_id, request);
       setShowEditModal(false);
       setEditingTrader(null);
