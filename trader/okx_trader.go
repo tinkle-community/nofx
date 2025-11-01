@@ -556,9 +556,7 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 
 	data, err := t.request(context.Background(), "POST", "/api/v5/trade/order", body)
 	if err != nil {
-		if debugMode {
-			log.Printf("[DEBUG] OKX CloseLong 失败: symbol=%s, instId=%s, error=%v", symbol, instId, err)
-		}
+		log.Printf("❌ OKX API 调用失败: symbol=%s, instId=%s, error=%v", symbol, instId, err)
 		return nil, fmt.Errorf("平多仓失败: %w", err)
 	}
 
@@ -569,19 +567,20 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 	}
 
 	if err := json.Unmarshal(data, &orders); err != nil {
+		log.Printf("❌ 解析订单响应失败: data=%s, error=%v", string(data), err)
 		return nil, fmt.Errorf("解析订单响应失败: %w", err)
 	}
 
 	if len(orders) == 0 || orders[0].SCode != "0" {
 		msg := "未知错误"
+		sCode := "unknown"
 		if len(orders) > 0 {
 			msg = orders[0].SMsg
+			sCode = orders[0].SCode
 		}
-		if debugMode {
-			log.Printf("[DEBUG] OKX CloseLong 订单失败: symbol=%s, instId=%s, sCode=%s, sMsg=%s",
-				symbol, instId, orders[0].SCode, msg)
-		}
-		return nil, fmt.Errorf("平仓失败: %s", msg)
+		log.Printf("❌ OKX 平仓订单失败: symbol=%s, instId=%s, sCode=%s, sMsg=%s, 完整data=%s",
+			symbol, instId, sCode, msg, string(data))
+		return nil, fmt.Errorf("平仓失败 (sCode=%s): %s", sCode, msg)
 	}
 
 	log.Printf("✓ 平多仓成功: %s (instId: %s) 数量: %s", symbol, instId, quantityStr)
