@@ -72,7 +72,7 @@ export function TraderConfigModal({
     } else if (!isEditMode) {
       setFormData({
         trader_name: '',
-        ai_model: availableModels[0]?.id || '',
+        ai_model: availableModels[0]?.provider || '',
         exchange_id: availableExchanges[0]?.id || '',
         btc_eth_leverage: 5,
         altcoin_leverage: 3,
@@ -217,7 +217,7 @@ export function TraderConfigModal({
                     className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
                   >
                     {availableModels.map(model => (
-                      <option key={model.id} value={model.id}>
+                      <option key={model.id} value={model.provider}>
                         {getShortName(model.name || model.id).toUpperCase()}
                       </option>
                     ))}

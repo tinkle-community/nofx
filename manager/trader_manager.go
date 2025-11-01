@@ -84,7 +84,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
-    for _, traderCfg := range allTraders {
+	for _, traderCfg := range allTraders {
 		// 获取AI模型配置（使用交易员所属的用户ID）
 		aiModels, err := database.GetAIModels(traderCfg.UserID)
 		if err != nil {
@@ -94,7 +94,9 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 
 		var aiModelCfg *config.AIModelConfig
 		for _, model := range aiModels {
-			if model.ID == traderCfg.AIModelID {
+			// 使用 provider 来匹配，因为 AIModelID 存储的是 provider（如 "deepseek"）
+			// 而 model.ID 可能是 "admin_deepseek"
+			if model.Provider == traderCfg.AIModelID {
 				aiModelCfg = model
 				break
 			}
@@ -146,7 +148,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		}
 
 		// 添加到TraderManager
-        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
+		err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
 		if err != nil {
 			log.Printf("❌ 添加交易员 %s 失败: %v", traderCfg.Name, err)
 			continue
@@ -175,7 +177,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -189,7 +191,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 构建AutoTraderConfig
-    traderConfig := trader.AutoTraderConfig{
+	traderConfig := trader.AutoTraderConfig{
 		ID:                    traderCfg.ID,
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
@@ -202,9 +204,8 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
 		QwenKey:               "",
-		CustomAPIURL:          "",
-		CustomAPIKey:          "",
-		CustomModelName:       "",
+		CustomAPIURL:          aiModelCfg.CustomAPIURL,    // 自定义API URL
+		CustomModelName:       aiModelCfg.CustomModelName, // 自定义模型名称
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
@@ -261,7 +262,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
 		log.Printf("⚠️  [%s] 未知的AI模型provider '%s'，默认使用DeepSeek配置 (API Key长度: %d)", traderCfg.Name, aiModelCfg.Provider, len(traderConfig.DeepSeekKey))
 	}
-	
+
 	// 验证API key是否为空
 	if traderConfig.CustomAPIKey == "" && traderConfig.QwenKey == "" && traderConfig.DeepSeekKey == "" {
 		return fmt.Errorf("AI模型配置错误：API key为空")
@@ -272,7 +273,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -312,7 +313,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -339,6 +340,8 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
 		QwenKey:               "",
+		CustomAPIURL:          aiModelCfg.CustomAPIURL,    // 自定义API URL
+		CustomModelName:       aiModelCfg.CustomModelName, // 自定义模型名称
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
@@ -376,7 +379,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -505,9 +508,9 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 	for _, t := range tm.traders {
 		account, err := t.GetAccountInfo()
 		status := t.GetStatus()
-		
+
 		var traderData map[string]interface{}
-		
+
 		if err != nil {
 			// 如果获取账户信息失败，使用默认值但仍然显示交易员
 			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", t.GetID(), err)
@@ -539,7 +542,7 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 				"is_running":      status["is_running"],
 			}
 		}
-		
+
 		traders = append(traders, traderData)
 	}
 	comparison["traders"] = traders
@@ -649,7 +652,8 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 
 		var aiModelCfg *config.AIModelConfig
 		for _, model := range aiModels {
-			if model.ID == traderCfg.AIModelID {
+			// 使用 provider 来匹配，因为 AIModelID 存储的是 provider（如 "deepseek"）
+			if model.Provider == traderCfg.AIModelID {
 				aiModelCfg = model
 				break
 			}
@@ -714,7 +718,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -800,7 +804,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 		traderConfig.DeepSeekKey = strings.TrimSpace(aiModelCfg.APIKey)
 		log.Printf("⚠️  [%s] 未知的AI模型provider '%s'，默认使用DeepSeek配置 (API Key长度: %d)", traderCfg.Name, aiModelCfg.Provider, len(traderConfig.DeepSeekKey))
 	}
-	
+
 	// 验证API key是否为空
 	if traderConfig.CustomAPIKey == "" && traderConfig.QwenKey == "" && traderConfig.DeepSeekKey == "" {
 		return fmt.Errorf("AI模型配置错误：API key为空")
@@ -811,7 +815,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)

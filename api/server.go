@@ -614,7 +614,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// 更新每个模型的配置
 	for modelID, modelData := range req.Models {
 		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
@@ -623,7 +623,14 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 			return
 		}
 	}
-	
+
+	// 重新加载该用户的所有交易员，使新配置立即生效
+	err := s.traderManager.LoadUserTraders(s.database, userID)
+	if err != nil {
+		log.Printf("⚠️ 重新加载用户交易员到内存失败: %v", err)
+		// 这里不返回错误，因为模型配置已经成功更新到数据库
+	}
+
 	log.Printf("✓ AI模型配置已更新: %+v", req.Models)
 	c.JSON(http.StatusOK, gin.H{"message": "模型配置已更新"})
 }
@@ -674,7 +681,7 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// 更新每个交易所的配置
 	for exchangeID, exchangeData := range req.Exchanges {
 		err := s.database.UpdateExchange(userID, exchangeID, exchangeData.Enabled, exchangeData.APIKey, exchangeData.SecretKey, exchangeData.Testnet, exchangeData.HyperliquidWalletAddr, exchangeData.AsterUser, exchangeData.AsterSigner, exchangeData.AsterPrivateKey)
@@ -683,7 +690,14 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 			return
 		}
 	}
-	
+
+	// 重新加载该用户的所有交易员，使新配置立即生效
+	err := s.traderManager.LoadUserTraders(s.database, userID)
+	if err != nil {
+		log.Printf("⚠️ 重新加载用户交易员到内存失败: %v", err)
+		// 这里不返回错误，因为交易所配置已经成功更新到数据库
+	}
+
 	log.Printf("✓ 交易所配置已更新: %+v", req.Exchanges)
 	c.JSON(http.StatusOK, gin.H{"message": "交易所配置已更新"})
 }
@@ -750,12 +764,21 @@ func (s *Server) handleTraderList(c *gin.Context) {
 			}
 		}
 
+		// AIModelID 应该已经是 provider（如 "deepseek"），直接使用
+		// 如果是旧数据格式（如 "admin_deepseek"），提取 provider 部分
+		aiModelID := trader.AIModelID
+		// 兼容旧数据：如果包含下划线，提取最后一部分作为 provider
+		if strings.Contains(aiModelID, "_") {
+			parts := strings.Split(aiModelID, "_")
+			aiModelID = parts[len(parts)-1]
+		}
+
 		result = append(result, map[string]interface{}{
-			"trader_id":   trader.ID,
-			"trader_name": trader.Name,
-			"ai_model":    trader.AIModelID,
-			"exchange_id": trader.ExchangeID,
-			"is_running":  isRunning,
+			"trader_id":       trader.ID,
+			"trader_name":     trader.Name,
+			"ai_model":        aiModelID,
+			"exchange_id":     trader.ExchangeID,
+			"is_running":      isRunning,
 			"initial_balance": trader.InitialBalance,
 		})
 	}
@@ -788,21 +811,30 @@ func (s *Server) handleGetTraderConfig(c *gin.Context) {
 		}
 	}
 
+	// AIModelID 应该已经是 provider（如 "deepseek"），直接使用
+	// 如果是旧数据格式（如 "admin_deepseek"），提取 provider 部分
+	aiModelID := traderConfig.AIModelID
+	// 兼容旧数据：如果包含下划线，提取最后一部分作为 provider
+	if strings.Contains(aiModelID, "_") {
+		parts := strings.Split(aiModelID, "_")
+		aiModelID = parts[len(parts)-1]
+	}
+
 	result := map[string]interface{}{
-		"trader_id":           traderConfig.ID,
-		"trader_name":         traderConfig.Name,
-		"ai_model":            traderConfig.AIModelID,
-		"exchange_id":         traderConfig.ExchangeID,
-		"initial_balance":     traderConfig.InitialBalance,
-		"btc_eth_leverage":    traderConfig.BTCETHLeverage,
-		"altcoin_leverage":    traderConfig.AltcoinLeverage,
-		"trading_symbols":     traderConfig.TradingSymbols,
-		"custom_prompt":       traderConfig.CustomPrompt,
+		"trader_id":            traderConfig.ID,
+		"trader_name":          traderConfig.Name,
+		"ai_model":             aiModelID,
+		"exchange_id":          traderConfig.ExchangeID,
+		"initial_balance":      traderConfig.InitialBalance,
+		"btc_eth_leverage":     traderConfig.BTCETHLeverage,
+		"altcoin_leverage":     traderConfig.AltcoinLeverage,
+		"trading_symbols":      traderConfig.TradingSymbols,
+		"custom_prompt":        traderConfig.CustomPrompt,
 		"override_base_prompt": traderConfig.OverrideBasePrompt,
-		"is_cross_margin":     traderConfig.IsCrossMargin,
-		"use_coin_pool":       traderConfig.UseCoinPool,
-		"use_oi_top":          traderConfig.UseOITop,
-		"is_running":          isRunning,
+		"is_cross_margin":      traderConfig.IsCrossMargin,
+		"use_coin_pool":        traderConfig.UseCoinPool,
+		"use_oi_top":           traderConfig.UseOITop,
+		"is_running":           isRunning,
 	}
 
 	c.JSON(http.StatusOK, result)
