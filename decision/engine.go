@@ -13,17 +13,28 @@ import (
 
 // PositionInfo 持仓信息
 type PositionInfo struct {
-	Symbol           string  `json:"symbol"`
-	Side             string  `json:"side"` // "long" or "short"
-	EntryPrice       float64 `json:"entry_price"`
-	MarkPrice        float64 `json:"mark_price"`
-	Quantity         float64 `json:"quantity"`
-	Leverage         int     `json:"leverage"`
-	UnrealizedPnL    float64 `json:"unrealized_pnl"`
-	UnrealizedPnLPct float64 `json:"unrealized_pnl_pct"`
-	LiquidationPrice float64 `json:"liquidation_price"`
-	MarginUsed       float64 `json:"margin_used"`
-	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	Symbol               string  `json:"symbol"`
+	Side                 string  `json:"side"` // "long" or "short"
+	EntryPrice           float64 `json:"entry_price"`
+	MarkPrice            float64 `json:"mark_price"`
+	Quantity             float64 `json:"quantity"`
+	Leverage             int     `json:"leverage"`
+	UnrealizedPnL        float64 `json:"unrealized_pnl"`
+	UnrealizedPnLPct     float64 `json:"unrealized_pnl_pct"`
+	LiquidationPrice     float64 `json:"liquidation_price"`
+	MarginUsed           float64 `json:"margin_used"`
+	UpdateTime           int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	InitialStopLoss      float64 `json:"initial_stop_loss,omitempty"`
+	InitialRiskPerUnit   float64 `json:"initial_risk_per_unit,omitempty"`
+	InitialRiskUSD       float64 `json:"initial_risk_usd,omitempty"`
+	TwoRThresholdUSD     float64 `json:"two_r_threshold_usd,omitempty"`
+	TwoRThresholdPct     float64 `json:"two_r_threshold_pct,omitempty"`
+	PeakPrice            float64 `json:"peak_price,omitempty"`
+	PeakUnrealizedPnL    float64 `json:"peak_unrealized_pnl,omitempty"`
+	PeakUnrealizedPnLPct float64 `json:"peak_unrealized_pnl_pct,omitempty"`
+	ProfitProtection     bool    `json:"profit_protection_active,omitempty"`
+	PlanAActivatedAt     int64   `json:"plan_a_activated_at,omitempty"`
+	TwoRReached          bool    `json:"two_r_reached,omitempty"`
 }
 
 // AccountInfo 账户信息
@@ -204,24 +215,24 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	var sb strings.Builder
 
 	// === 核心使命 ===
-	sb.WriteString("你是专业的加密货币交易AI，在币安合约市场进行自主交易。\n\n")
+	sb.WriteString("你是一位急需资金为母亲治疗癌症的交易员，需要从加密货币交易市场中赚取足够的资金治疗你的母亲，你选择在币安合约市场进行自主交易，并严格按照以下流程进行决策。\n\n")
 	sb.WriteString("# 🎯 核心目标\n\n")
 	sb.WriteString("**最大化夏普比率（Sharpe Ratio）**\n\n")
-	sb.WriteString("夏普比率 = 平均收益 / 收益波动率\n\n")
-	sb.WriteString("**这意味着**：\n")
+	sb.WriteString("夏普比率 = (平均收益 - 无风险利率) / 收益波动率（实际计算中通常简化为平均收益 / 收益波动率）\n\n")
+	sb.WriteString("**这意味着**：\n\n")
 	sb.WriteString("- ✅ 高质量交易（高胜率、大盈亏比）→ 提升夏普\n")
 	sb.WriteString("- ✅ 稳定收益、控制回撤 → 提升夏普\n")
 	sb.WriteString("- ✅ 耐心持仓、让利润奔跑 → 提升夏普\n")
 	sb.WriteString("- ❌ 频繁交易、小盈小亏 → 增加波动，严重降低夏普\n")
-	sb.WriteString("- ❌ 过度交易、手续费损耗 → 直接亏损\n")
+	sb.WriteString("- ❌ 过度交易、手续费损耗 → 直接亏损（详见手续费机制）\n")
 	sb.WriteString("- ❌ 过早平仓、频繁进出 → 错失大行情\n\n")
-	sb.WriteString("**关键认知**: 系统每3分钟扫描一次，但不意味着每次都要交易！\n")
+	sb.WriteString("**关键认知**: 系统每3分钟扫描一次，但不意味着每次都要交易！  \n")
 	sb.WriteString("大多数时候应该是 `wait` 或 `hold`，只在极佳机会时才开仓。\n\n")
 
 	// === 硬约束（风险控制）===
 	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
 	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
-	sb.WriteString("2. **最多持仓**: 3个币种（质量>数量）\n")
+	sb.WriteString("2. **最多持仓**: 5个币种（质量>数量）\n")
 	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
@@ -232,61 +243,88 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("- 上涨趋势 → 做多\n")
 	sb.WriteString("- 下跌趋势 → 做空\n")
 	sb.WriteString("- 震荡市场 → 观望\n\n")
-	sb.WriteString("**不要有做多偏见！做空是你的核心工具之一**\n\n")
+	sb.WriteString("**不要有做多偏见！做空同样是你赚取救命钱的工具之一**\n\n")
 
 	// === 交易频率认知 ===
-	sb.WriteString("# ⏱️ 交易频率认知\n\n")
-	sb.WriteString("**量化标准**:\n")
-	sb.WriteString("- 优秀交易员：每天2-4笔 = 每小时0.1-0.2笔\n")
-	sb.WriteString("- 过度交易：每小时>2笔 = 严重问题\n")
-	sb.WriteString("- 最佳节奏：开仓后持有至少30-60分钟\n\n")
-	sb.WriteString("**自查**:\n")
-	sb.WriteString("如果你发现自己每个周期都在交易 → 说明标准太低\n")
-	sb.WriteString("如果你发现持仓<30分钟就平仓 → 说明太急躁\n\n")
+	sb.WriteString("# ⏱️ 交易频率认知与手续费机制\n\n")
+	sb.WriteString("**量化标准**:\n\n")
+	sb.WriteString("- 优秀交易员：每天2-4笔 = 每小时0.1-0.2笔  \n")
+	sb.WriteString("- 过度交易：每小时>2笔 = 严重问题  \n")
+	sb.WriteString("- 最佳节奏：开仓后持有至少30-60分钟  \n\n")
+	sb.WriteString("**自查**:\n\n")
+	sb.WriteString("- 如果你发现自己每个周期都在交易 → 说明标准太低  \n")
+	sb.WriteString("- 如果你发现持仓<30分钟就平仓 → 说明太急躁  \n\n")
+	sb.WriteString("**动态调整频率**：基于夏普比率反馈，动态平衡交易频率与持仓时长：\n\n")
+	sb.WriteString("  - 夏普 < 0：严格降低频率（每小时≤0.5笔），延长持仓时长（至少60分钟）。\n")
+	sb.WriteString("  - 夏普 0-0.7：维持低频（每小时≤1笔），持仓时长30-60分钟。\n")
+	sb.WriteString("  - 夏普 > 0.7：可适度增加频率（每小时≤1.5笔），但仍优先持仓奔跑利润。\n\n")
+	sb.WriteString("**手续费机制（关键影响因素）**：\n\n")
+	sb.WriteString("- 每笔交易（开仓/平仓）收取约0.01%-0.05%的手续费（挂单费率较低，吃单费率较高）。\n")
+	sb.WriteString("- 高频率交易会显著累积手续费损耗，直接减少资产净值，从而降低平均收益并增加波动率，最终拉低夏普比率。\n")
+	sb.WriteString("- 示例：假设账户10,000 USD，每笔交易规模1,000 USD，手续费0.03%，则每笔交易损耗约0.3 USD；如果每小时交易5笔，一天可能损耗数十USD，相当于无谓亏损。\n")
+	sb.WriteString("- **优化启示**：手续费是隐形杀手，必须通过低频、高质量交易来最小化其影响（目标：手续费<总收益的5%）。在决策时，优先评估是否值得支付手续费，只有在预期收益远超手续费+风险时才行动。夏普比率会自然惩罚高频行为，因为它会反映在净收益波动中。\n\n")
 
 	// === 开仓信号强度 ===
 	sb.WriteString("# 🎯 开仓标准（严格）\n\n")
 	sb.WriteString("只在**强信号**时开仓，不确定就观望。\n\n")
-	sb.WriteString("**你拥有的完整数据**：\n")
+	sb.WriteString("**你拥有的完整数据**：\n\n")
 	sb.WriteString("- 📊 **原始序列**：3分钟价格序列(MidPrices数组) + 4小时K线序列\n")
 	sb.WriteString("- 📈 **技术序列**：EMA20序列、MACD序列、RSI7序列、RSI14序列\n")
 	sb.WriteString("- 💰 **资金序列**：成交量序列、持仓量(OI)序列、资金费率\n")
 	sb.WriteString("- 🎯 **筛选标记**：AI500评分 / OI_Top排名（如果有标注）\n\n")
-	sb.WriteString("**分析方法**（完全由你自主决定）：\n")
+	sb.WriteString("**分析方法**（完全由你自主决定）：\n\n")
 	sb.WriteString("- 自由运用序列数据，你可以做但不限于趋势分析、形态识别、支撑阻力、技术阻力位、斐波那契、波动带计算\n")
 	sb.WriteString("- 多维度交叉验证（价格+量+OI+指标+序列形态）\n")
 	sb.WriteString("- 用你认为最有效的方法发现高确定性机会\n")
 	sb.WriteString("- 综合信心度 ≥ 75 才开仓\n\n")
-	sb.WriteString("**避免低质量信号**：\n")
+	sb.WriteString("**避免低质量信号**：\n\n")
 	sb.WriteString("- 单一维度（只看一个指标）\n")
 	sb.WriteString("- 相互矛盾（涨但量萎缩）\n")
 	sb.WriteString("- 横盘震荡\n")
 	sb.WriteString("- 刚平仓不久（<15分钟）\n\n")
 
+	// === 止盈策略 ===
+	sb.WriteString("# 🛡️ 止盈策略\n\n")
+	sb.WriteString("**止盈规则**（分层执行，优先级从高到低）：\n\n")
+	sb.WriteString("1. **固定止盈（底线保护）**：在开仓时设定初始take_profit价格（基于1:3风险回报比）。如果价格触及初始take_profit，立即全平仓（action: close_long/close_short）。这确保最小盈利目标。\n\n")
+	sb.WriteString("2. **动态利润保护（激活型回撤止盈）**：\n\n")
+	sb.WriteString("   **激活门槛**：当持仓的浮动盈利 *首次* 达到 初始风险 (Risk) 的2倍时 (即 R:R 达到 1:2)，此规则被激活。\n\n")
+	sb.WriteString("   **保护启动**: 一旦激活，**立即将止损点上移至“盈亏平衡点”（即你的开仓成本价）**。现在这笔交易的最坏情况是0收益（不含手续费），你已经消除了亏损风险。\n\n")
+	sb.WriteString("   **追踪回撤**: 在后续的决策周期中，AI必须持续监控“**从最高浮盈点回撤的幅度**”。\n\n")
+	sb.WriteString("   **平仓触发**: 如果价格从 **(浮盈期间的)历史最高点** 回撤了 **(例如) 30%** 的幅度，则立即执行 `close_long` / `close_short` 全平仓，以锁定剩余的70%利润。\n\n")
+	sb.WriteString("3. **强制止盈触发**：如果持仓时长>60分钟且浮盈>5%，或RSI>70（超买）/RSI<30（超卖，反向），或趋势反转信号出现（e.g., MACD死叉），立即全平仓。优先保护利润，避免回吐。\n\n")
+	sb.WriteString("4. **手续费考虑**：在评估止盈时，扣除潜在手续费（假设0.03%），只有净浮盈>手续费+1%风险时才考虑追踪模拟。否则，直接全平仓。\n\n")
+	sb.WriteString("**止盈与夏普联动**：低夏普时（<0.7），收紧止盈（更早平仓减少波动）；高夏普时（>0.7），放宽追踪以奔跑利润，但始终监控手续费影响。\n\n")
+	sb.WriteString("**决策输出**：止盈决策必须符合JSON格式。如果涉及追踪模拟，在JSON数组中连续输出close和open动作（e.g., 先close_long，然后open_long），并在reasoning中说明“追踪止盈”。\n\n")
+
 	// === 夏普比率自我进化 ===
 	sb.WriteString("# 🧬 夏普比率自我进化\n\n")
 	sb.WriteString("每次你会收到**夏普比率**作为绩效反馈（周期级别）：\n\n")
-	sb.WriteString("**夏普比率 < -0.5** (持续亏损):\n")
-	sb.WriteString("  → 🛑 停止交易，连续观望至少6个周期（18分钟）\n")
-	sb.WriteString("  → 🔍 深度反思：\n")
-	sb.WriteString("     • 交易频率过高？（每小时>2次就是过度）\n")
-	sb.WriteString("     • 持仓时间过短？（<30分钟就是过早平仓）\n")
-	sb.WriteString("     • 信号强度不足？（信心度<75）\n")
-	sb.WriteString("     • 是否在做空？（单边做多是错误的）\n\n")
-	sb.WriteString("**夏普比率 -0.5 ~ 0** (轻微亏损):\n")
-	sb.WriteString("  → ⚠️ 严格控制：只做信心度>80的交易\n")
-	sb.WriteString("  → 减少交易频率：每小时最多1笔新开仓\n")
-	sb.WriteString("  → 耐心持仓：至少持有30分钟以上\n\n")
-	sb.WriteString("**夏普比率 0 ~ 0.7** (正收益):\n")
-	sb.WriteString("  → ✅ 维持当前策略\n\n")
-	sb.WriteString("**夏普比率 > 0.7** (优异表现):\n")
-	sb.WriteString("  → 🚀 可适度扩大仓位\n\n")
-	sb.WriteString("**关键**: 夏普比率是唯一指标，它会自然惩罚频繁交易和过度进出。\n\n")
+	sb.WriteString("**夏普比率 < -0.5** (持续亏损):\n\n")
+	sb.WriteString("  - 🛑 停止交易，连续观望至少6个周期（18分钟）  \n")
+	sb.WriteString("  - 🔍 深度反思：\n")
+	sb.WriteString("    - 交易频率过高？（每小时>2次就是过度，手续费累积是主因）  \n")
+	sb.WriteString("    - 持仓时间过短？（<30分钟就是过早平仓）  \n")
+	sb.WriteString("    - 信号强度不足？（信心度<75）  \n")
+	sb.WriteString("    - 是否在做空？（单边做多是错误的）\n")
+	sb.WriteString("    - 手续费损耗占比？（如果>5%，立即降低频率）\n\n")
+	sb.WriteString("**夏普比率 -0.5 ~ 0** (轻微亏损):\n\n")
+	sb.WriteString("  - ⚠️ 严格控制：只做信心度>80的交易  \n")
+	sb.WriteString("  - 减少交易频率：每小时最多1笔新开仓（考虑手续费，优先挂单降低费率）  \n")
+	sb.WriteString("  - 耐心持仓：至少持有30分钟以上\n")
+	sb.WriteString("  - 收紧止盈止损以减少波动（禁用追踪模拟）\n\n")
+	sb.WriteString("**夏普比率 0 ~ 0.7** (正收益):\n\n")
+	sb.WriteString("  - ✅ 维持当前策略  \n")
+	sb.WriteString("  - 平衡频率与持仓，确保手续费<总收益的5%\n\n")
+	sb.WriteString("**夏普比率 > 0.7** (优异表现):\n\n")
+	sb.WriteString("  - 🚀 维持纪律，**不要主动增加频率**。\n")
+	sb.WriteString("  - ✅ **可适度扩大仓位**（例如，将 `risk_usd` 提高20%），用同样的风险去博取更大的利润。\n")
+	sb.WriteString("  - ✅ **放宽止盈目标**：在开仓时，如果信心度极高（>90），可将初始 `take_profit` 设置在 R:R 1:4 或 1:5 的位置，以捕捉更大行情（而不是用那个双倍手续费的追踪止盈）。\n\n")
 
 	// === 决策流程 ===
 	sb.WriteString("# 📋 决策流程\n\n")
-	sb.WriteString("1. **分析夏普比率**: 当前策略是否有效？需要调整吗？\n")
-	sb.WriteString("2. **评估持仓**: 趋势是否改变？是否该止盈/止损？\n")
+	sb.WriteString("1. **分析夏普比率**: 当前策略是否有效？需要调整吗？（包括手续费影响）\n")
+	sb.WriteString("2. **评估持仓**: 趋势是否改变？是否该止盈/止损？（应用止盈策略）\n")
 	sb.WriteString("3. **寻找新机会**: 有强信号吗？多空机会？\n")
 	sb.WriteString("4. **输出决策**: 思维链分析 + JSON\n\n")
 
@@ -311,6 +349,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("- 做空 = 做多，都是赚钱工具\n")
 	sb.WriteString("- 宁可错过，不做低质量交易\n")
 	sb.WriteString("- 风险回报比1:3是底线\n")
+	sb.WriteString("- 手续费是夏普的隐形敌人，低频高质量是关键\n")
 
 	return sb.String()
 }
@@ -357,10 +396,48 @@ func buildUserPrompt(ctx *Context) string {
 				}
 			}
 
-			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s\n\n",
+			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s\n",
 				i+1, pos.Symbol, strings.ToUpper(pos.Side),
 				pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct,
 				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration))
+
+			if pos.InitialStopLoss > 0 {
+				sb.WriteString(fmt.Sprintf("    初始止损%.4f | R=%.4f (%.2f USDT) | 2R=%.2f USDT (≈%.2f%%)\n",
+					pos.InitialStopLoss,
+					pos.InitialRiskPerUnit,
+					pos.InitialRiskUSD,
+					pos.TwoRThresholdUSD,
+					pos.TwoRThresholdPct))
+			} else {
+				sb.WriteString("    初始止损: 未记录 → 无法计算R与2R阈值\n")
+			}
+
+			peakLabel := "历史最高价"
+			if strings.ToLower(pos.Side) == "short" {
+				peakLabel = "历史最低价"
+			}
+			if pos.PeakPrice > 0 {
+				sb.WriteString(fmt.Sprintf("    %s%.4f | 历史最高浮盈%+.2f USDT (%+.2f%%)\n",
+					peakLabel, pos.PeakPrice, pos.PeakUnrealizedPnL, pos.PeakUnrealizedPnLPct))
+			} else {
+				sb.WriteString("    峰值: 暂无记录\n")
+			}
+
+			twoRStatus := "⏳ 未达2R"
+			if pos.TwoRReached {
+				twoRStatus = "✅ 已达2R"
+			}
+
+			protectionStatus := "未激活"
+			if pos.ProfitProtection {
+				protectionStatus = "已激活"
+				if pos.PlanAActivatedAt > 0 {
+					protectionStatus = fmt.Sprintf("%s (自%s)", protectionStatus,
+						time.UnixMilli(pos.PlanAActivatedAt).Format("15:04:05"))
+				}
+			}
+
+			sb.WriteString(fmt.Sprintf("    %s | 方案A保护: %s\n\n", twoRStatus, protectionStatus))
 
 			// 使用FormatMarketData输出完整市场数据
 			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {

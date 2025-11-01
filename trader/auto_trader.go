@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"
@@ -65,24 +66,35 @@ type AutoTraderConfig struct {
 	StopTradingTime time.Duration // 触发风控后暂停时长
 }
 
+// PositionState 保存持仓的运行时状态，用于在多次AI调用之间维持上下文
+type PositionState struct {
+	FirstSeenMillis      int64   // 首次被检测到的时间（毫秒时间戳）
+	InitialStopLoss      float64 // 初始止损价
+	PlanAActivated       bool    // 是否已进入方案A的利润保护
+	PlanAActivatedAt     int64   // 方案A激活时间
+	PeakPrice            float64 // 多单最高价 / 空单最低价
+	PeakUnrealizedPnL    float64 // 历史最高浮盈（USDT）
+	PeakUnrealizedPnLPct float64 // 历史最高浮盈百分比
+}
+
 // AutoTrader 自动交易器
 type AutoTrader struct {
-	id                    string // Trader唯一标识
-	name                  string // Trader显示名称
-	aiModel               string // AI模型名称
-	exchange              string // 交易平台名称
-	config                AutoTraderConfig
-	trader                Trader // 使用Trader接口（支持多平台）
-	mcpClient             *mcp.Client
-	decisionLogger        *logger.DecisionLogger // 决策日志记录器
-	initialBalance        float64
-	dailyPnL              float64
-	lastResetTime         time.Time
-	stopUntil             time.Time
-	isRunning             bool
-	startTime             time.Time        // 系统启动时间
-	callCount             int              // AI调用次数
-	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	id             string // Trader唯一标识
+	name           string // Trader显示名称
+	aiModel        string // AI模型名称
+	exchange       string // 交易平台名称
+	config         AutoTraderConfig
+	trader         Trader // 使用Trader接口（支持多平台）
+	mcpClient      *mcp.Client
+	decisionLogger *logger.DecisionLogger // 决策日志记录器
+	initialBalance float64
+	dailyPnL       float64
+	lastResetTime  time.Time
+	stopUntil      time.Time
+	isRunning      bool
+	startTime      time.Time                 // 系统启动时间
+	callCount      int                       // AI调用次数
+	positionStates map[string]*PositionState // 持仓状态缓存 (symbol_side -> state)
 }
 
 // NewAutoTrader 创建自动交易器
@@ -163,20 +175,21 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
 	return &AutoTrader{
-		id:                    config.ID,
-		name:                  config.Name,
-		aiModel:               config.AIModel,
-		exchange:              config.Exchange,
-		config:                config,
-		trader:                trader,
-		mcpClient:             mcpClient,
-		decisionLogger:        decisionLogger,
-		initialBalance:        config.InitialBalance,
-		lastResetTime:         time.Now(),
-		startTime:             time.Now(),
-		callCount:             0,
-		isRunning:             false,
-		positionFirstSeenTime: make(map[string]int64),
+		id:             config.ID,
+		name:           config.Name,
+		aiModel:        config.AIModel,
+		exchange:       config.Exchange,
+		config:         config,
+		trader:         trader,
+		mcpClient:      mcpClient,
+		decisionLogger: decisionLogger,
+		initialBalance: config.InitialBalance,
+		lastResetTime:  time.Now(),
+		stopUntil:      time.Now(),
+		startTime:      time.Now(),
+		callCount:      0,
+		isRunning:      false,
+		positionStates: make(map[string]*PositionState),
 	}, nil
 }
 
@@ -446,31 +459,88 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		// 跟踪持仓首次出现时间
 		posKey := symbol + "_" + side
 		currentPositionKeys[posKey] = true
-		if _, exists := at.positionFirstSeenTime[posKey]; !exists {
-			// 新持仓，记录当前时间
-			at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+		state, exists := at.positionStates[posKey]
+		if !exists {
+			state = &PositionState{
+				FirstSeenMillis: time.Now().UnixMilli(),
+				PeakPrice:       markPrice,
+			}
+			at.positionStates[posKey] = state
 		}
-		updateTime := at.positionFirstSeenTime[posKey]
+
+		// 初始化峰值（防止零值影响后续比较）
+		if state.PeakPrice == 0 {
+			state.PeakPrice = markPrice
+		}
+
+		// 更新峰值价格（多单追踪最高价，空单追踪最低价）
+		if side == "long" {
+			if markPrice > state.PeakPrice {
+				state.PeakPrice = markPrice
+			}
+		} else {
+			if state.PeakPrice == 0 || markPrice < state.PeakPrice {
+				state.PeakPrice = markPrice
+			}
+		}
+
+		// 更新历史最高浮盈
+		if unrealizedPnl > state.PeakUnrealizedPnL {
+			state.PeakUnrealizedPnL = unrealizedPnl
+		}
+		if pnlPct > state.PeakUnrealizedPnLPct {
+			state.PeakUnrealizedPnLPct = pnlPct
+		}
+
+		initialStopLoss := state.InitialStopLoss
+		initialRiskPerUnit := 0.0
+		initialRiskUSD := 0.0
+		twoRThresholdUSD := 0.0
+		twoRThresholdPct := 0.0
+		twoRReached := false
+
+		if initialStopLoss > 0 {
+			initialRiskPerUnit = math.Abs(entryPrice - initialStopLoss)
+			initialRiskUSD = initialRiskPerUnit * quantity
+			twoRThresholdUSD = initialRiskUSD * 2
+			if entryPrice > 0 {
+				twoRThresholdPct = (initialRiskPerUnit * 2 / entryPrice) * 100
+			}
+			if twoRThresholdUSD > 0 && unrealizedPnl >= twoRThresholdUSD {
+				twoRReached = true
+			}
+		}
 
 		positionInfos = append(positionInfos, decision.PositionInfo{
-			Symbol:           symbol,
-			Side:             side,
-			EntryPrice:       entryPrice,
-			MarkPrice:        markPrice,
-			Quantity:         quantity,
-			Leverage:         leverage,
-			UnrealizedPnL:    unrealizedPnl,
-			UnrealizedPnLPct: pnlPct,
-			LiquidationPrice: liquidationPrice,
-			MarginUsed:       marginUsed,
-			UpdateTime:       updateTime,
+			Symbol:               symbol,
+			Side:                 side,
+			EntryPrice:           entryPrice,
+			MarkPrice:            markPrice,
+			Quantity:             quantity,
+			Leverage:             leverage,
+			UnrealizedPnL:        unrealizedPnl,
+			UnrealizedPnLPct:     pnlPct,
+			LiquidationPrice:     liquidationPrice,
+			MarginUsed:           marginUsed,
+			UpdateTime:           state.FirstSeenMillis,
+			InitialStopLoss:      initialStopLoss,
+			InitialRiskPerUnit:   initialRiskPerUnit,
+			InitialRiskUSD:       initialRiskUSD,
+			TwoRThresholdUSD:     twoRThresholdUSD,
+			TwoRThresholdPct:     twoRThresholdPct,
+			PeakPrice:            state.PeakPrice,
+			PeakUnrealizedPnL:    state.PeakUnrealizedPnL,
+			PeakUnrealizedPnLPct: state.PeakUnrealizedPnLPct,
+			ProfitProtection:     state.PlanAActivated,
+			PlanAActivatedAt:     state.PlanAActivatedAt,
+			TwoRReached:          twoRReached,
 		})
 	}
 
 	// 清理已平仓的持仓记录
-	for key := range at.positionFirstSeenTime {
+	for key := range at.positionStates {
 		if !currentPositionKeys[key] {
-			delete(at.positionFirstSeenTime, key)
+			delete(at.positionStates, key)
 		}
 	}
 
@@ -600,9 +670,14 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 初始化持仓状态
 	posKey := decision.Symbol + "_long"
-	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	at.positionStates[posKey] = &PositionState{
+		FirstSeenMillis:   time.Now().UnixMilli(),
+		InitialStopLoss:   decision.StopLoss,
+		PeakPrice:         actionRecord.Price,
+		PeakUnrealizedPnL: 0,
+	}
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
@@ -653,9 +728,14 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 初始化持仓状态
 	posKey := decision.Symbol + "_short"
-	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	at.positionStates[posKey] = &PositionState{
+		FirstSeenMillis:   time.Now().UnixMilli(),
+		InitialStopLoss:   decision.StopLoss,
+		PeakPrice:         actionRecord.Price,
+		PeakUnrealizedPnL: 0,
+	}
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
@@ -691,6 +771,7 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, ac
 	}
 
 	log.Printf("  ✓ 平仓成功")
+	delete(at.positionStates, decision.Symbol+"_long")
 	return nil
 }
 
@@ -717,6 +798,7 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	log.Printf("  ✓ 平仓成功")
+	delete(at.positionStates, decision.Symbol+"_short")
 	return nil
 }
 

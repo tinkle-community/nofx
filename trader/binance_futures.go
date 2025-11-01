@@ -31,6 +31,7 @@ type FuturesTrader struct {
 
 // NewFuturesTrader 创建合约交易器
 func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
+	futures.UseTestnet = true
 	client := futures.NewClient(apiKey, secretKey)
 	return &FuturesTrader{
 		client:        client,
