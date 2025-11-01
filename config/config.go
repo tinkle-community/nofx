@@ -48,6 +48,9 @@ type TraderConfig struct {
 	CustomAPIKey    string `json:"custom_api_key,omitempty"`
 	CustomModelName string `json:"custom_model_name,omitempty"`
 
+	// 黑名单：排除这些币种，AI不会对它们进行交易决策
+	ExcludedSymbols []string `json:"excluded_symbols,omitempty"`
+
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
 }

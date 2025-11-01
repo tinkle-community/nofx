@@ -64,6 +64,7 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		MaxDailyLoss:          maxDailyLoss,
 		MaxDrawdown:           maxDrawdown,
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
+		ExcludedSymbols:       cfg.ExcludedSymbols, // 黑名单币种
 	}
 
 	// 创建trader实例

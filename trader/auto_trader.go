@@ -72,6 +72,9 @@ type AutoTraderConfig struct {
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
 	StopTradingTime time.Duration // 触发风控后暂停时长
+
+	// 黑名单：AI不会对这些币种进行交易决策
+	ExcludedSymbols []string
 }
 
 // AutoTrader 自动交易器
@@ -92,6 +95,7 @@ type AutoTrader struct {
 	startTime             time.Time        // 系统启动时间
 	callCount             int              // AI调用次数
 	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	excludedSymbolsMap    map[string]bool  // 黑名单币种映射（快速查找）
 }
 
 // NewAutoTrader 创建自动交易器
@@ -172,6 +176,37 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
 	decisionLogger := logger.NewDecisionLogger(logDir)
 
+	// 初始化黑名单映射
+	excludedSymbolsMap := make(map[string]bool)
+	for _, symbol := range config.ExcludedSymbols {
+		// 统一转换为大写（支持两种格式：BTCUSDT 或 BTC-USDT-SWAP）
+		normalizedSymbol := strings.ToUpper(symbol)
+		excludedSymbolsMap[normalizedSymbol] = true
+
+		// 如果是 Binance 格式，也添加 OKX 格式
+		if !strings.Contains(normalizedSymbol, "-") {
+			// BTCUSDT -> BTC-USDT-SWAP
+			if strings.HasSuffix(normalizedSymbol, "USDT") {
+				baseCurrency := strings.TrimSuffix(normalizedSymbol, "USDT")
+				okxFormat := baseCurrency + "-USDT-SWAP"
+				excludedSymbolsMap[okxFormat] = true
+			}
+		} else {
+			// BTC-USDT-SWAP -> BTCUSDT
+			if strings.Contains(normalizedSymbol, "-") && strings.HasSuffix(normalizedSymbol, "-SWAP") {
+				parts := strings.Split(normalizedSymbol, "-")
+				if len(parts) == 3 {
+					binanceFormat := parts[0] + parts[1]
+					excludedSymbolsMap[binanceFormat] = true
+				}
+			}
+		}
+	}
+
+	if len(config.ExcludedSymbols) > 0 {
+		log.Printf("🚫 [%s] 已配置币种黑名单 (%d个): %v", config.Name, len(config.ExcludedSymbols), config.ExcludedSymbols)
+	}
+
 	return &AutoTrader{
 		id:                    config.ID,
 		name:                  config.Name,
@@ -187,6 +222,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		callCount:             0,
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
+		excludedSymbolsMap:    excludedSymbolsMap,
 	}, nil
 }
 
@@ -539,9 +575,16 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		return nil, fmt.Errorf("获取合并币种池失败: %w", err)
 	}
 
-	// 构建候选币种列表（包含来源信息）
+	// 构建候选币种列表（包含来源信息，过滤黑名单）
 	var candidateCoins []decision.CandidateCoin
+	var excludedCount int
 	for _, symbol := range mergedPool.AllSymbols {
+		// 检查是否在黑名单中
+		if at.excludedSymbolsMap[symbol] {
+			excludedCount++
+			continue
+		}
+
 		sources := mergedPool.SymbolSources[symbol]
 		candidateCoins = append(candidateCoins, decision.CandidateCoin{
 			Symbol:  symbol,
@@ -549,8 +592,11 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		})
 	}
 
-	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种",
-		ai500Limit, len(candidateCoins))
+	if excludedCount > 0 {
+		log.Printf("🚫 已过滤黑名单币种 %d 个", excludedCount)
+	}
+	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种 (黑名单后: %d个)",
+		ai500Limit, len(mergedPool.AllSymbols), len(candidateCoins))
 
 	// 显示前10个候选币种，帮助确认格式
 	displayCount := len(candidateCoins)
@@ -635,6 +681,11 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📈 开多仓: %s", decision.Symbol)
 
+	// 🚫 黑名单检查：拒绝对黑名单币种进行交易
+	if at.excludedSymbolsMap[decision.Symbol] {
+		return fmt.Errorf("❌ %s 在黑名单中，拒绝开仓", decision.Symbol)
+	}
+
 	// ⚠️ 关键：检查是否已有同币种同方向持仓，如果有则拒绝开仓（防止仓位叠加超限）
 	positions, err := at.trader.GetPositions()
 	if err == nil {
@@ -687,6 +738,11 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 // executeOpenShortWithRecord 执行开空仓并记录详细信息
 func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📉 开空仓: %s", decision.Symbol)
+
+	// 🚫 黑名单检查：拒绝对黑名单币种进行交易
+	if at.excludedSymbolsMap[decision.Symbol] {
+		return fmt.Errorf("❌ %s 在黑名单中，拒绝开仓", decision.Symbol)
+	}
 
 	// ⚠️ 关键：检查是否已有同币种同方向持仓，如果有则拒绝开仓（防止仓位叠加超限）
 	positions, err := at.trader.GetPositions()
