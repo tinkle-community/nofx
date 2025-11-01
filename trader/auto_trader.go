@@ -554,6 +554,8 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 		return at.executeCloseLongWithRecord(decision, actionRecord)
 	case "close_short":
 		return at.executeCloseShortWithRecord(decision, actionRecord)
+	case "move_stop":
+		return at.executeMoveStopWithRecord(decision, actionRecord)
 	case "hold", "wait":
 		// 无需执行，仅记录
 		return nil
@@ -717,6 +719,54 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	log.Printf("  ✓ 平仓成功")
+	return nil
+}
+
+// executeMoveStopWithRecord 执行移动止损并记录详细信息
+func (at *AutoTrader) executeMoveStopWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  🎯 移动止损: %s -> %.4f", decision.Symbol, decision.NewStopLoss)
+
+	// 获取当前持仓
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return fmt.Errorf("获取持仓失败: %w", err)
+	}
+
+	// 查找目标持仓
+	var targetPosition map[string]interface{}
+	var quantity float64
+	for _, pos := range positions {
+		if pos["symbol"] == decision.Symbol {
+			targetPosition = pos
+			quantity = pos["positionAmt"].(float64)
+			if quantity < 0 {
+				quantity = -quantity // 空仓数量为负，转为正数
+			}
+			break
+		}
+	}
+
+	if targetPosition == nil {
+		return fmt.Errorf("❌ 未找到 %s 的持仓，无法移动止损", decision.Symbol)
+	}
+
+	actionRecord.Quantity = quantity
+	actionRecord.Price = decision.NewStopLoss
+
+	// 执行移动止损（覆盖旧止损）
+	side := targetPosition["side"].(string)
+	var sideStr string
+	if side == "long" {
+		sideStr = "LONG"
+	} else {
+		sideStr = "SHORT"
+	}
+
+	if err := at.trader.SetStopLoss(decision.Symbol, sideStr, quantity, decision.NewStopLoss); err != nil {
+		return fmt.Errorf("移动止损失败: %w", err)
+	}
+
+	log.Printf("  ✓ 止损移动成功，新止损价: %.4f", decision.NewStopLoss)
 	return nil
 }
 
@@ -909,10 +959,12 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 		switch action {
 		case "close_long", "close_short":
 			return 1 // 最高优先级：先平仓
+		case "move_stop":
+			return 2 // 次优先级：移动止损
 		case "open_long", "open_short":
-			return 2 // 次优先级：后开仓
+			return 3 // 第三优先级：后开仓
 		case "hold", "wait":
-			return 3 // 最低优先级：观望
+			return 4 // 最低优先级：观望
 		default:
 			return 999 // 未知动作放最后
 		}
