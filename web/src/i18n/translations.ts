@@ -265,6 +265,8 @@ export const translations = {
     exchangeNotExist: 'Exchange does not exist',
     deleteExchangeConfigFailed: 'Failed to delete exchange configuration',
     saveSignalSourceFailed: 'Failed to save signal source configuration',
+    modelInUse: 'Cannot delete: This AI model is still in use by traders',
+    exchangeInUse: 'Cannot delete: This exchange is still in use by traders',
     
     // Login & Register
     login: 'Sign In',
@@ -582,6 +584,8 @@ export const translations = {
     exchangeNotExist: '交易所不存在',
     deleteExchangeConfigFailed: '删除交易所配置失败',
     saveSignalSourceFailed: '保存信号源配置失败',
+    modelInUse: '无法删除：仍有交易员正在使用此AI模型',
+    exchangeInUse: '无法删除：仍有交易员正在使用此交易所',
     
     // Login & Register
     login: '登录',
