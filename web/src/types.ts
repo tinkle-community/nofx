@@ -101,6 +101,7 @@ export interface AIModel {
   enabled: boolean;
   apiKey?: string;
   customApiUrl?: string;
+  customModelName?: string;
 }
 
 export interface Exchange {
@@ -129,6 +130,7 @@ export interface CreateTraderRequest {
   trading_symbols?: string;
   custom_prompt?: string;
   override_base_prompt?: boolean;
+  system_prompt_template?: string;
   is_cross_margin?: boolean;
   use_coin_pool?: boolean;
   use_oi_top?: boolean;
@@ -140,6 +142,7 @@ export interface UpdateModelConfigRequest {
       enabled: boolean;
       api_key: string;
       custom_api_url?: string;
+      custom_model_name?: string;
     };
   };
 }

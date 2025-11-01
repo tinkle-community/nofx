@@ -83,26 +83,27 @@ type Decision struct {
 
 // FullDecision AI的完整决策（包含思维链）
 type FullDecision struct {
-	UserPrompt string     `json:"user_prompt"` // 发送给AI的输入prompt
-	CoTTrace   string     `json:"cot_trace"`   // 思维链分析（AI输出）
-	Decisions  []Decision `json:"decisions"`   // 具体决策列表
-	Timestamp  time.Time  `json:"timestamp"`
+	SystemPrompt string     `json:"system_prompt"` // 系统提示词（发送给AI的系统prompt）
+	UserPrompt   string     `json:"user_prompt"`   // 发送给AI的输入prompt
+	CoTTrace     string     `json:"cot_trace"`     // 思维链分析（AI输出）
+	Decisions    []Decision `json:"decisions"`     // 具体决策列表
+	Timestamp    time.Time  `json:"timestamp"`
 }
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
 func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
-	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false)
+	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false, "")
 }
 
-// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt）
-func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool) (*FullDecision, error) {
+// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt和模板选择）
+func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool, templateName string) (*FullDecision, error) {
 	// 1. 为所有币种获取市场数据
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase)
+	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase, templateName)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -118,7 +119,8 @@ func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, custom
 	}
 
 	decision.Timestamp = time.Now()
-	decision.UserPrompt = userPrompt // 保存输入prompt
+	decision.SystemPrompt = systemPrompt // 保存系统prompt
+	decision.UserPrompt = userPrompt     // 保存输入prompt
 	return decision, nil
 }
 
@@ -205,20 +207,20 @@ func calculateMaxCandidates(ctx *Context) int {
 }
 
 // buildSystemPromptWithCustom 构建包含自定义内容的 System Prompt
-func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool) string {
+func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string) string {
 	// 如果覆盖基础prompt且有自定义prompt，只使用自定义prompt
 	if overrideBase && customPrompt != "" {
 		return customPrompt
 	}
-	
-	// 获取基础prompt
-	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage)
-	
+
+	// 获取基础prompt（使用指定的模板）
+	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage, templateName)
+
 	// 如果没有自定义prompt，直接返回基础prompt
 	if customPrompt == "" {
 		return basePrompt
 	}
-	
+
 	// 添加自定义prompt部分到基础prompt
 	var sb strings.Builder
 	sb.WriteString(basePrompt)
@@ -226,37 +228,45 @@ func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinL
 	sb.WriteString("# 📌 个性化交易策略\n\n")
 	sb.WriteString(customPrompt)
 	sb.WriteString("\n\n")
-	sb.WriteString("**注意**: 以上个性化策略是对基础规则的补充，不能违背基础风险控制原则。\n")
-	
+	sb.WriteString("注意: 以上个性化策略是对基础规则的补充，不能违背基础风险控制原则。\n")
+
 	return sb.String()
 }
 
-// buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
-func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
+// buildSystemPrompt 构建 System Prompt（使用模板+动态部分）
+func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int, templateName string) string {
 	var sb strings.Builder
 
-	// === 核心使命 ===
-	sb.WriteString("你是专业的加密货币交易AI，在币安合约市场进行自主交易。\n\n")
-	sb.WriteString("# 🎯 核心目标\n\n")
-	sb.WriteString("**最大化夏普比率（Sharpe Ratio）**\n\n")
-	sb.WriteString("夏普比率 = 平均收益 / 收益波动率\n\n")
-	sb.WriteString("**这意味着**：\n")
-	sb.WriteString("- ✅ 高质量交易（高胜率、大盈亏比）→ 提升夏普\n")
-	sb.WriteString("- ✅ 稳定收益、控制回撤 → 提升夏普\n")
-	sb.WriteString("- ✅ 耐心持仓、让利润奔跑 → 提升夏普\n")
-	sb.WriteString("- ❌ 频繁交易、小盈小亏 → 增加波动，严重降低夏普\n")
-	sb.WriteString("- ❌ 过度交易、手续费损耗 → 直接亏损\n")
-	sb.WriteString("- ❌ 过早平仓、频繁进出 → 错失大行情\n\n")
-	sb.WriteString("**关键认知**: 系统每3分钟扫描一次，但不意味着每次都要交易！\n")
-	sb.WriteString("大多数时候应该是 `wait` 或 `hold`，只在极佳机会时才开仓。\n\n")
+	// 1. 加载提示词模板（核心交易策略部分）
+	if templateName == "" {
+		templateName = "default" // 默认使用 default 模板
+	}
 
-	// === 硬约束（风险控制）===
-	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
-	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
-	sb.WriteString("2. **最多持仓**: 3个币种（质量>数量）\n")
-	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
+	template, err := GetPromptTemplate(templateName)
+	if err != nil {
+		// 如果模板不存在，记录错误并使用 default
+		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
+		template, err = GetPromptTemplate("default")
+		if err != nil {
+			// 如果连 default 都不存在，使用内置的简化版本
+			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
+			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
+		} else {
+			sb.WriteString(template.Content)
+			sb.WriteString("\n\n")
+		}
+	} else {
+		sb.WriteString(template.Content)
+		sb.WriteString("\n\n")
+	}
+
+	// 2. 硬约束（风险控制）- 动态生成
+	sb.WriteString("# 硬约束（风险控制）\n\n")
+	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
+	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
+	sb.WriteString(fmt.Sprintf("3. 单币仓位: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
-	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
+	sb.WriteString("4. 保证金: 总使用率 ≤ 90%\n\n")
 
 	// === 震荡交易策略 ===
 	sb.WriteString("# 📦 震荡交易策略（核心）\n\n")
@@ -351,27 +361,19 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("3. **寻找新机会**: 有强信号吗？多空机会？\n")
 	sb.WriteString("4. **输出决策**: 思维链分析 + JSON\n\n")
 
-	// === 输出格式 ===
-	sb.WriteString("# 📤 输出格式\n\n")
-	sb.WriteString("**第一步: 思维链（纯文本）**\n")
+	// 3. 输出格式 - 动态生成
+	sb.WriteString("#输出格式\n\n")
+	sb.WriteString("第一步: 思维链（纯文本）\n")
 	sb.WriteString("简洁分析你的思考过程\n\n")
-	sb.WriteString("**第二步: JSON决策数组**\n\n")
+	sb.WriteString("第二步: JSON决策数组\n\n")
 	sb.WriteString("```json\n[\n")
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"下跌趋势+MACD死叉\"},\n", btcEthLeverage, accountEquity*5))
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n\n")
-	sb.WriteString("**字段说明**:\n")
+	sb.WriteString("字段说明:\n")
 	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
 	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
-
-	// === 关键提醒 ===
-	sb.WriteString("---\n\n")
-	sb.WriteString("**记住**: \n")
-	sb.WriteString("- 目标是夏普比率，不是交易频率\n")
-	sb.WriteString("- 做空 = 做多，都是赚钱工具\n")
-	sb.WriteString("- 宁可错过，不做低质量交易\n")
-	sb.WriteString("- 风险回报比1:3是底线\n")
 
 	return sb.String()
 }
@@ -381,18 +383,18 @@ func buildUserPrompt(ctx *Context) string {
 	var sb strings.Builder
 
 	// 系统状态
-	sb.WriteString(fmt.Sprintf("**时间**: %s | **周期**: #%d | **运行**: %d分钟\n\n",
+	sb.WriteString(fmt.Sprintf("时间: %s | 周期: #%d | 运行: %d分钟\n\n",
 		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
 
 	// BTC 市场
 	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("**BTC**: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
+		sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
 			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
 			btcData.CurrentMACD, btcData.CurrentRSI7))
 	}
 
 	// 账户
-	sb.WriteString(fmt.Sprintf("**账户**: 净值%.2f | 余额%.2f (%.1f%%) | 盈亏%+.2f%% | 保证金%.1f%% | 持仓%d个\n\n",
+	sb.WriteString(fmt.Sprintf("账户: 净值%.2f | 余额%.2f (%.1f%%) | 盈亏%+.2f%% | 保证金%.1f%% | 持仓%d个\n\n",
 		ctx.Account.TotalEquity,
 		ctx.Account.AvailableBalance,
 		(ctx.Account.AvailableBalance/ctx.Account.TotalEquity)*100,
@@ -430,7 +432,7 @@ func buildUserPrompt(ctx *Context) string {
 			}
 		}
 	} else {
-		sb.WriteString("**当前持仓**: 无\n\n")
+		sb.WriteString("当前持仓: 无\n\n")
 	}
 
 	// 候选币种（完整市场数据）

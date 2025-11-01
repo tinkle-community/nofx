@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"nofx/auth"
 	"nofx/config"
+	"nofx/decision"
 	"nofx/manager"
 	"strconv"
 	"strings"
@@ -109,6 +110,10 @@ func (s *Server) setupRoutes() {
 			protected.GET("/user/signal-sources", s.handleGetUserSignalSource)
 			protected.POST("/user/signal-sources", s.handleSaveUserSignalSource)
 
+			// 系统提示词模板管理
+			protected.GET("/prompt-templates", s.handleGetPromptTemplates)
+			protected.GET("/prompt-templates/:name", s.handleGetPromptTemplate)
+
 			// 竞赛总览
 			protected.GET("/competition", s.handleCompetition)
 			
@@ -200,18 +205,19 @@ func (s *Server) getTraderFromQuery(c *gin.Context) (*manager.TraderManager, str
 
 // AI交易员管理相关结构体
 type CreateTraderRequest struct {
-	Name            string  `json:"name" binding:"required"`
-	AIModelID       string  `json:"ai_model_id" binding:"required"`
-	ExchangeID      string  `json:"exchange_id" binding:"required"`
-	InitialBalance  float64 `json:"initial_balance"`
-	BTCETHLeverage  int     `json:"btc_eth_leverage"`
-	AltcoinLeverage int     `json:"altcoin_leverage"`
-	TradingSymbols  string  `json:"trading_symbols"`
-	CustomPrompt    string  `json:"custom_prompt"`
-	OverrideBasePrompt bool `json:"override_base_prompt"`
-	IsCrossMargin   *bool   `json:"is_cross_margin"` // 指针类型，nil表示使用默认值true
-	UseCoinPool     bool    `json:"use_coin_pool"`
-	UseOITop        bool    `json:"use_oi_top"`
+	Name                 string  `json:"name" binding:"required"`
+	AIModelID            string  `json:"ai_model_id" binding:"required"`
+	ExchangeID           string  `json:"exchange_id" binding:"required"`
+	InitialBalance       float64 `json:"initial_balance"`
+	BTCETHLeverage       int     `json:"btc_eth_leverage"`
+	AltcoinLeverage      int     `json:"altcoin_leverage"`
+	TradingSymbols       string  `json:"trading_symbols"`
+	CustomPrompt         string  `json:"custom_prompt"`
+	OverrideBasePrompt   bool    `json:"override_base_prompt"`
+	SystemPromptTemplate string  `json:"system_prompt_template"` // 系统提示词模板名称
+	IsCrossMargin        *bool   `json:"is_cross_margin"`        // 指针类型，nil表示使用默认值true
+	UseCoinPool          bool    `json:"use_coin_pool"`
+	UseOITop             bool    `json:"use_oi_top"`
 }
 
 type ModelConfig struct {
@@ -235,9 +241,10 @@ type ExchangeConfig struct {
 
 type UpdateModelConfigRequest struct {
 	Models map[string]struct {
-		Enabled      bool   `json:"enabled"`
-		APIKey       string `json:"api_key"`
-		CustomAPIURL string `json:"custom_api_url"`
+		Enabled         bool   `json:"enabled"`
+		APIKey          string `json:"api_key"`
+		CustomAPIURL    string `json:"custom_api_url"`
+		CustomModelName string `json:"custom_model_name"`
 	} `json:"models"`
 }
 
@@ -318,23 +325,30 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 		}
 	}
 	
+	// 设置系统提示词模板默认值
+	systemPromptTemplate := "default"
+	if req.SystemPromptTemplate != "" {
+		systemPromptTemplate = req.SystemPromptTemplate
+	}
+
     // 创建交易员配置（数据库实体）
     trader := &config.TraderRecord{
-		ID:                  traderID,
-		UserID:              userID,
-		Name:                req.Name,
-		AIModelID:           req.AIModelID,
-		ExchangeID:          req.ExchangeID,
-		InitialBalance:      req.InitialBalance,
-		BTCETHLeverage:      btcEthLeverage,
-		AltcoinLeverage:     altcoinLeverage,
-		TradingSymbols:      req.TradingSymbols,
-		UseCoinPool:         req.UseCoinPool,
-		UseOITop:            req.UseOITop,
-		CustomPrompt:        req.CustomPrompt,
-		OverrideBasePrompt:  req.OverrideBasePrompt,
-		IsCrossMargin:       isCrossMargin,
-		ScanIntervalMinutes: 3, // 默认3分钟
+		ID:                   traderID,
+		UserID:               userID,
+		Name:                 req.Name,
+		AIModelID:            req.AIModelID,
+		ExchangeID:           req.ExchangeID,
+		InitialBalance:       req.InitialBalance,
+		BTCETHLeverage:       btcEthLeverage,
+		AltcoinLeverage:      altcoinLeverage,
+		TradingSymbols:       req.TradingSymbols,
+		UseCoinPool:          req.UseCoinPool,
+		UseOITop:             req.UseOITop,
+		CustomPrompt:         req.CustomPrompt,
+		OverrideBasePrompt:   req.OverrideBasePrompt,
+		SystemPromptTemplate: systemPromptTemplate,
+		IsCrossMargin:        isCrossMargin,
+		ScanIntervalMinutes:  3, // 默认3分钟
 		IsRunning:           false,
 	}
 
@@ -612,16 +626,23 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// 更新每个模型的配置
 	for modelID, modelData := range req.Models {
-		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL)
+		err := s.database.UpdateAIModel(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("更新模型 %s 失败: %v", modelID, err)})
 			return
 		}
 	}
-	
+
+	// 重新加载该用户的所有交易员，使新配置立即生效
+	err := s.traderManager.LoadUserTraders(s.database, userID)
+	if err != nil {
+		log.Printf("⚠️ 重新加载用户交易员到内存失败: %v", err)
+		// 这里不返回错误，因为模型配置已经成功更新到数据库
+	}
+
 	log.Printf("✓ AI模型配置已更新: %+v", req.Models)
 	c.JSON(http.StatusOK, gin.H{"message": "模型配置已更新"})
 }
@@ -649,7 +670,7 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// 更新每个交易所的配置
 	for exchangeID, exchangeData := range req.Exchanges {
 		err := s.database.UpdateExchange(userID, exchangeID, exchangeData.Enabled, exchangeData.APIKey, exchangeData.SecretKey, exchangeData.Testnet, exchangeData.HyperliquidWalletAddr, exchangeData.AsterUser, exchangeData.AsterSigner, exchangeData.AsterPrivateKey)
@@ -658,7 +679,14 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 			return
 		}
 	}
-	
+
+	// 重新加载该用户的所有交易员，使新配置立即生效
+	err := s.traderManager.LoadUserTraders(s.database, userID)
+	if err != nil {
+		log.Printf("⚠️ 重新加载用户交易员到内存失败: %v", err)
+		// 这里不返回错误，因为交易所配置已经成功更新到数据库
+	}
+
 	log.Printf("✓ 交易所配置已更新: %+v", req.Exchanges)
 	c.JSON(http.StatusOK, gin.H{"message": "交易所配置已更新"})
 }
@@ -725,12 +753,21 @@ func (s *Server) handleTraderList(c *gin.Context) {
 			}
 		}
 
+		// AIModelID 应该已经是 provider（如 "deepseek"），直接使用
+		// 如果是旧数据格式（如 "admin_deepseek"），提取 provider 部分
+		aiModelID := trader.AIModelID
+		// 兼容旧数据：如果包含下划线，提取最后一部分作为 provider
+		if strings.Contains(aiModelID, "_") {
+			parts := strings.Split(aiModelID, "_")
+			aiModelID = parts[len(parts)-1]
+		}
+
 		result = append(result, map[string]interface{}{
-			"trader_id":   trader.ID,
-			"trader_name": trader.Name,
-			"ai_model":    trader.AIModelID,
-			"exchange_id": trader.ExchangeID,
-			"is_running":  isRunning,
+			"trader_id":       trader.ID,
+			"trader_name":     trader.Name,
+			"ai_model":        aiModelID,
+			"exchange_id":     trader.ExchangeID,
+			"is_running":      isRunning,
 			"initial_balance": trader.InitialBalance,
 		})
 	}
@@ -763,21 +800,30 @@ func (s *Server) handleGetTraderConfig(c *gin.Context) {
 		}
 	}
 
+	// AIModelID 应该已经是 provider（如 "deepseek"），直接使用
+	// 如果是旧数据格式（如 "admin_deepseek"），提取 provider 部分
+	aiModelID := traderConfig.AIModelID
+	// 兼容旧数据：如果包含下划线，提取最后一部分作为 provider
+	if strings.Contains(aiModelID, "_") {
+		parts := strings.Split(aiModelID, "_")
+		aiModelID = parts[len(parts)-1]
+	}
+
 	result := map[string]interface{}{
-		"trader_id":           traderConfig.ID,
-		"trader_name":         traderConfig.Name,
-		"ai_model":            traderConfig.AIModelID,
-		"exchange_id":         traderConfig.ExchangeID,
-		"initial_balance":     traderConfig.InitialBalance,
-		"btc_eth_leverage":    traderConfig.BTCETHLeverage,
-		"altcoin_leverage":    traderConfig.AltcoinLeverage,
-		"trading_symbols":     traderConfig.TradingSymbols,
-		"custom_prompt":       traderConfig.CustomPrompt,
+		"trader_id":            traderConfig.ID,
+		"trader_name":          traderConfig.Name,
+		"ai_model":             aiModelID,
+		"exchange_id":          traderConfig.ExchangeID,
+		"initial_balance":      traderConfig.InitialBalance,
+		"btc_eth_leverage":     traderConfig.BTCETHLeverage,
+		"altcoin_leverage":     traderConfig.AltcoinLeverage,
+		"trading_symbols":      traderConfig.TradingSymbols,
+		"custom_prompt":        traderConfig.CustomPrompt,
 		"override_base_prompt": traderConfig.OverrideBasePrompt,
-		"is_cross_margin":     traderConfig.IsCrossMargin,
-		"use_coin_pool":       traderConfig.UseCoinPool,
-		"use_oi_top":          traderConfig.UseOITop,
-		"is_running":          isRunning,
+		"is_cross_margin":      traderConfig.IsCrossMargin,
+		"use_coin_pool":        traderConfig.UseCoinPool,
+		"use_oi_top":           traderConfig.UseOITop,
+		"is_running":           isRunning,
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -1373,4 +1419,38 @@ func (s *Server) Start() error {
 	log.Println()
 
 	return s.router.Run(addr)
+}
+
+// handleGetPromptTemplates 获取所有系统提示词模板列表
+func (s *Server) handleGetPromptTemplates(c *gin.Context) {
+	// 导入 decision 包
+	templates := decision.GetAllPromptTemplates()
+	
+	// 转换为响应格式
+	response := make([]map[string]interface{}, 0, len(templates))
+	for _, tmpl := range templates {
+		response = append(response, map[string]interface{}{
+			"name": tmpl.Name,
+		})
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"templates": response,
+	})
+}
+
+// handleGetPromptTemplate 获取指定名称的提示词模板内容
+func (s *Server) handleGetPromptTemplate(c *gin.Context) {
+	templateName := c.Param("name")
+	
+	template, err := decision.GetPromptTemplate(templateName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("模板不存在: %s", templateName)})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"name":    template.Name,
+		"content": template.Content,
+	})
 }
