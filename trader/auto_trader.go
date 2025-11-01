@@ -289,7 +289,7 @@ func (at *AutoTrader) runCycle() error {
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := decision.GetFullDecision(ctx, at.mcpClient)
 
-	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
+	// 即使有错误，也保存思维链丶决策和输入prompt（用于debug）
 	if decision != nil {
 		record.InputPrompt = decision.UserPrompt
 		record.CoTTrace = decision.CoTTrace
@@ -554,6 +554,10 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 		return at.executeCloseLongWithRecord(decision, actionRecord)
 	case "close_short":
 		return at.executeCloseShortWithRecord(decision, actionRecord)
+	case "update_stop_loss":
+		return at.executeUpdateStopLossWithRecord(decision, actionRecord)
+	case "update_take_profit":
+		return at.executeUpdateTakeProfitWithRecord(decision, actionRecord)
 	case "hold", "wait":
 		// 无需执行，仅记录
 		return nil
@@ -717,6 +721,82 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	log.Printf("  ✓ 平仓成功")
+	return nil
+}
+
+// executeUpdateStopLossWithRecord 执行更新止损并记录详细信息
+func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  🔄 更新止损: %s -> %.4f", decision.Symbol, decision.StopLoss)
+
+	// 1. 获取持仓信息确认方向和数量
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return err
+	}
+
+	var positionSide string
+	var quantity float64
+	for _, pos := range positions {
+		if pos["symbol"] == decision.Symbol {
+			positionSide = strings.ToUpper(pos["side"].(string))
+			quantity = pos["positionAmt"].(float64)
+			break
+		}
+	}
+
+	if quantity == 0 {
+		return fmt.Errorf("未找到 %s 的持仓", decision.Symbol)
+	}
+
+	// 2. 取消旧的止损单
+	if err := at.trader.CancelStopOrders(decision.Symbol); err != nil {
+		log.Printf("  ⚠ 取消旧止损单失败: %v", err)
+	}
+
+	// 3. 设置新的止损价
+	if err := at.trader.SetStopLoss(decision.Symbol, positionSide, quantity, decision.StopLoss); err != nil {
+		return fmt.Errorf("设置新止损失败: %w", err)
+	}
+
+	log.Printf("  ✓ 止损已更新为: %.4f", decision.StopLoss)
+	return nil
+}
+
+// executeUpdateTakeProfitWithRecord 执行更新止盈并记录详细信息
+func (at *AutoTrader) executeUpdateTakeProfitWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  🔄 更新止盈: %s -> %.4f", decision.Symbol, decision.TakeProfit)
+
+	// 1. 获取持仓信息
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return err
+	}
+
+	var positionSide string
+	var quantity float64
+	for _, pos := range positions {
+		if pos["symbol"] == decision.Symbol {
+			positionSide = strings.ToUpper(pos["side"].(string))
+			quantity = pos["positionAmt"].(float64)
+			break
+		}
+	}
+
+	if quantity == 0 {
+		return fmt.Errorf("未找到 %s 的持仓", decision.Symbol)
+	}
+
+	// 2. 取消旧的止盈单
+	if err := at.trader.CancelStopOrders(decision.Symbol); err != nil {
+		log.Printf("  ⚠ 取消旧止盈单失败: %v", err)
+	}
+
+	// 3. 设置新的止盈价
+	if err := at.trader.SetTakeProfit(decision.Symbol, positionSide, quantity, decision.TakeProfit); err != nil {
+		return fmt.Errorf("设置新止盈失败: %w", err)
+	}
+
+	log.Printf("  ✓ 止盈已更新为: %.4f", decision.TakeProfit)
 	return nil
 }
 

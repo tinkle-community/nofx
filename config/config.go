@@ -11,7 +11,7 @@ import (
 type TraderConfig struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"` // 是否启用该trader
+	Enabled bool   `json:"enabled"`  // 是否启用该trader
 	AIModel string `json:"ai_model"` // "qwen" or "deepseek"
 
 	// 交易平台选择（二选一）
@@ -42,6 +42,10 @@ type TraderConfig struct {
 
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
+
+	// 每个 Trader 的独立杠杆配置（如果不设置则使用全局配置）
+	BTCETHLeverage  int `json:"btc_eth_leverage,omitempty"` // BTC和ETH的杠杆倍数
+	AltcoinLeverage int `json:"altcoin_leverage,omitempty"` // 山寨币的杠杆倍数
 }
 
 // LeverageConfig 杠杆配置

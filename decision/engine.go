@@ -71,7 +71,7 @@ type Context struct {
 // Decision AI的交易决策
 type Decision struct {
 	Symbol          string  `json:"symbol"`
-	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait"
+	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "update_stop_loss", "update_take_profit", "hold", "wait"
 	Leverage        int     `json:"leverage,omitempty"`
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
@@ -244,6 +244,38 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("如果你发现自己每个周期都在交易 → 说明标准太低\n")
 	sb.WriteString("如果你发现持仓<30分钟就平仓 → 说明太急躁\n\n")
 
+	// === 动态止盈 / 止损策略 ===
+	sb.WriteString("# 🧩 动态止盈 / 止损策略\n\n")
+	sb.WriteString("你的止盈与止损应该**随价格变化动态调整**，以保护利润与控制回撤。\n\n")
+
+	sb.WriteString("**1. Trailing Stop（移动止损）**\n")
+	sb.WriteString("- 当价格朝有利方向移动至少 +1R（即盈利达风险距离的1倍）时，将止损移至入场价（Break-even）。\n")
+	sb.WriteString("- 当价格达 +2R 时，将止损移至 +1R 位置。\n")
+	sb.WriteString("- 之後每多 +1R，止损上移 0.5R。\n")
+	sb.WriteString("- 目的是让利润自由奔跑，同时保护既得收益。\n\n")
+
+	sb.WriteString("**2. Trailing Take-Profit（动态止盈）**\n")
+	sb.WriteString("- 若价格接近初始止盈区间（例如达80%目标），但动能依然强（RSI未超买丶成交量持续放大），则允许继续持仓并上调止盈价。\n")
+	sb.WriteString("- 若价格达目标且出现背离信号或量价萎缩，则主动止盈。\n\n")
+
+	sb.WriteString("**3. 观察与反馈**\n")
+	sb.WriteString("- 每个周期重新评估止盈与止损位置，但不随意提前移动。\n")
+	sb.WriteString("- 仅当技术面（RSI/MACD/支撑位）支持时，才更新止盈/止损。\n\n")
+
+	sb.WriteString("# 止盈止损策略\n")
+	sb.WriteString("***止损 (SL)**:固定设置在开仓时的1:3风脸回报比基础上,使用ATR(平均真实波动率)动态调整" +
+		"(SL距离=1-2倍ATR),以适应市场波动。始终确保风险 <账户的1%。\n")
+	sb.WriteString("***止盈(TP)策路**\n")
+	sb.WriteString("- **基础止盈**:初始TP基于1:3回报比(例如,风险300U,TP至少990U收益)。入n")
+	sb.WriteString("- **追踪止盈(Trailing Stop)****::一旦盈利达到初始TP的50%,启用追踪止盈,将TP调整为当前当前前前价格的2-3% " +
+		"trailing距离(基于ATR计算),让利润奔跑,同时锁定收益。避免过早离场。\n")
+	sb.WriteString("- **动态调整**:基于夏普比率和市场波动\n")
+	sb.WriteString("	-夏普>0.7:放宽trailing距离(3-5%),允许更大波动以捕捉趋势。\n")
+	sb.WriteString("	-夏普 <8:收紧trailing距离(1-2%),快速锁定小盈利以减少波动。\n")
+	sb.WriteString("-如果趋势反转信号出现(e.g.,MACD死叉丶RSI超买/超卖),立即触发TP。\nin")
+	sb.WriteString("- **平衡点**:止盈止损时机需动行动态取衡用率与持仓时长一高波动市场收置SL/TP以控制频率,低波动市场放宽以延长持仓。" +
+		"始终优先夏普比率,避免频繁调整导致的手续费增加。\n")
+
 	// === 开仓信号强度 ===
 	sb.WriteString("# 🎯 开仓标准（严格）\n\n")
 	sb.WriteString("只在**强信号**时开仓，不确定就观望。\n\n")
@@ -297,12 +329,18 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("**第二步: JSON决策数组**\n\n")
 	sb.WriteString("```json\n[\n")
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"下跌趋势+MACD死叉\"},\n", btcEthLeverage, accountEquity*5))
-	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
+	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"update_stop_loss\", \"stop_loss\": 3500, \"reasoning\": \"价格上涨+1R，移动止损至入场价保本\"},\n")
+	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"update_take_profit\", \"take_profit\": 180, \"reasoning\": \"趋势强劲，上调止盈目标\"},\n")
+	sb.WriteString("  {\"symbol\": \"LINKUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n\n")
 	sb.WriteString("**字段说明**:\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | update_stop_loss | update_take_profit | hold | wait\n")
+	sb.WriteString("  - `update_stop_loss`: 调整现有持仓的止损价（实现移动止损）\n")
+	sb.WriteString("  - `update_take_profit`: 调整现有持仓的止盈价（实现动态止盈）\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
-	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
+	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n")
+	sb.WriteString("- 更新止损时必填: stop_loss, reasoning\n")
+	sb.WriteString("- 更新止盈时必填: take_profit, reasoning\n\n")
 
 	// === 关键提醒 ===
 	sb.WriteString("---\n\n")
@@ -534,16 +572,31 @@ func findMatchingBracket(s string, start int) int {
 func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
 	// 验证action
 	validActions := map[string]bool{
-		"open_long":   true,
-		"open_short":  true,
-		"close_long":  true,
-		"close_short": true,
-		"hold":        true,
-		"wait":        true,
+		"open_long":          true,
+		"open_short":         true,
+		"close_long":         true,
+		"close_short":        true,
+		"update_stop_loss":   true,
+		"update_take_profit": true,
+		"hold":               true,
+		"wait":               true,
 	}
 
 	if !validActions[d.Action] {
 		return fmt.Errorf("无效的action: %s", d.Action)
+	}
+
+	// 更新止损/止盈操作必须提供新的价格
+	if d.Action == "update_stop_loss" {
+		if d.StopLoss <= 0 {
+			return fmt.Errorf("更新止损时必须提供新的止损价格")
+		}
+	}
+
+	if d.Action == "update_take_profit" {
+		if d.TakeProfit <= 0 {
+			return fmt.Errorf("更新止盈时必须提供新的止盈价格")
+		}
 	}
 
 	// 开仓操作必须提供完整参数
