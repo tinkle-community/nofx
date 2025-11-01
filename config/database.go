@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base32"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -16,6 +17,9 @@ import (
 type Database struct {
 	db *sql.DB
 }
+
+// ErrAIModelInUse 表示AI模型配置仍被交易员引用
+var ErrAIModelInUse = errors.New("ai model configuration is in use")
 
 // NewDatabase 创建配置数据库
 func NewDatabase(dbPath string) (*Database, error) {
@@ -642,6 +646,34 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`, newModelID, userID, name, provider, enabled, apiKey, customAPIURL, customModelName)
 
+	return err
+}
+
+// DeleteAIModel 删除指定用户的AI模型配置
+func (d *Database) DeleteAIModel(userID, id string) error {
+	var actualID string
+
+	err := d.db.QueryRow(`
+		SELECT id FROM ai_models 
+		WHERE user_id = ? AND (id = ? OR provider = ?)
+	`, userID, id, id).Scan(&actualID)
+	if err != nil {
+		return err
+	}
+
+	var inUseCount int
+	err = d.db.QueryRow(`
+		SELECT COUNT(*) FROM traders WHERE user_id = ? AND ai_model_id = ?
+	`, userID, actualID).Scan(&inUseCount)
+	if err != nil {
+		return err
+	}
+
+	if inUseCount > 0 {
+		return ErrAIModelInUse
+	}
+
+	_, err = d.db.Exec(`DELETE FROM ai_models WHERE user_id = ? AND id = ?`, userID, actualID)
 	return err
 }
 

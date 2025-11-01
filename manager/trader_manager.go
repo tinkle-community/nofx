@@ -727,6 +727,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
+		HyperliquidTestnet:    exchangeCfg.Testnet,
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
 		AltcoinLeverage:       traderCfg.AltcoinLeverage,
