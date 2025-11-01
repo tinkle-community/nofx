@@ -33,13 +33,15 @@ type OIData struct {
 	Average float64
 }
 
-// IntradayData 日内数据(3分钟间隔) - 主要用于获取实时价格
+// IntradayData 日内数据(3分钟间隔) - 主要用于获取实时价格和放量分析
 type IntradayData struct {
-	MidPrices   []float64
-	EMA20Values []float64
-	MACDValues  []float64
-	RSI7Values  []float64
-	RSI14Values []float64
+	MidPrices      []float64
+	EMA20Values    []float64
+	MACDValues     []float64
+	RSI7Values     []float64
+	RSI14Values    []float64
+	Volumes        []float64 // 成交量序列（用于放量检测）
+	BuySellRatios  []float64 // 买卖压力比序列（>0.6多方强，<0.4空方强）
 }
 
 // MidTermData15m 15分钟时间框架数据 - 短期趋势过滤
@@ -74,13 +76,15 @@ type LongerTermData struct {
 
 // Kline K线数据
 type Kline struct {
-	OpenTime  int64
-	Open      float64
-	High      float64
-	Low       float64
-	Close     float64
-	Volume    float64
-	CloseTime int64
+	OpenTime        int64
+	Open            float64
+	High            float64
+	Low             float64
+	Close           float64
+	Volume          float64
+	CloseTime       int64
+	TakerBuyVolume  float64 // 主动买入量（多方力量）
+	BuySellRatio    float64 // 买卖压力比 = TakerBuyVolume / Volume
 }
 
 // Get 获取指定代币的市场数据
@@ -206,15 +210,24 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 		close, _ := parseFloat(item[4])
 		volume, _ := parseFloat(item[5])
 		closeTime := int64(item[6].(float64))
+		takerBuyVolume, _ := parseFloat(item[9]) // 主动买入量
+
+		// 计算买卖压力比
+		buySellRatio := 0.0
+		if volume > 0 {
+			buySellRatio = takerBuyVolume / volume
+		}
 
 		klines[i] = Kline{
-			OpenTime:  openTime,
-			Open:      open,
-			High:      high,
-			Low:       low,
-			Close:     close,
-			Volume:    volume,
-			CloseTime: closeTime,
+			OpenTime:       openTime,
+			Open:           open,
+			High:           high,
+			Low:            low,
+			Close:          close,
+			Volume:         volume,
+			CloseTime:      closeTime,
+			TakerBuyVolume: takerBuyVolume,
+			BuySellRatio:   buySellRatio,
 		}
 	}
 
@@ -338,11 +351,13 @@ func calculateATR(klines []Kline, period int) float64 {
 // calculateIntradaySeries 计算日内系列数据
 func calculateIntradaySeries(klines []Kline) *IntradayData {
 	data := &IntradayData{
-		MidPrices:   make([]float64, 0, 10),
-		EMA20Values: make([]float64, 0, 10),
-		MACDValues:  make([]float64, 0, 10),
-		RSI7Values:  make([]float64, 0, 10),
-		RSI14Values: make([]float64, 0, 10),
+		MidPrices:     make([]float64, 0, 10),
+		EMA20Values:   make([]float64, 0, 10),
+		MACDValues:    make([]float64, 0, 10),
+		RSI7Values:    make([]float64, 0, 10),
+		RSI14Values:   make([]float64, 0, 10),
+		Volumes:       make([]float64, 0, 10),
+		BuySellRatios: make([]float64, 0, 10),
 	}
 
 	// 获取最近10个数据点
@@ -353,6 +368,8 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 
 	for i := start; i < len(klines); i++ {
 		data.MidPrices = append(data.MidPrices, klines[i].Close)
+		data.Volumes = append(data.Volumes, klines[i].Volume)           // 成交量
+		data.BuySellRatios = append(data.BuySellRatios, klines[i].BuySellRatio) // 买卖压力比
 
 		// 计算每个点的EMA20
 		if i >= 19 {
