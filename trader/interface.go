@@ -39,6 +39,9 @@ type Trader interface {
 	// CancelAllOrders 取消该币种的所有挂单
 	CancelAllOrders(symbol string) error
 
+	// CancelStopOrders 取消该币种的止盈/止损单（用於调整止盈止损位置）
+	CancelStopOrders(symbol string) error
+
 	// FormatQuantity 格式化数量到正确的精度
 	FormatQuantity(symbol string, quantity float64) (string, error)
 }

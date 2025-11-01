@@ -186,7 +186,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -253,7 +253,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -293,7 +293,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -359,7 +359,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -488,9 +488,9 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 	for _, t := range tm.traders {
 		account, err := t.GetAccountInfo()
 		status := t.GetStatus()
-		
+
 		var traderData map[string]interface{}
-		
+
 		if err != nil {
 			// 如果获取账户信息失败，使用默认值但仍然显示交易员
 			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", t.GetID(), err)
@@ -522,7 +522,7 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 				"is_running":      status["is_running"],
 			}
 		}
-		
+
 		traders = append(traders, traderData)
 	}
 	comparison["traders"] = traders
@@ -708,7 +708,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -769,7 +769,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
