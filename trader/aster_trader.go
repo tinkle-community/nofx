@@ -819,6 +819,38 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 	return result, nil
 }
 
+// SetMarginMode 设置仓位模式
+func (t *AsterTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	// Aster支持仓位模式设置
+	// API格式与币安相似：CROSSED(全仓) / ISOLATED(逐仓)
+	marginType := "CROSSED"
+	if !isCrossMargin {
+		marginType = "ISOLATED"
+	}
+	
+	params := map[string]interface{}{
+		"symbol":     symbol,
+		"marginType": marginType,
+	}
+	
+	// 使用request方法调用API
+	_, err := t.request("POST", "/fapi/v3/marginType", params)
+	if err != nil {
+		// 如果错误表示无需更改，忽略错误
+		if strings.Contains(err.Error(), "No need to change") || 
+		   strings.Contains(err.Error(), "Margin type cannot be changed") {
+			log.Printf("  ✓ %s 仓位模式已是 %s 或有持仓无法更改", symbol, marginType)
+			return nil
+		}
+		log.Printf("  ⚠️ 设置仓位模式失败: %v", err)
+		// 不返回错误，让交易继续
+		return nil
+	}
+	
+	log.Printf("  ✓ %s 仓位模式已设置为 %s", symbol, marginType)
+	return nil
+}
+
 // SetLeverage 设置杠杆倍数
 func (t *AsterTrader) SetLeverage(symbol string, leverage int) error {
 	params := map[string]interface{}{
