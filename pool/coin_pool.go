@@ -600,9 +600,8 @@ func GetOITopSymbols() ([]string, error) {
 
 	var symbols []string
 	for _, pos := range positions {
-		// 先用旧的 normalizeSymbol 转为 Binance 格式，再转为 OKX 格式
-		symbol := normalizeSymbol(pos.Symbol)
-		symbol = normalizeSymbolToOKX(symbol)
+		// 直接转换为 OKX 格式（normalizeSymbolToOKX 已经处理了各种输入格式）
+		symbol := normalizeSymbolToOKX(pos.Symbol)
 		symbols = append(symbols, symbol)
 	}
 
