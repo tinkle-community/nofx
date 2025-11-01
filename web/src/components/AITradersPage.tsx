@@ -133,19 +133,19 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       mutateTraders();
     } catch (error) {
       console.error('Failed to create trader:', error);
-      alert('创建交易员失败');
+      alert(t('createTraderFailed', language));
     }
   };
 
   const handleDeleteTrader = async (traderId: string) => {
     if (!confirm(t('confirmDeleteTrader', language))) return;
-    
+
     try {
       await api.deleteTrader(traderId);
       mutateTraders();
     } catch (error) {
       console.error('Failed to delete trader:', error);
-      alert('删除交易员失败');
+      alert(t('deleteTraderFailed', language));
     }
   };
 
@@ -159,7 +159,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       mutateTraders();
     } catch (error) {
       console.error('Failed to toggle trader:', error);
-      alert('操作失败');
+      alert(t('operationFailed', language));
     }
   };
 
@@ -178,13 +178,13 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   };
 
   const handleDeleteModelConfig = async (modelId: string) => {
-    if (!confirm('确定要删除此AI模型配置吗？')) return;
-    
+    if (!confirm(t('confirmDeleteModel', language))) return;
+
     try {
-      const updatedModels = allModels?.map(m => 
+      const updatedModels = allModels?.map(m =>
         m.id === modelId ? { ...m, apiKey: '', enabled: false } : m
       ) || [];
-      
+
       const request = {
         models: Object.fromEntries(
           updatedModels.map(model => [
@@ -196,14 +196,14 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           ])
         )
       };
-      
+
       await api.updateModelConfigs(request);
       setAllModels(updatedModels);
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {
       console.error('Failed to delete model config:', error);
-      alert('删除配置失败');
+      alert(t('deleteConfigFailed', language));
     }
   };
 
@@ -253,12 +253,12 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       setEditingModel(null);
     } catch (error) {
       console.error('Failed to save model config:', error);
-      alert('保存配置失败');
+      alert(t('saveConfigFailed', language));
     }
   };
 
   const handleDeleteExchangeConfig = async (exchangeId: string) => {
-    if (!confirm('确定要删除此交易所配置吗？')) return;
+    if (!confirm(t('confirmDeleteExchange', language))) return;
     
     try {
       const updatedExchanges = allExchanges?.map(e => 
@@ -285,7 +285,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       setEditingExchange(null);
     } catch (error) {
       console.error('Failed to delete exchange config:', error);
-      alert('删除交易所配置失败');
+      alert(t('deleteExchangeConfigFailed', language));
     }
   };
 
@@ -341,7 +341,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       setEditingExchange(null);
     } catch (error) {
       console.error('Failed to save exchange config:', error);
-      alert('保存交易所配置失败');
+      alert(t('saveExchangeConfigFailed', language));
     }
   };
 
@@ -455,7 +455,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div>
                       <div className="font-semibold" style={{ color: '#EAECEF' }}>{model.name}</div>
                       <div className="text-xs" style={{ color: '#848E9C' }}>
-                        {inUse ? '正在使用' : model.enabled ? '已启用' : '已配置'}
+                        {inUse ? t('inUse', language) : model.enabled ? t('enabled', language) : t('configured', language)}
                       </div>
                     </div>
                   </div>
@@ -466,7 +466,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             {configuredModels.length === 0 && (
               <div className="text-center py-8" style={{ color: '#848E9C' }}>
                 <div className="text-2xl mb-2">🧠</div>
-                <div className="text-sm">暂无已配置的AI模型</div>
+                <div className="text-sm">{t('noModelsConfigured', language)}</div>
               </div>
             )}
           </div>
@@ -496,7 +496,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     <div>
                       <div className="font-semibold" style={{ color: '#EAECEF' }}>{exchange.name}</div>
                       <div className="text-xs" style={{ color: '#848E9C' }}>
-                        {exchange.type.toUpperCase()} • {inUse ? '正在使用' : exchange.enabled ? '已启用' : '已配置'}
+                        {exchange.type.toUpperCase()} • {inUse ? t('inUse', language) : exchange.enabled ? t('enabled', language) : t('configured', language)}
                       </div>
                     </div>
                   </div>
@@ -507,7 +507,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             {configuredExchanges.length === 0 && (
               <div className="text-center py-8" style={{ color: '#848E9C' }}>
                 <div className="text-2xl mb-2">🏦</div>
-                <div className="text-sm">暂无已配置的交易所</div>
+                <div className="text-sm">{t('noExchangesConfigured', language)}</div>
               </div>
             )}
           </div>
@@ -569,7 +569,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                       className="px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
                       style={{ background: 'rgba(99, 102, 241, 0.1)', color: '#6366F1' }}
                     >
-                      📊 查看
+                      📊 {t('view', language)}
                     </button>
                     
                     <button
@@ -756,7 +756,7 @@ function CreateTraderModal({
 
           <div>
             <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-              初始资金 (USDT)
+              {t('initialFunds', language)}
             </label>
             <input
               type="number"
@@ -772,38 +772,38 @@ function CreateTraderModal({
           {/* Margin Mode Selection */}
           <div>
             <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-              仓位模式
+              {t('marginMode', language)}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setIsCrossMargin(true)}
                 className={`px-3 py-2 rounded text-sm font-semibold transition-all ${
-                  isCrossMargin 
-                    ? 'bg-yellow-500 text-black' 
+                  isCrossMargin
+                    ? 'bg-yellow-500 text-black'
                     : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                 }`}
                 style={isCrossMargin ? { background: '#F0B90B', color: '#000' } : { background: '#2B3139', color: '#848E9C' }}
               >
-                全仓模式
+                {t('crossMargin', language)}
               </button>
               <button
                 type="button"
                 onClick={() => setIsCrossMargin(false)}
                 className={`px-3 py-2 rounded text-sm font-semibold transition-all ${
-                  !isCrossMargin 
-                    ? 'bg-yellow-500 text-black' 
+                  !isCrossMargin
+                    ? 'bg-yellow-500 text-black'
                     : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                 }`}
                 style={!isCrossMargin ? { background: '#F0B90B', color: '#000' } : { background: '#2B3139', color: '#848E9C' }}
               >
-                逐仓模式
+                {t('isolatedMargin', language)}
               </button>
             </div>
             <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
-              {isCrossMargin 
-                ? '全仓模式：所有仓位共享账户余额作为保证金'
-                : '逐仓模式：每个仓位独立管理保证金，风险隔离'}
+              {isCrossMargin
+                ? t('crossMarginDesc', language)
+                : t('isolatedMarginDesc', language)}
             </div>
           </div>
           
@@ -816,31 +816,31 @@ function CreateTraderModal({
               style={{ color: '#F0B90B' }}
             >
               <span style={{ transform: showAdvanced ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▶</span>
-              高级设置
+              {t('advancedSettings', language)}
             </button>
           </div>
-          
+
           {/* Custom Prompt Field - Show when advanced is toggled */}
           {showAdvanced && (
             <div className="mt-4">
               <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-                自定义交易策略 (可选)
+                {t('customStrategyOptional', language)}
               </label>
               <textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder="例如：专注于主流币种BTC/ETH/SOL，避免MEME币。使用保守策略，单笔仓位不超过账户的30%..."
+                placeholder={t('customStrategyPlaceholder', language)}
                 rows={5}
                 className="w-full px-3 py-2 rounded resize-none"
-                style={{ 
-                  background: '#0B0E11', 
-                  border: '1px solid #2B3139', 
+                style={{
+                  background: '#0B0E11',
+                  border: '1px solid #2B3139',
                   color: '#EAECEF',
                   fontSize: '14px'
                 }}
               />
               <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
-                输入自定义的交易策略和规则，将作为AI交易员的额外指导。留空使用默认策略。
+                {t('customStrategyDesc', language)}
               </div>
               
               {/* Override Base Strategy Checkbox */}
@@ -856,11 +856,10 @@ function CreateTraderModal({
                     />
                     <div>
                       <div className="text-sm font-semibold" style={{ color: '#F6465D' }}>
-                        覆盖基础交易策略
+                        {t('overrideBaseStrategy', language)}
                       </div>
                       <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
-                        ⚠️ 警告：勾选后将完全使用您的自定义策略，不再使用系统默认的风控和交易逻辑。
-                        这可能导致交易风险增加。仅在您完全理解交易逻辑时使用此选项。
+                        {t('overrideBaseStrategyWarning', language)}
                       </div>
                     </div>
                   </label>
@@ -936,30 +935,30 @@ function ModelConfigModal({
       <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg relative" style={{ background: '#1E2329' }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
-            {editingModelId ? '编辑AI模型' : '添加AI模型'}
+            {editingModelId ? t('editAIModel', language) : t('addAIModel', language)}
           </h3>
           {editingModelId && (
             <button
               type="button"
               onClick={() => {
-                if (confirm('确定要删除此AI模型配置吗？')) {
+                if (confirm(t('confirmDeleteModel', language))) {
                   onDelete(editingModelId);
                 }
               }}
               className="p-2 rounded hover:bg-red-100 transition-colors"
               style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}
-              title="删除配置"
+              title={t('deleteConfig', language)}
             >
               🗑️
             </button>
           )}
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {!editingModelId && (
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-                选择AI模型
+                {t('selectAIModel', language)}
               </label>
               <select
                 value={selectedModelId}
@@ -968,7 +967,7 @@ function ModelConfigModal({
                 style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
                 required
               >
-                <option value="">请选择模型</option>
+                <option value="">{t('selectModel', language)}</option>
                 {availableModels.map(model => (
                   <option key={model.id} value={model.id}>
                     {model.name} ({model.provider})

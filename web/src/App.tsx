@@ -224,7 +224,7 @@ function App() {
                   : { background: 'transparent', color: '#848E9C' }
                 }
               >
-                竞赛
+                {t('competition', language)}
               </button>
               <button
                 onClick={() => setCurrentPage('traders')}
@@ -264,7 +264,7 @@ function App() {
               {/* Admin Mode Indicator */}
               {systemConfig?.admin_mode && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
-                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>⚡ 管理员模式</span>
+                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>⚡ {t('adminMode', language)}</span>
                 </div>
               )}
 
@@ -299,7 +299,7 @@ function App() {
                   className="px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
                   style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }}
                 >
-                  退出
+                  {t('logout', language)}
                 </button>
               )}
             </div>
@@ -438,7 +438,7 @@ function TraderDetailsPage({
           {/* Trader Selector */}
           {traders && traders.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm" style={{ color: '#848E9C' }}>切换交易员:</span>
+              <span className="text-sm" style={{ color: '#848E9C' }}>{t('switchTrader', language)}</span>
               <select
                 value={selectedTraderId}
                 onChange={(e) => onTraderSelect(e.target.value)}

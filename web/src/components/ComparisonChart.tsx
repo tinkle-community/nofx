@@ -14,12 +14,15 @@ import useSWR from 'swr';
 import { api } from '../lib/api';
 import type { CompetitionTraderData } from '../types';
 import { getTraderColor } from '../utils/traderColors';
+import { useLanguage } from '../contexts/LanguageContext';
+import { t } from '../i18n/translations';
 
 interface ComparisonChartProps {
   traders: CompetitionTraderData[];
 }
 
 export function ComparisonChart({ traders }: ComparisonChartProps) {
+  const { language } = useLanguage();
   // 获取所有trader的历史数据 - 使用单个useSWR并发请求所有trader数据
   // 生成唯一的key，当traders变化时会触发重新请求
   const tradersKey = traders.map(t => t.trader_id).sort().join(',');
@@ -134,8 +137,8 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     return (
       <div className="text-center py-16" style={{ color: '#848E9C' }}>
         <div className="text-6xl mb-4 opacity-50">📊</div>
-        <div className="text-lg font-semibold mb-2">暂无历史数据</div>
-        <div className="text-sm">运行几个周期后将显示对比曲线</div>
+        <div className="text-lg font-semibold mb-2">{t('noHistoricalData', language)}</div>
+        <div className="text-sm">{t('dataWillAppear', language)}</div>
       </div>
     );
   }
