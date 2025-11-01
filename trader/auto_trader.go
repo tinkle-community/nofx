@@ -343,6 +343,11 @@ func (at *AutoTrader) runCycle() error {
 	log.Printf("📊 账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
+	// 输出持仓详情表格
+	if len(ctx.Positions) > 0 {
+		printPositionTable(ctx.Positions)
+	}
+
 	// 🛡️ 4. 检查并调整保证金（OKX专用：防爆仓 + 优化资金效率）
 	if okxTrader, ok := at.trader.(*OKXTrader); ok && len(ctx.Positions) > 0 {
 		positions, err := at.trader.GetPositions()
@@ -1179,4 +1184,67 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 	}
 
 	return sorted
+}
+
+// printPositionTable 输出美观的持仓信息表格
+func printPositionTable(positions []decision.PositionInfo) {
+	if len(positions) == 0 {
+		return
+	}
+
+	log.Println("\n📊 持仓详情:")
+	log.Println("┌────────────────┬──────┬─────────────────┬──────────────┬──────────┬──────────────┬──────────────┐")
+	log.Println("│ 持仓名称       │ 杠杆 │ 收益            │ 保证金       │ 保证金率 │ 开仓价格     │ 强平价格     │")
+	log.Println("├────────────────┼──────┼─────────────────┼──────────────┼──────────┼──────────────┼──────────────┤")
+
+	for _, pos := range positions {
+		// 计算仓位价值
+		positionValue := pos.Quantity * pos.MarkPrice
+
+		// 计算保证金率 (保证金 / 仓位价值 × 100%)
+		marginRatio := 0.0
+		if positionValue > 0 {
+			marginRatio = (pos.MarginUsed / positionValue) * 100
+		}
+
+		// 格式化收益显示 (金额 + 百分比)
+		pnlSign := ""
+		if pos.UnrealizedPnL > 0 {
+			pnlSign = "+"
+		}
+		profitStr := fmt.Sprintf("%s%.2f (%s%.1f%%)", pnlSign, pos.UnrealizedPnL, pnlSign, pos.UnrealizedPnLPct)
+
+		// 格式化持仓方向
+		sideEmoji := "🟢"
+		if pos.Side == "short" {
+			sideEmoji = "🔴"
+		}
+
+		// 格式化价格显示（根据价格大小决定精度）
+		var entryPriceStr, liqPriceStr string
+		if pos.EntryPrice < 0.01 {
+			entryPriceStr = fmt.Sprintf("%.8f", pos.EntryPrice)
+			liqPriceStr = fmt.Sprintf("%.8f", pos.LiquidationPrice)
+		} else if pos.EntryPrice < 1 {
+			entryPriceStr = fmt.Sprintf("%.6f", pos.EntryPrice)
+			liqPriceStr = fmt.Sprintf("%.6f", pos.LiquidationPrice)
+		} else {
+			entryPriceStr = fmt.Sprintf("%.4f", pos.EntryPrice)
+			liqPriceStr = fmt.Sprintf("%.4f", pos.LiquidationPrice)
+		}
+
+		// 输出表格行
+		log.Printf("│ %s%-11s │ %3dx │ %-15s │ %8.2f USDT │ %6.2f%% │ %12s │ %12s │",
+			sideEmoji,
+			pos.Symbol,
+			pos.Leverage,
+			profitStr,
+			pos.MarginUsed,
+			marginRatio,
+			entryPriceStr,
+			liqPriceStr,
+		)
+	}
+
+	log.Println("└────────────────┴──────┴─────────────────┴──────────────┴──────────┴──────────────┴──────────────┘")
 }
