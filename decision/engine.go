@@ -91,13 +91,18 @@ type FullDecision struct {
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
 func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
+	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false)
+}
+
+// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt）
+func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool) (*FullDecision, error) {
 	// 1. 为所有币种获取市场数据
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
+	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -199,6 +204,33 @@ func calculateMaxCandidates(ctx *Context) int {
 	return len(ctx.CandidateCoins)
 }
 
+// buildSystemPromptWithCustom 构建包含自定义内容的 System Prompt
+func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool) string {
+	// 如果覆盖基础prompt且有自定义prompt，只使用自定义prompt
+	if overrideBase && customPrompt != "" {
+		return customPrompt
+	}
+	
+	// 获取基础prompt
+	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage)
+	
+	// 如果没有自定义prompt，直接返回基础prompt
+	if customPrompt == "" {
+		return basePrompt
+	}
+	
+	// 添加自定义prompt部分到基础prompt
+	var sb strings.Builder
+	sb.WriteString(basePrompt)
+	sb.WriteString("\n\n")
+	sb.WriteString("# 📌 个性化交易策略\n\n")
+	sb.WriteString(customPrompt)
+	sb.WriteString("\n\n")
+	sb.WriteString("**注意**: 以上个性化策略是对基础规则的补充，不能违背基础风险控制原则。\n")
+	
+	return sb.String()
+}
+
 // buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
 func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
 	var sb strings.Builder
@@ -247,20 +279,35 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	// === 开仓信号强度 ===
 	sb.WriteString("# 🎯 开仓标准（严格）\n\n")
 	sb.WriteString("只在**强信号**时开仓，不确定就观望。\n\n")
-	sb.WriteString("**你拥有的完整数据**：\n")
-	sb.WriteString("- 📊 **原始序列**：3分钟价格序列(MidPrices数组) + 4小时K线序列\n")
-	sb.WriteString("- 📈 **技术序列**：EMA20序列、MACD序列、RSI7序列、RSI14序列\n")
-	sb.WriteString("- 💰 **资金序列**：成交量序列、持仓量(OI)序列、资金费率\n")
-	sb.WriteString("- 🎯 **筛选标记**：AI500评分 / OI_Top排名（如果有标注）\n\n")
+	sb.WriteString("**你拥有的完整数据（多时间框架分析）**：\n\n")
+	sb.WriteString("**📊 四个时间框架序列**（每个包含最近10个数据点）：\n")
+	sb.WriteString("1. **3分钟序列**：用于获取实时价格（当前价格 = 最后一根K线的收盘价）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("2. **15分钟序列**：短期趋势过滤（覆盖最近2.5小时）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("3. **1小时序列**：中期趋势确认（覆盖最近10小时）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("4. **4小时序列**：长期趋势方向（覆盖最近40小时）\n")
+	sb.WriteString("   - EMA20 vs EMA50, ATR, Volume, MACD, RSI14\n\n")
+	sb.WriteString("**💰 资金数据**：\n")
+	sb.WriteString("- 持仓量(OI)变化、资金费率、成交量对比\n\n")
+	sb.WriteString("**🎯 多时间框架分析建议**：\n")
+	sb.WriteString("- **趋势共振**：当15m/1h/4h三个时间框架方向一致时 → 高信心度信号\n")
+	sb.WriteString("- **趋势过滤**：用1h和4h确认主趋势，避免在震荡中交易\n")
+	sb.WriteString("- **入场时机**：用15m寻找入场点，确保不在短期逆势位置开仓\n")
+	sb.WriteString("- **背离识别**：价格创新高但MACD未创新高（多时间框架对比）\n")
+	sb.WriteString("- **假突破过滤**：15m突破但1h/4h未确认 → 可能是假突破\n\n")
 	sb.WriteString("**分析方法**（完全由你自主决定）：\n")
-	sb.WriteString("- 自由运用序列数据，你可以做但不限于趋势分析、形态识别、支撑阻力、技术阻力位、斐波那契、波动带计算\n")
-	sb.WriteString("- 多维度交叉验证（价格+量+OI+指标+序列形态）\n")
+	sb.WriteString("- 自由运用多时间框架序列，做趋势分析、形态识别、支撑阻力、背离判断\n")
+	sb.WriteString("- 多维度交叉验证（多时间框架 + 量价 + OI + 资金费率）\n")
 	sb.WriteString("- 用你认为最有效的方法发现高确定性机会\n")
-	sb.WriteString("- 综合信心度 ≥ 75 才开仓\n\n")
+	sb.WriteString("- **综合信心度 ≥ 75 才开仓**\n\n")
 	sb.WriteString("**避免低质量信号**：\n")
+	sb.WriteString("- 单一时间框架分析（必须多时间框架共振）\n")
+	sb.WriteString("- 时间框架矛盾（15m上涨但1h/4h下跌）\n")
 	sb.WriteString("- 单一维度（只看一个指标）\n")
 	sb.WriteString("- 相互矛盾（涨但量萎缩）\n")
-	sb.WriteString("- 横盘震荡\n")
+	sb.WriteString("- 横盘震荡（多个时间框架都无明确趋势）\n")
 	sb.WriteString("- 刚平仓不久（<15分钟）\n\n")
 
 	// === 夏普比率自我进化 ===
