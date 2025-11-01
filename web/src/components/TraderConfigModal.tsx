@@ -120,12 +120,7 @@ export function TraderConfigModal({
   useEffect(() => {
     const fetchPromptTemplates = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('/api/prompt-templates', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        const response = await fetch('/api/prompt-templates');
         const data = await response.json();
         if (data.templates) {
           setPromptTemplates(data.templates);

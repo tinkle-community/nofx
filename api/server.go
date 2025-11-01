@@ -66,12 +66,12 @@ func corsMiddleware() gin.HandlerFunc {
 
 // setupRoutes 设置路由
 func (s *Server) setupRoutes() {
-	// 健康检查
-	s.router.Any("/health", s.handleHealth)
-
 	// API路由组
 	api := s.router.Group("/api")
 	{
+		// 健康检查
+		api.Any("/health", s.handleHealth)
+		
 		// 认证相关路由（无需认证）
 		api.POST("/register", s.handleRegister)
 		api.POST("/login", s.handleLogin)
@@ -84,6 +84,10 @@ func (s *Server) setupRoutes() {
 		
 		// 系统配置（无需认证）
 		api.GET("/config", s.handleGetSystemConfig)
+		
+		// 系统提示词模板管理（无需认证）
+		api.GET("/prompt-templates", s.handleGetPromptTemplates)
+		api.GET("/prompt-templates/:name", s.handleGetPromptTemplate)
 
 		// 需要认证的路由
 		protected := api.Group("/", s.authMiddleware())
@@ -110,9 +114,6 @@ func (s *Server) setupRoutes() {
 			protected.GET("/user/signal-sources", s.handleGetUserSignalSource)
 			protected.POST("/user/signal-sources", s.handleSaveUserSignalSource)
 
-			// 系统提示词模板管理
-			protected.GET("/prompt-templates", s.handleGetPromptTemplates)
-			protected.GET("/prompt-templates/:name", s.handleGetPromptTemplate)
 
 			// 竞赛总览
 			protected.GET("/competition", s.handleCompetition)
@@ -1398,7 +1399,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("🌐 API服务器启动在 http://localhost%s", addr)
 	log.Printf("📊 API文档:")
-	log.Printf("  • GET  /health               - 健康检查")
+	log.Printf("  • GET  /api/health           - 健康检查")
 	log.Printf("  • GET  /api/traders          - AI交易员列表")
 	log.Printf("  • POST /api/traders          - 创建新的AI交易员")
 	log.Printf("  • DELETE /api/traders/:id    - 删除AI交易员")

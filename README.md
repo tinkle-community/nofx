@@ -893,7 +893,7 @@ Open your web browser and visit:
 
 ```bash
 # In a new terminal window
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 Should return: `{"status":"ok"}`
@@ -1143,7 +1143,7 @@ GET /api/performance?trader_id=xxx       # AI performance analysis
 ### System Endpoints
 
 ```bash
-GET /health                   # Health check
+GET /api/health                   # Health check
 ```
 
 ---
