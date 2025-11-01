@@ -543,11 +543,22 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		// 跟踪持仓首次出现时间
 		posKey := symbol + "_" + side
 		currentPositionKeys[posKey] = true
-		if _, exists := at.positionFirstSeenTime[posKey]; !exists {
-			// 新持仓，记录当前时间
-			at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+
+		// 优先使用API返回的openTime（如果有的话）
+		var updateTime int64
+		if openTime, hasOpenTime := pos["openTime"].(int64); hasOpenTime && openTime > 0 {
+			// API返回了开仓时间，直接使用
+			updateTime = openTime
+			// 同步到本地记录（用于其他交易所）
+			at.positionFirstSeenTime[posKey] = openTime
+		} else {
+			// API没有返回开仓时间，使用本地记录
+			if _, exists := at.positionFirstSeenTime[posKey]; !exists {
+				// 新持仓，记录当前时间
+				at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+			}
+			updateTime = at.positionFirstSeenTime[posKey]
 		}
-		updateTime := at.positionFirstSeenTime[posKey]
 
 		positionInfos = append(positionInfos, decision.PositionInfo{
 			Symbol:           symbol,
@@ -564,7 +575,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		})
 	}
 
-	// 清理已平仓的持仓记录
+	// 清理已平仓的持仓记录（仅内存清理）
 	for key := range at.positionFirstSeenTime {
 		if !currentPositionKeys[key] {
 			delete(at.positionFirstSeenTime, key)
@@ -750,7 +761,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓时间（仅内存，下次API会返回真实时间）
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
@@ -808,7 +819,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓时间（仅内存，下次API会返回真实时间）
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
