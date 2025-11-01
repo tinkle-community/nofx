@@ -299,8 +299,14 @@ chmod +x start.sh
 
 # 方式2：直接使用docker compose
 # 如果您还在使用旧的独立 `docker-compose`，请升级到 Docker Desktop 或 Docker 20.10+
+# 首次启动前需要创建空的数据库文件
+touch config.db
 docker compose up -d --build
 ```
+
+**启动参数说明：**
+- `--build`: 构建 Docker 镜像（首次运行或代码更新后使用）
+- `-d`: 后台运行（detached mode）
 
 #### 步骤3：访问控制台
 在浏览器中打开：**http://localhost:3000**

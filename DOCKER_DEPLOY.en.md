@@ -54,38 +54,40 @@ cp config.example.jsonc config.json
 
 # Edit configuration file with your API keys
 nano config.json  # or use any other editor
-
-⚠️ **Note**: Basic config.json is still needed for some settings, but ~~trader configurations~~ are now done through the web interface.
 ```
 
 **Required fields:**
 ```json
 {
-  "traders": [
-    {
-      "id": "my_trader",
-      "name": "My AI Trader",
-      "ai_model": "deepseek",
-      "binance_api_key": "YOUR_BINANCE_API_KEY",       // ← Your Binance API Key
-      "binance_secret_key": "YOUR_BINANCE_SECRET_KEY", // ← Your Binance Secret Key
-      "deepseek_key": "YOUR_DEEPSEEK_API_KEY",         // ← Your DeepSeek API Key
-      "initial_balance": 1000.0,
-      "scan_interval_minutes": 3
-    }
-  ],
   "use_default_coins": true,
-  "api_server_port": 8080
+  "api_server_port": 8081,
+  "jwt_secret": "YOUR_JWT_SECRET_CHANGE_IN_PRODUCTION"  // ← Enter a long random string as JWT key
 }
+```
+
+> **⚠️ Important Security Notice**:
+> - The `jwt_secret` field is a critical security configuration for the user authentication system
+> - **Must set a random string of at least 32 characters**
+> - In production environments, it's recommended to use 64+ character random strings
+> - You can generate one using: `openssl rand -base64 64`
+
+**Configuration Notes:**
+- 🔐 **User Authentication**: The system now supports user registration and login, with each user having independent AI model and exchange configurations
+- 🚫 **Removed traders configuration**: No need to pre-configure traders in config.json, users can create them through the web interface
+- 🔑 **JWT Key**: Used to protect user session security, strongly recommended to set a complex key in production environments
 ```
 
 ### Step 2: One-Click Start
 
 ```bash
-# Build and start all services (first run)
-docker compose up -d --build
+# Option 1: Using start script (Recommended)
+chmod +x start.sh
+./start.sh start --build
 
-# Subsequent starts (without rebuilding)
-docker compose up -d
+# Option 2: Direct Docker Compose
+# Create empty database file before first run
+touch config.db
+docker compose up -d --build
 ```
 
 **Startup options:**
@@ -309,7 +311,22 @@ docker system prune -a --volumes
 
 ## 🔐 Security Recommendations
 
-1. ~~**Don't commit config.json to Git**~~
+1. **JWT Key Security Configuration**
+   ```bash
+   # Generate strong random JWT key
+   openssl rand -base64 64
+   
+   # Or use other tools to generate
+   head -c 64 /dev/urandom | base64
+   ```
+   
+   **JWT Key Requirements:**
+   - At least 32 characters long, recommended 64+ characters
+   - Use randomly generated strings
+   - Never use default values in production
+   - Change regularly (will require existing users to re-login)
+
+2. ~~**Don't commit config.json to Git**~~
    ```bash
    # ~~Ensure config.json is in .gitignore~~
    # ~~echo "config.json" >> .gitignore~~
@@ -317,17 +334,17 @@ docker system prune -a --volumes
    
    *Note: Now using trading.db database, ensure not to commit sensitive data*
 
-2. **Use environment variables for sensitive data**
+3. **Use environment variables for sensitive data**
    ```yaml
    # docker-compose.yml
    services:
      backend:
        environment:
-         - BINANCE_API_KEY=${BINANCE_API_KEY}
-         - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+         - JWT_SECRET=${JWT_SECRET}
+       # User API keys are now configured through web interface, no longer need environment variables
    ```
 
-3. **Restrict API access**
+4. **Restrict API access**
    ```yaml
    # Only allow local access
    services:
@@ -336,7 +353,7 @@ docker system prune -a --volumes
          - "127.0.0.1:8080:8080"
    ```
 
-4. **Regularly update images**
+5. **Regularly update images**
    ```bash
    docker compose pull
    docker compose up -d
