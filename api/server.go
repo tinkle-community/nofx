@@ -801,30 +801,24 @@ func (s *Server) handleGetTraderConfig(c *gin.Context) {
 		}
 	}
 
-	// AIModelID 应该已经是 provider（如 "deepseek"），直接使用
-	// 如果是旧数据格式（如 "admin_deepseek"），提取 provider 部分
-	aiModelID := traderConfig.AIModelID
-	// 兼容旧数据：如果包含下划线，提取最后一部分作为 provider
-	if strings.Contains(aiModelID, "_") {
-		parts := strings.Split(aiModelID, "_")
-		aiModelID = parts[len(parts)-1]
-	}
-
+	// 返回完整的 AIModelID（如 "admin_deepseek"），不要截断
+	// 前端需要完整 ID 来验证模型是否存在
 	result := map[string]interface{}{
-		"trader_id":            traderConfig.ID,
-		"trader_name":          traderConfig.Name,
-		"ai_model":             aiModelID,
-		"exchange_id":          traderConfig.ExchangeID,
-		"initial_balance":      traderConfig.InitialBalance,
-		"btc_eth_leverage":     traderConfig.BTCETHLeverage,
-		"altcoin_leverage":     traderConfig.AltcoinLeverage,
-		"trading_symbols":      traderConfig.TradingSymbols,
-		"custom_prompt":        traderConfig.CustomPrompt,
-		"override_base_prompt": traderConfig.OverrideBasePrompt,
-		"is_cross_margin":      traderConfig.IsCrossMargin,
-		"use_coin_pool":        traderConfig.UseCoinPool,
-		"use_oi_top":           traderConfig.UseOITop,
-		"is_running":           isRunning,
+		"trader_id":               traderConfig.ID,
+		"trader_name":             traderConfig.Name,
+		"ai_model":                traderConfig.AIModelID, // 使用完整 ID
+		"exchange_id":             traderConfig.ExchangeID,
+		"initial_balance":         traderConfig.InitialBalance,
+		"btc_eth_leverage":        traderConfig.BTCETHLeverage,
+		"altcoin_leverage":        traderConfig.AltcoinLeverage,
+		"trading_symbols":         traderConfig.TradingSymbols,
+		"custom_prompt":           traderConfig.CustomPrompt,
+		"override_base_prompt":    traderConfig.OverrideBasePrompt,
+		"system_prompt_template":  traderConfig.SystemPromptTemplate, // 添加此字段
+		"is_cross_margin":         traderConfig.IsCrossMargin,
+		"use_coin_pool":           traderConfig.UseCoinPool,
+		"use_oi_top":              traderConfig.UseOITop,
+		"is_running":              isRunning,
 	}
 
 	c.JSON(http.StatusOK, result)
