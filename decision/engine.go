@@ -242,25 +242,31 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		templateName = "default" // 默认使用 default 模板
 	}
 
+	// 追踪模板是否成功加载（用于决定是否使用硬编码 fallback）
+	templateLoaded := false
+
 	template, err := GetPromptTemplate(templateName)
 	if err != nil {
 		// 如果模板不存在，记录错误并使用 default
 		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
 		template, err = GetPromptTemplate("default")
 		if err != nil {
-			// 如果连 default 都不存在，使用内置的简化版本
-			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
-			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
+			// 如果连 default 都不存在，将使用下方的硬编码策略
+			log.Printf("❌ 无法加载任何提示词模板，将使用硬编码策略")
 		} else {
 			sb.WriteString(template.Content)
 			sb.WriteString("\n\n")
+			templateLoaded = true
+			log.Printf("✓ 使用 default 模板（fallback）")
 		}
 	} else {
 		sb.WriteString(template.Content)
 		sb.WriteString("\n\n")
+		templateLoaded = true
+		log.Printf("✓ 使用 %s 模板", templateName)
 	}
 
-	// 2. 硬约束（风险控制）- 动态生成
+	// 2. 硬约束（风险控制）- 动态生成（始终追加）
 	sb.WriteString("# 硬约束（风险控制）\n\n")
 	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
@@ -268,8 +274,11 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. 保证金: 总使用率 ≤ 90%\n\n")
 
-	// 市场状态判断与策略选择
-	sb.WriteString("# 市场状态判断（优先）\n\n")
+	// 3. 硬编码策略（仅当模板加载失败时使用）
+	if !templateLoaded {
+		log.Printf("⚠️  追加硬编码策略作为 fallback")
+		// 市场状态判断与策略选择
+		sb.WriteString("# 市场状态判断（优先）\n\n")
 	sb.WriteString("在制定交易决策前，必须先判断当前市场状态：\n\n")
 	sb.WriteString("判断方法（多个指标交叉验证）：\n\n")
 	sb.WriteString("1. 多时间框架一致性：\n")
@@ -451,8 +460,9 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("2. 评估持仓: 趋势是否改变？是否该止盈/止损？\n")
 	sb.WriteString("3. 寻找新机会: 有强信号吗？多空机会？\n")
 	sb.WriteString("4. 输出决策: 思维链分析 + JSON\n\n")
+	} // 结束 if !templateLoaded 区块
 
-	// 3. 输出格式 - 动态生成
+	// 4. 输出格式 - 动态生成（始终追加）
 	sb.WriteString("#输出格式\n\n")
 	sb.WriteString("第一步: 思维链（纯文本）\n")
 	sb.WriteString("简洁分析你的思考过程\n\n")
