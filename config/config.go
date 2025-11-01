@@ -31,6 +31,12 @@ type TraderConfig struct {
 	AsterSigner     string `json:"aster_signer,omitempty"`      // Aster API钱包地址
 	AsterPrivateKey string `json:"aster_private_key,omitempty"` // Aster API钱包私钥
 
+	// Lighter配置
+	LighterWalletAddr string `json:"lighter_wallet_addr,omitempty"` // Lighter钱包地址
+	LighterPrivateKey string `json:"lighter_private_key,omitempty"` // Lighter私钥
+	LighterChainID    uint64 `json:"lighter_chain_id,omitempty"`    // Lighter链ID
+	LighterTestnet    bool   `json:"lighter_testnet,omitempty"`     // 是否使用Lighter测试网
+
 	// AI配置
 	QwenKey     string `json:"qwen_key,omitempty"`
 	DeepSeekKey string `json:"deepseek_key,omitempty"`
@@ -130,8 +136,8 @@ func (c *Config) Validate() error {
 		if trader.Exchange == "" {
 			trader.Exchange = "binance" // 默认使用币安
 		}
-		if trader.Exchange != "binance" && trader.Exchange != "hyperliquid" && trader.Exchange != "aster" {
-			return fmt.Errorf("trader[%d]: exchange必须是 'binance', 'hyperliquid' 或 'aster'", i)
+		if trader.Exchange != "binance" && trader.Exchange != "hyperliquid" && trader.Exchange != "aster" && trader.Exchange != "lighter" {
+			return fmt.Errorf("trader[%d]: exchange必须是 'binance', 'hyperliquid', 'aster' 或 'lighter'", i)
 		}
 
 		// 根据平台验证对应的密钥
@@ -147,6 +153,13 @@ func (c *Config) Validate() error {
 			if trader.AsterUser == "" || trader.AsterSigner == "" || trader.AsterPrivateKey == "" {
 				return fmt.Errorf("trader[%d]: 使用Aster时必须配置aster_user, aster_signer和aster_private_key", i)
 			}
+			} else if trader.Exchange == "lighter" {
+		if trader.LighterWalletAddr == "" || trader.LighterPrivateKey == "" {
+			return fmt.Errorf("trader[%d]: 使用Lighter时必须配置lighter_wallet_addr和lighter_private_key", i)
+		}
+		if trader.LighterChainID == 0 {
+			trader.LighterChainID = 1 // 默认主网
+		}
 		}
 
 		if trader.AIModel == "qwen" && trader.QwenKey == "" {

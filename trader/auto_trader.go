@@ -21,7 +21,7 @@ type AutoTraderConfig struct {
 	AIModel string // AI模型: "qwen" 或 "deepseek"
 
 	// 交易平台选择
-	Exchange string // "binance", "hyperliquid" 或 "aster"
+	Exchange string // "binance", "hyperliquid", "aster" 或 "lighter"
 
 	// 币安API配置
 	BinanceAPIKey    string
@@ -36,6 +36,12 @@ type AutoTraderConfig struct {
 	AsterUser       string // Aster主钱包地址
 	AsterSigner     string // Aster API钱包地址
 	AsterPrivateKey string // Aster API钱包私钥
+
+	// Lighter配置
+	LighterWalletAddr string // Lighter钱包地址
+	LighterPrivateKey string // Lighter私钥
+	LighterChainID    uint64 // Lighter链ID
+	LighterTestnet    bool   // 是否使用Lighter测试网
 
 	CoinPoolAPIURL string
 
@@ -149,6 +155,15 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		if err != nil {
 			return nil, fmt.Errorf("初始化Aster交易器失败: %w", err)
 		}
+	case "lighter":
+	log.Printf("🏦 [%s] 使用Lighter去中心化交易", config.Name)
+	if config.LighterChainID == 0 {
+		config.LighterChainID = 1 // 默认主网
+	}
+	trader, err = NewLighterTrader(config.LighterWalletAddr, config.LighterPrivateKey, config.LighterChainID, config.LighterTestnet)
+	if err != nil {
+		return nil, fmt.Errorf("初始化Lighter交易器失败: %w", err)
+	}
 	default:
 		return nil, fmt.Errorf("不支持的交易平台: %s", config.Exchange)
 	}
