@@ -345,7 +345,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 输出持仓详情表格
 	if len(ctx.Positions) > 0 {
-		printPositionTable(ctx.Positions)
+		printPositionTable(ctx.Positions, ctx.Account.AvailableBalance)
 	}
 
 	// 🛡️ 4. 检查并调整保证金（OKX专用：防爆仓 + 优化资金效率）
@@ -1187,12 +1187,13 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 }
 
 // printPositionTable 输出美观的持仓信息表格
-func printPositionTable(positions []decision.PositionInfo) {
+func printPositionTable(positions []decision.PositionInfo, availableBalance float64) {
 	if len(positions) == 0 {
 		return
 	}
 
 	log.Println("\n📊 持仓详情:")
+	log.Printf("💰 可用余额: %.2f USDT\n", availableBalance)
 	log.Println("┌────────────────┬──────┬─────────────────┬──────────────┬──────────┬──────────────┬──────────────┐")
 	log.Println("│ 持仓名称       │ 杠杆 │ 收益            │ 保证金       │ 保证金率 │ 开仓价格     │ 强平价格     │")
 	log.Println("├────────────────┼──────┼─────────────────┼──────────────┼──────────┼──────────────┼──────────────┤")
