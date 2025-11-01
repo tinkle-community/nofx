@@ -54,6 +54,9 @@ type TraderConfig struct {
 	// 流动性过滤：持仓价值低于此阈值的币种将被过滤（单位：百万美元，默认15M）
 	MinOIValueMillions float64 `json:"min_oi_value_millions,omitempty"`
 
+	// 持仓数量限制：最多同时持有的币种数量（默认3个，质量>数量）
+	MaxPositions int `json:"max_positions,omitempty"`
+
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
 }

@@ -79,6 +79,9 @@ type AutoTraderConfig struct {
 
 	// 流动性过滤：持仓价值低于此阈值的币种将被过滤（单位：百万美元，默认15M）
 	MinOIValueMillions float64
+
+	// 持仓数量限制：最多同时持有的币种数量（默认3个）
+	MaxPositions int
 }
 
 // AutoTrader 自动交易器
@@ -667,6 +670,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		BTCETHLeverage:     at.config.BTCETHLeverage,     // 使用配置的杠杆倍数
 		AltcoinLeverage:    at.config.AltcoinLeverage,    // 使用配置的杠杆倍数
 		MinOIValueMillions: at.config.MinOIValueMillions, // 使用配置的持仓价值阈值
+		MaxPositions:       at.config.MaxPositions,       // 使用配置的持仓数量限制
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,

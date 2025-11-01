@@ -66,6 +66,7 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
 		ExcludedSymbols:       cfg.ExcludedSymbols,       // 黑名单币种
 		MinOIValueMillions:    cfg.MinOIValueMillions,    // 持仓价值阈值
+		MaxPositions:          cfg.MaxPositions,          // 持仓数量限制
 	}
 
 	// 创建trader实例
