@@ -212,7 +212,7 @@ Docker автоматически обрабатывает все зависим
 #### Шаг 1: Подготовьте конфигурацию
 ```bash
 # Скопируйте шаблон конфигурации
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # Отредактируйте и заполните ваши API ключи
 nano config.json  # или используйте любой редактор
@@ -350,7 +350,7 @@ cd ..
 **Шаг 1**: Скопируйте и переименуйте файл примера конфигурации
 
 ```bash
-cp config.json.example config.json
+cp config.example.jsonc config.json
 ```
 
 **Шаг 2**: Отредактируйте `config.json` и заполните ваши API ключи
@@ -722,7 +722,7 @@ go build -o nofx
 |---------------------|---------|
 | `invalid API key` | Проверьте Binance API ключи в config.json |
 | `TA-Lib not found` | Выполните `brew install ta-lib` (macOS) |
-| `port 8080 already in use` | Измените `api_server_port` в config.json |
+| `port 8080 already in use` | ~~Измените `api_server_port` в config.json~~ *Измените `API_PORT` в файле .env* |
 | `DeepSeek API error` | Проверьте DeepSeek API ключ и баланс |
 
 **✅ Признаки работы Backend:**
@@ -796,7 +796,7 @@ VITE v5.x.x  ready in xxx ms
 
 ```bash
 # В новом окне терминала
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 Должно вернуть: `{"status":"ok"}`

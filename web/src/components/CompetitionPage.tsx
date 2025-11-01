@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import useSWR from 'swr';
 import { api } from '../lib/api';
 import type { CompetitionData } from '../types';
 import { ComparisonChart } from './ComparisonChart';
+import { TraderConfigViewModal } from './TraderConfigViewModal';
+import { getTraderColor } from '../utils/traderColors';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
-import { getTraderColor } from '../utils/traderColors';
 
 export function CompetitionPage() {
   const { language } = useLanguage();
+  const [selectedTrader, setSelectedTrader] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   const { data: competition } = useSWR<CompetitionData>(
     'competition',
     api.getCompetition,
@@ -17,6 +22,21 @@ export function CompetitionPage() {
       dedupingInterval: 10000,
     }
   );
+
+  const handleTraderClick = async (traderId: string) => {
+    try {
+      const traderConfig = await api.getTraderConfig(traderId);
+      setSelectedTrader(traderConfig);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Failed to fetch trader config:', error);
+    }
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedTrader(null);
+  };
 
   if (!competition || !competition.traders) {
     return (
@@ -114,7 +134,8 @@ export function CompetitionPage() {
               return (
                 <div
                   key={trader.trader_id}
-                  className="rounded p-3 transition-all duration-300 hover:translate-y-[-1px]"
+                  onClick={() => handleTraderClick(trader.trader_id)}
+                  className="rounded p-3 transition-all duration-300 hover:translate-y-[-1px] cursor-pointer hover:shadow-lg"
                   style={{
                     background: isLeader ? 'linear-gradient(135deg, rgba(240, 185, 11, 0.08) 0%, #0B0E11 100%)' : '#0B0E11',
                     border: `1px solid ${isLeader ? 'rgba(240, 185, 11, 0.4)' : '#2B3139'}`,
@@ -130,7 +151,7 @@ export function CompetitionPage() {
                       <div>
                         <div className="font-bold text-sm" style={{ color: '#EAECEF' }}>{trader.trader_name}</div>
                         <div className="text-xs mono font-semibold" style={{ color: traderColor }}>
-                          {trader.ai_model.toUpperCase()}
+                          {trader.ai_model.toUpperCase()} + {trader.exchange.toUpperCase()}
                         </div>
                       </div>
                     </div>
@@ -223,10 +244,13 @@ export function CompetitionPage() {
                 >
                   <div className="text-center">
                     <div
-                      className="text-base font-bold mb-2"
+                      className="text-base font-bold mb-1"
                       style={{ color: getTraderColor(sortedTraders, trader.trader_id) }}
                     >
                       {trader.trader_name}
+                    </div>
+                    <div className="text-xs mono mb-2" style={{ color: '#848E9C' }}>
+                      {trader.ai_model.toUpperCase()} + {trader.exchange.toUpperCase()}
                     </div>
                     <div className="text-2xl font-bold mono mb-1" style={{ color: (trader.total_pnl ?? 0) >= 0 ? '#0ECB81' : '#F6465D' }}>
                       {(trader.total_pnl ?? 0) >= 0 ? '+' : ''}{trader.total_pnl_pct?.toFixed(2) || '0.00'}%
@@ -248,6 +272,13 @@ export function CompetitionPage() {
           </div>
         </div>
       )}
+
+      {/* Trader Config View Modal */}
+      <TraderConfigViewModal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        traderData={selectedTrader}
+      />
     </div>
   );
 }

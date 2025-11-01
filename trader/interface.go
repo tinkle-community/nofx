@@ -24,6 +24,9 @@ type Trader interface {
 	// SetLeverage 设置杠杆
 	SetLeverage(symbol string, leverage int) error
 
+	// SetMarginMode 设置仓位模式 (true=全仓, false=逐仓)
+	SetMarginMode(symbol string, isCrossMargin bool) error
+
 	// GetMarketPrice 获取市场价格
 	GetMarketPrice(symbol string) (float64, error)
 
