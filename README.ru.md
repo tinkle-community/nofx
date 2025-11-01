@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Backed by Amber.ac](https://img.shields.io/badge/Backed%20by-Amber.ac-orange.svg)](https://amber.ac)
 
-**Языки / Languages:** [English](README.md) | [中文](README.zh-CN.md) | [Українська](README.uk.md) | [Русский](README.ru.md)
+**Языки / Languages:** [English](README.md) | [中文](README.zh-CN.md) | [Українська](README.uk.md) | [Русский](README.ru.md) | [日本語](README.ja.md)
 
 **Официальный Twitter:** [@nofx_ai](https://x.com/nofx_ai)
 
