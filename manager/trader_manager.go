@@ -196,10 +196,10 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
+		Testnet:               exchangeCfg.Testnet,
 		BinanceAPIKey:         "",
 		BinanceSecretKey:      "",
 		HyperliquidPrivateKey: "",
-		HyperliquidTestnet:    exchangeCfg.Testnet,
 		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
@@ -302,10 +302,10 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
+		Testnet:               exchangeCfg.Testnet,
 		BinanceAPIKey:         "",
 		BinanceSecretKey:      "",
 		HyperliquidPrivateKey: "",
-		HyperliquidTestnet:    exchangeCfg.Testnet,
 		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
 		DeepSeekKey:           "",
