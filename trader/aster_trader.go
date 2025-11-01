@@ -27,8 +27,8 @@ import (
 // AsterTrader Aster交易平台实现
 type AsterTrader struct {
 	ctx        context.Context
-	user       string           // 主钱包地址 (ERC20)
-	signer     string           // API钱包地址
+	user       string            // 主钱包地址 (ERC20)
+	signer     string            // API钱包地址
 	privateKey *ecdsa.PrivateKey // API钱包私钥
 	client     *http.Client
 	baseURL    string
@@ -99,9 +99,9 @@ func (t *AsterTrader) getPrecision(symbol string) (SymbolPrecision, error) {
 	body, _ := io.ReadAll(resp.Body)
 	var info struct {
 		Symbols []struct {
-			Symbol            string `json:"symbol"`
-			PricePrecision    int    `json:"pricePrecision"`
-			QuantityPrecision int    `json:"quantityPrecision"`
+			Symbol            string                   `json:"symbol"`
+			PricePrecision    int                      `json:"pricePrecision"`
+			QuantityPrecision int                      `json:"quantityPrecision"`
 			Filters           []map[string]interface{} `json:"filters"`
 		} `json:"symbols"`
 	}
@@ -439,30 +439,89 @@ func (t *AsterTrader) GetBalance() (map[string]interface{}, error) {
 	}
 
 	// 查找USDT余额
-	totalBalance := 0.0
 	availableBalance := 0.0
 	crossUnPnl := 0.0
+	foundUSDT := false
 
 	for _, bal := range balances {
 		if asset, ok := bal["asset"].(string); ok && asset == "USDT" {
-			if wb, ok := bal["balance"].(string); ok {
-				totalBalance, _ = strconv.ParseFloat(wb, 64)
-			}
+			foundUSDT = true
+
+			// 解析Aster返回的字段
 			if avail, ok := bal["availableBalance"].(string); ok {
 				availableBalance, _ = strconv.ParseFloat(avail, 64)
 			}
 			if unpnl, ok := bal["crossUnPnl"].(string); ok {
 				crossUnPnl, _ = strconv.ParseFloat(unpnl, 64)
 			}
+			// 注：crossWalletBalance字段在Aster中为0，不使用
 			break
 		}
 	}
 
-	// 返回与Binance相同的字段名，确保AutoTrader能正确解析
+	if !foundUSDT {
+		log.Printf("⚠️  未找到USDT资产记录！")
+	}
+
+	// ✅ Aster特殊字段映射逻辑：
+	//
+	// Aster API字段含义（经过观察分析）：
+	// - balance: 0（字段含义不明，不使用）
+	// - crossWalletBalance: 全仓钱包余额（但观察到也是0）
+	// - availableBalance: 实际可用余额
+	// - crossUnPnl: 全仓未实现盈亏
+	//
+	// 标准映射关系（与auto_trader.go兼容）：
+	// totalEquity = totalWalletBalance + totalUnrealizedProfit
+	//
+	// 关键公式：
+	// totalWalletBalance = availableBalance + totalMarginUsed（已用保证金）
+
+	var totalWalletBalance float64
+
+	if crossUnPnl == 0 {
+		// 无持仓情况：钱包余额 = 可用余额
+		totalWalletBalance = availableBalance
+	} else {
+		// 有持仓情况：需要从持仓中计算已用保证金
+		// 先获取持仓信息
+		positions, err := t.GetPositions()
+		if err != nil {
+			log.Printf("⚠️  获取持仓信息失败: %v，使用availableBalance", err)
+			totalWalletBalance = availableBalance
+		} else {
+			// 计算总保证金占用
+			totalMarginUsed := 0.0
+			for _, pos := range positions {
+				markPrice := pos["markPrice"].(float64)
+				quantity := pos["positionAmt"].(float64)
+				if quantity < 0 {
+					quantity = -quantity
+				}
+				leverage := 10 // 默认杠杆
+				if lev, ok := pos["leverage"].(float64); ok {
+					leverage = int(lev)
+				}
+				marginUsed := (quantity * markPrice) / float64(leverage)
+				totalMarginUsed += marginUsed
+			}
+
+			// 钱包余额 = 可用余额 + 已用保证金
+			totalWalletBalance = availableBalance + totalMarginUsed
+
+			log.Printf("✓ Aster 有持仓: 可用=%.2f + 保证金=%.2f = 钱包余额%.2f",
+				availableBalance, totalMarginUsed, totalWalletBalance)
+		}
+	}
+
+	log.Printf("✓ Aster 账户: 钱包余额=%.2f, 可用=%.2f, 未实现盈亏=%.2f",
+		totalWalletBalance, availableBalance, crossUnPnl)
+
+	// 返回标准格式（与Binance/Hyperliquid兼容）
 	return map[string]interface{}{
-		"totalWalletBalance":    totalBalance,
-		"availableBalance":      availableBalance,
-		"totalUnrealizedProfit": crossUnPnl,
+		"totalWalletBalance":    totalWalletBalance, // 钱包余额（不含未实现盈亏）
+		"availableBalance":      availableBalance,   // 可用余额
+		"totalUnrealizedProfit": crossUnPnl,         // 未实现盈亏
 	}, nil
 }
 
@@ -506,14 +565,14 @@ func (t *AsterTrader) GetPositions() ([]map[string]interface{}, error) {
 
 		// 返回与Binance相同的字段名
 		result = append(result, map[string]interface{}{
-			"symbol":            pos["symbol"],
-			"side":              side,
-			"positionAmt":       posAmt,
-			"entryPrice":        entryPrice,
-			"markPrice":         markPrice,
-			"unRealizedProfit":  unRealizedProfit,
-			"leverage":          leverageVal,
-			"liquidationPrice":  liquidationPrice,
+			"symbol":           pos["symbol"],
+			"side":             side,
+			"positionAmt":      posAmt,
+			"entryPrice":       entryPrice,
+			"markPrice":        markPrice,
+			"unRealizedProfit": unRealizedProfit,
+			"leverage":         leverageVal,
+			"liquidationPrice": liquidationPrice,
 		})
 	}
 

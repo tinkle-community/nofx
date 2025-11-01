@@ -218,9 +218,9 @@ func (at *AutoTrader) Stop() {
 func (at *AutoTrader) runCycle() error {
 	at.callCount++
 
-	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Print("\n" + strings.Repeat("=", 70))
 	log.Printf("⏰ %s - AI决策周期 #%d", time.Now().Format("2006-01-02 15:04:05"), at.callCount)
-	log.Printf(strings.Repeat("=", 70))
+	log.Println(strings.Repeat("=", 70))
 
 	// 创建决策记录
 	record := &logger.DecisionRecord{
@@ -230,7 +230,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 1. 检查是否需要停止交易
 	if time.Now().Before(at.stopUntil) {
-		remaining := at.stopUntil.Sub(time.Now())
+		remaining := time.Until(at.stopUntil)
 		log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟", remaining.Minutes())
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("风险控制暂停中，剩余 %.0f 分钟", remaining.Minutes())
