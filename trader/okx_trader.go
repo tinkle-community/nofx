@@ -315,8 +315,8 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// SetLeverage 设置杠杆
-func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
+// setLeverageInternal 设置杠杆（内部方法，带持仓方向）
+func (t *OKXTrader) setLeverageInternal(symbol string, leverage int, positionSide string) error {
 	// 先尝试获取当前杠杆（从持仓信息）
 	currentLeverage := 0
 	positions, err := t.GetPositions()
@@ -342,6 +342,7 @@ func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
 		"instId":  symbol,
 		"lever":   strconv.Itoa(leverage),
 		"mgnMode": "isolated", // 逐仓模式
+		"posSide": positionSide, // 持仓方向：long 或 short
 	}
 
 	_, err = t.request(context.Background(), "POST", "/api/v5/account/set-leverage", body)
@@ -349,11 +350,28 @@ func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
 		return fmt.Errorf("设置杠杆失败: %w", err)
 	}
 
-	log.Printf("  ✓ %s 杠杆已切换为 %dx", symbol, leverage)
+	log.Printf("  ✓ %s 杠杆已切换为 %dx (%s)", symbol, leverage, positionSide)
 
 	// 切换杠杆后等待3秒
 	log.Printf("  ⏱ 等待3秒冷却期...")
 	time.Sleep(3 * time.Second)
+
+	return nil
+}
+
+// SetLeverage 设置杠杆（实现Trader接口）
+// 对于OKX，由于需要指定posSide，这里尝试同时设置long和short方向的杠杆
+func (t *OKXTrader) SetLeverage(symbol string, leverage int) error {
+	// 尝试设置long方向
+	errLong := t.setLeverageInternal(symbol, leverage, "long")
+
+	// 尝试设置short方向
+	errShort := t.setLeverageInternal(symbol, leverage, "short")
+
+	// 如果两个都失败，返回错误
+	if errLong != nil && errShort != nil {
+		return fmt.Errorf("设置杠杆失败: long方向=%v, short方向=%v", errLong, errShort)
+	}
 
 	return nil
 }
@@ -376,7 +394,7 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 	}
 
 	// 设置杠杆
-	if err := t.SetLeverage(symbol, leverage); err != nil {
+	if err := t.setLeverageInternal(symbol, leverage, "long"); err != nil {
 		return nil, err
 	}
 
@@ -448,7 +466,7 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 	}
 
 	// 设置杠杆
-	if err := t.SetLeverage(symbol, leverage); err != nil {
+	if err := t.setLeverageInternal(symbol, leverage, "short"); err != nil {
 		return nil, err
 	}
 
