@@ -105,8 +105,7 @@ export function EquityChart({ traderId }: EquityChartProps) {
     : validHistory;
 
   // 计算初始余额（使用第一个有效数据点，如果无数据则从account获取，最后才用默认值）
-  const initialBalance = validHistory[0]?.total_equity
-    || account?.total_equity
+  const initialBalance = account?.initial_balance
     || 100;  // 默认值改为100，与常见配置一致
 
   // 转换数据格式
