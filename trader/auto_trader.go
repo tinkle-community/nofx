@@ -540,20 +540,21 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 			liquidationPrice = 0.0 // 使用默认值
 		}
 
-		// 计算盈亏百分比
-		pnlPct := 0.0
-		if side == "long" {
-			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100
-		} else {
-			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
-		}
-
 		// 计算占用保证金（估算）
 		leverage := 10 // 默认值，实际应该从持仓信息获取
 		if lev, ok := pos["leverage"].(float64); ok {
 			leverage = int(lev)
 		}
 		marginUsed := (quantity * markPrice) / float64(leverage)
+
+		// 计算盈亏百分比（考虑杠杆）
+		// 收益率 = 价格变化率 × 杠杆
+		pnlPct := 0.0
+		if side == "long" {
+			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100 * float64(leverage)
+		} else {
+			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100 * float64(leverage)
+		}
 		totalMarginUsed += marginUsed
 
 		// 跟踪持仓首次出现时间
@@ -1202,10 +1203,11 @@ func printPositionTable(positions []decision.PositionInfo, availableBalance floa
 		// 计算仓位价值
 		positionValue := pos.Quantity * pos.MarkPrice
 
-		// 计算保证金率 (保证金 / 仓位价值 × 100%)
+		// 计算保证金率 = (保证金 + 未实现盈亏) / 仓位价值 × 100%
+		// 这个指标反映了真实的风险状况，考虑了盈亏影响
 		marginRatio := 0.0
 		if positionValue > 0 {
-			marginRatio = (pos.MarginUsed / positionValue) * 100
+			marginRatio = ((pos.MarginUsed + pos.UnrealizedPnL) / positionValue) * 100
 		}
 
 		// 格式化收益显示 (金额 + 百分比)
