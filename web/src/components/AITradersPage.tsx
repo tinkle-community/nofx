@@ -317,7 +317,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
   const handleDeleteExchangeConfig = async (exchangeId: string) => {
     try {
-      // 调用真正的删除API
+      // 调用真正的删除API(原先的删除功能无效)
       await api.deleteExchangeConfig(exchangeId);
       
       // 重新获取交易所配置列表以更新界面
