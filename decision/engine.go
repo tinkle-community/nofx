@@ -91,13 +91,18 @@ type FullDecision struct {
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
 func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
+	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false)
+}
+
+// GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt）
+func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool) (*FullDecision, error) {
 	// 1. 为所有币种获取市场数据
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
+	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -199,6 +204,33 @@ func calculateMaxCandidates(ctx *Context) int {
 	return len(ctx.CandidateCoins)
 }
 
+// buildSystemPromptWithCustom 构建包含自定义内容的 System Prompt
+func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool) string {
+	// 如果覆盖基础prompt且有自定义prompt，只使用自定义prompt
+	if overrideBase && customPrompt != "" {
+		return customPrompt
+	}
+	
+	// 获取基础prompt
+	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage)
+	
+	// 如果没有自定义prompt，直接返回基础prompt
+	if customPrompt == "" {
+		return basePrompt
+	}
+	
+	// 添加自定义prompt部分到基础prompt
+	var sb strings.Builder
+	sb.WriteString(basePrompt)
+	sb.WriteString("\n\n")
+	sb.WriteString("# 📌 个性化交易策略\n\n")
+	sb.WriteString(customPrompt)
+	sb.WriteString("\n\n")
+	sb.WriteString("**注意**: 以上个性化策略是对基础规则的补充，不能违背基础风险控制原则。\n")
+	
+	return sb.String()
+}
+
 // buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
 func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
 	var sb strings.Builder
@@ -226,13 +258,18 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
 
-	// === 做空激励 ===
-	sb.WriteString("# 📉 做多做空平衡\n\n")
-	sb.WriteString("**重要**: 下跌趋势做空的利润 = 上涨趋势做多的利润\n\n")
-	sb.WriteString("- 上涨趋势 → 做多\n")
-	sb.WriteString("- 下跌趋势 → 做空\n")
-	sb.WriteString("- 震荡市场 → 观望\n\n")
-	sb.WriteString("**不要有做多偏见！做空是你的核心工具之一**\n\n")
+	// === 震荡交易策略 ===
+	sb.WriteString("# 📦 震荡交易策略（核心）\n\n")
+	sb.WriteString("**策略定位**: 专门做 BTC 震荡行情，快进快出，高胜率低盈亏比\n\n")
+	sb.WriteString("**震荡区间识别**：\n")
+	sb.WriteString("- 价格在15分钟/1小时 EMA20上下波动（±2-4%）\n")
+	sb.WriteString("- MACD 在零轴附近（-200到+200之间）\n")
+	sb.WriteString("- 多个时间框架方向不一致（如15m上涨但1h下跌）\n")
+	sb.WriteString("- RSI 在30-70区间反复震荡\n\n")
+	sb.WriteString("**交易逻辑**：\n")
+	sb.WriteString("- **区间下沿**（RSI<35 或接近支撑） → 做多\n")
+	sb.WriteString("- **区间上沿**（RSI>65 或接近压力） → 做空\n")
+	sb.WriteString("- **趋势行情**（多时间框架共振，放量突破） → 立即止损\n\n")
 
 	// === 交易频率认知 ===
 	sb.WriteString("# ⏱️ 交易频率认知\n\n")
@@ -247,21 +284,45 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	// === 开仓信号强度 ===
 	sb.WriteString("# 🎯 开仓标准（严格）\n\n")
 	sb.WriteString("只在**强信号**时开仓，不确定就观望。\n\n")
-	sb.WriteString("**你拥有的完整数据**：\n")
-	sb.WriteString("- 📊 **原始序列**：3分钟价格序列(MidPrices数组) + 4小时K线序列\n")
-	sb.WriteString("- 📈 **技术序列**：EMA20序列、MACD序列、RSI7序列、RSI14序列\n")
-	sb.WriteString("- 💰 **资金序列**：成交量序列、持仓量(OI)序列、资金费率\n")
-	sb.WriteString("- 🎯 **筛选标记**：AI500评分 / OI_Top排名（如果有标注）\n\n")
-	sb.WriteString("**分析方法**（完全由你自主决定）：\n")
-	sb.WriteString("- 自由运用序列数据，你可以做但不限于趋势分析、形态识别、支撑阻力、技术阻力位、斐波那契、波动带计算\n")
-	sb.WriteString("- 多维度交叉验证（价格+量+OI+指标+序列形态）\n")
-	sb.WriteString("- 用你认为最有效的方法发现高确定性机会\n")
-	sb.WriteString("- 综合信心度 ≥ 75 才开仓\n\n")
+	sb.WriteString("**你拥有的完整数据（专为震荡交易优化）**：\n\n")
+	sb.WriteString("**📊 四个时间框架序列**（每个包含最近10个数据点）：\n")
+	sb.WriteString("1. **3分钟序列**：实时价格 + 放量分析（当前价格 = 最后一根K线的收盘价）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("   - **Volumes**: 成交量序列（用于检测放量）\n")
+	sb.WriteString("   - **BuySellRatios**: 买卖压力比（>0.6多方强，<0.4空方强）\n")
+	sb.WriteString("2. **15分钟序列**：短期震荡区间识别（覆盖最近2.5小时）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("3. **1小时序列**：中期支撑压力确认（覆盖最近10小时）\n")
+	sb.WriteString("   - Mid prices, EMA20, MACD, RSI7, RSI14\n")
+	sb.WriteString("4. **4小时序列**：大趋势预警（覆盖最近40小时）\n")
+	sb.WriteString("   - EMA20 vs EMA50, ATR, Volume, MACD, RSI14\n\n")
+	sb.WriteString("**💰 资金数据**：\n")
+	sb.WriteString("- 持仓量(OI)变化、资金费率、成交量对比\n\n")
+	sb.WriteString("**🎯 震荡交易分析方法**：\n\n")
+	sb.WriteString("**1. 震荡区间识别**：\n")
+	sb.WriteString("- 价格在15m/1h EMA20 上下±2-4%波动\n")
+	sb.WriteString("- RSI 在30-70区间反复，未出现持续超买/超卖\n")
+	sb.WriteString("- MACD 在零轴附近震荡，未出现明确金叉/死叉\n")
+	sb.WriteString("- 1h和4h时间框架方向不一致（矛盾 = 震荡）\n\n")
+	sb.WriteString("**2. 买卖压力分析**（3分钟放量检测）：\n")
+	sb.WriteString("- **连续放量** = 最近2-3根3分钟K线成交量 > 平均成交量1.5倍\n")
+	sb.WriteString("- **买方力量**：BuySellRatio > 0.6（主动买入占比 > 60%）\n")
+	sb.WriteString("- **卖方力量**：BuySellRatio < 0.4（主动卖出占比 > 60%）\n")
+	sb.WriteString("- **放量+买压** → 可能向上突破，做多或止损空单\n")
+	sb.WriteString("- **放量+卖压** → 可能向下突破，做空或止损多单\n\n")
+	sb.WriteString("**3. 入场信号**（高胜率位置）：\n")
+	sb.WriteString("- **区间下沿做多**：RSI < 35 + 买卖压力比 > 0.5 + 价格接近15m EMA20下方\n")
+	sb.WriteString("- **区间上沿做空**：RSI > 65 + 买卖压力比 < 0.5 + 价格接近15m EMA20上方\n")
+	sb.WriteString("- **综合信心度 ≥ 75 才开仓**\n\n")
+	sb.WriteString("**4. 止损信号**（趋势突破，立即离场）：\n")
+	sb.WriteString("- 多时间框架共振（15m/1h/4h方向一致）\n")
+	sb.WriteString("- 连续2根以上3分钟K线放量突破区间\n")
+	sb.WriteString("- MACD 突破零轴并加速\n\n")
 	sb.WriteString("**避免低质量信号**：\n")
 	sb.WriteString("- 单一维度（只看一个指标）\n")
-	sb.WriteString("- 相互矛盾（涨但量萎缩）\n")
-	sb.WriteString("- 横盘震荡\n")
-	sb.WriteString("- 刚平仓不久（<15分钟）\n\n")
+	sb.WriteString("- 区间中部交易（等待区间边界）\n")
+	sb.WriteString("- 刚平仓不久（<10分钟）\n")
+	sb.WriteString("- 无买卖压力确认的入场\n\n")
 
 	// === 夏普比率自我进化 ===
 	sb.WriteString("# 🧬 夏普比率自我进化\n\n")
