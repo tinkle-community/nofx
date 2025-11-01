@@ -2,6 +2,7 @@ import useSWR from 'swr';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
 import { api } from '../lib/api';
+import { Brain, BarChart3, TrendingUp, TrendingDown, Sparkles, Coins, Trophy, ScrollText, Lightbulb } from 'lucide-react';
 
 interface TradeOutcome {
   symbol: string;
@@ -72,7 +73,9 @@ export default function AILearning({ traderId }: AILearningProps) {
   if (!performance) {
     return (
       <div className="rounded p-6" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
-        <div style={{ color: '#848E9C' }}>📊 {t('loading', language)}</div>
+        <div className="flex items-center gap-2" style={{ color: '#848E9C' }}>
+          <BarChart3 className="w-4 h-4" /> {t('loading', language)}
+        </div>
       </div>
     );
   }
@@ -81,7 +84,7 @@ export default function AILearning({ traderId }: AILearningProps) {
     return (
       <div className="rounded p-6" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">🧠</span>
+          <Brain className="w-5 h-5" style={{ color: '#8B5CF6' }} />
           <h2 className="text-lg font-bold" style={{ color: '#EAECEF' }}>{t('aiLearning', language)}</h2>
         </div>
         <div style={{ color: '#848E9C' }}>
@@ -109,12 +112,12 @@ export default function AILearning({ traderId }: AILearningProps) {
           filter: 'blur(60px)'
         }} />
         <div className="relative flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
             background: 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%)',
             boxShadow: '0 8px 24px rgba(139, 92, 246, 0.5)',
             border: '2px solid rgba(255, 255, 255, 0.1)'
           }}>
-            🧠
+            <Brain className="w-8 h-8" style={{ color: '#FFF' }} />
           </div>
           <div>
             <h2 className="text-3xl font-bold mb-1" style={{
@@ -149,7 +152,9 @@ export default function AILearning({ traderId }: AILearningProps) {
             <div className="text-4xl font-bold mono mb-1" style={{ color: '#E0E7FF' }}>
               {performance.total_trades}
             </div>
-            <div className="text-xs" style={{ color: '#6366F1' }}>📊 Trades</div>
+            <div className="text-xs flex items-center gap-1" style={{ color: '#6366F1' }}>
+              <BarChart3 className="w-3 h-3" /> Trades
+            </div>
           </div>
         </div>
 
@@ -199,7 +204,9 @@ export default function AILearning({ traderId }: AILearningProps) {
             <div className="text-4xl font-bold mono mb-1" style={{ color: '#10B981' }}>
               +{(performance.avg_win || 0).toFixed(2)}
             </div>
-            <div className="text-xs" style={{ color: '#6EE7B7' }}>📈 USDT Average</div>
+            <div className="text-xs flex items-center gap-1" style={{ color: '#6EE7B7' }}>
+              <TrendingUp className="w-3 h-3" /> USDT Average
+            </div>
           </div>
         </div>
 
@@ -220,7 +227,9 @@ export default function AILearning({ traderId }: AILearningProps) {
             <div className="text-4xl font-bold mono mb-1" style={{ color: '#F87171' }}>
               {(performance.avg_loss || 0).toFixed(2)}
             </div>
-            <div className="text-xs" style={{ color: '#FCA5A5' }}>📉 USDT Average</div>
+            <div className="text-xs flex items-center gap-1" style={{ color: '#FCA5A5' }}>
+              <TrendingDown className="w-3 h-3" /> USDT Average
+            </div>
           </div>
         </div>
       </div>
@@ -239,11 +248,11 @@ export default function AILearning({ traderId }: AILearningProps) {
           }} />
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{
                 background: 'rgba(139, 92, 246, 0.3)',
                 border: '1px solid rgba(139, 92, 246, 0.5)'
               }}>
-                🧬
+                <Sparkles className="w-6 h-6" style={{ color: '#A78BFA' }} />
               </div>
               <div>
                 <div className="text-lg font-bold" style={{ color: '#C4B5FD' }}>夏普比率</div>
@@ -307,11 +316,11 @@ export default function AILearning({ traderId }: AILearningProps) {
           }} />
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{
                 background: 'rgba(240, 185, 11, 0.3)',
                 border: '1px solid rgba(240, 185, 11, 0.5)'
               }}>
-                💰
+                <Coins className="w-6 h-6" style={{ color: '#FCD34D' }} />
               </div>
               <div>
                 <div className="text-lg font-bold" style={{ color: '#FCD34D' }}>
@@ -373,7 +382,7 @@ export default function AILearning({ traderId }: AILearningProps) {
               boxShadow: '0 4px 16px rgba(16, 185, 129, 0.1)'
             }}>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-2xl">🏆</span>
+                <Trophy className="w-6 h-6" style={{ color: '#10B981' }} />
                 <span className="text-sm font-semibold" style={{ color: '#6EE7B7' }}>{t('bestPerformer', language)}</span>
               </div>
               <div className="text-3xl font-bold mono mb-1" style={{ color: '#10B981' }}>
@@ -395,7 +404,7 @@ export default function AILearning({ traderId }: AILearningProps) {
               boxShadow: '0 4px 16px rgba(248, 113, 113, 0.1)'
             }}>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-2xl">📉</span>
+                <TrendingDown className="w-6 h-6" style={{ color: '#F87171' }} />
                 <span className="text-sm font-semibold" style={{ color: '#FCA5A5' }}>{t('worstPerformer', language)}</span>
               </div>
               <div className="text-3xl font-bold mono mb-1" style={{ color: '#F87171' }}>
@@ -428,7 +437,7 @@ export default function AILearning({ traderId }: AILearningProps) {
               backdropFilter: 'blur(10px)'
             }}>
               <h3 className="font-bold flex items-center gap-2 text-lg" style={{ color: '#E0E7FF' }}>
-                📊 {t('symbolPerformance', language)}
+                <BarChart3 className="w-5 h-5" /> {t('symbolPerformance', language)}
               </h3>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -488,7 +497,7 @@ export default function AILearning({ traderId }: AILearningProps) {
             backdropFilter: 'blur(10px)'
           }}>
             <div className="flex items-center gap-2">
-              <span className="text-2xl">📜</span>
+              <ScrollText className="w-6 h-6" style={{ color: '#FCD34D' }} />
               <div>
                 <h3 className="font-bold text-lg" style={{ color: '#FCD34D' }}>{t('tradeHistory', language)}</h3>
                 <p className="text-xs" style={{ color: '#94A3B8' }}>
@@ -631,7 +640,9 @@ export default function AILearning({ traderId }: AILearningProps) {
               })
             ) : (
               <div className="p-6 text-center">
-                <div className="text-4xl mb-2 opacity-50">📜</div>
+                <div className="mb-2 flex justify-center opacity-50">
+                  <ScrollText className="w-10 h-10" style={{ color: '#94A3B8' }} />
+                </div>
                 <div style={{ color: '#94A3B8' }}>{t('noCompletedTrades', language)}</div>
               </div>
             )}
@@ -646,11 +657,11 @@ export default function AILearning({ traderId }: AILearningProps) {
         boxShadow: '0 4px 16px rgba(240, 185, 11, 0.1)'
       }}>
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl flex-shrink-0" style={{
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{
             background: 'rgba(240, 185, 11, 0.2)',
             border: '1px solid rgba(240, 185, 11, 0.3)'
           }}>
-            💡
+            <Lightbulb className="w-5 h-5" style={{ color: '#FCD34D' }} />
           </div>
           <div>
             <h3 className="font-bold mb-3 text-base" style={{ color: '#FCD34D' }}>{t('howAILearns', language)}</h3>

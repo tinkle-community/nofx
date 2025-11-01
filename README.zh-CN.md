@@ -74,7 +74,7 @@ NOFX现已支持**三大交易所**：Binance、Hyperliquid和Aster DEX！
 
 **快速开始：**
 1. 获取你的MetaMask私钥（去掉`0x`前缀）
-2. 在config.json中设置`"exchange": "hyperliquid"`
+2. ~~在config.json中设置`"exchange": "hyperliquid"`~~ *通过Web界面配置*
 3. 添加`"hyperliquid_private_key": "your_key"`
 4. 开始交易！
 
@@ -101,7 +101,7 @@ NOFX现已支持**三大交易所**：Binance、Hyperliquid和Aster DEX！
 1. 访问[Aster API钱包](https://www.asterdex.com/en/api-wallet)
 2. 连接你的主钱包并创建API钱包
 3. 复制API Signer地址和私钥
-4. 在config.json中设置`"exchange": "aster"`
+4. ~~在config.json中设置`"exchange": "aster"`~~ *通过Web界面配置*
 5. 添加`"aster_user"`、`"aster_signer"`和`"aster_private_key"`
 
 ---
@@ -184,7 +184,7 @@ NOFX 目前已在**加密货币市场全面运行**，具备以下经过验证�
 ```
 nofx/
 ├── main.go                          # 程序入口（多trader管理器）
-├── config.json                      # 配置文件（API密钥、多trader配置）
+├── config.json                      # 配置文件（API密钥、~~多trader配置~~）(交易员配置通过Web界面)
 │
 ├── api/                            # HTTP API服务
 │   └── server.go                   # Gin框架，RESTful API
@@ -260,7 +260,7 @@ nofx/
 5. **创建API密钥**：
    - 进入账户 → API管理
    - 创建新的API密钥，**务必勾选"合约"权限**
-   - 保存API Key和Secret Key（config.json中需要）
+   - 保存API Key和Secret Key（~~config.json中需要~~ *Web界面中需要*）
    - **重要**：添加IP白名单以确保安全
 
 ### 手续费优惠说明：
@@ -282,11 +282,13 @@ Docker会自动处理所有依赖（Go、Node.js、TA-Lib）和环境配置，�
 #### 步骤1：准备配置文件
 ```bash
 # 复制配置文件模板
-cp config.json.example config.json
+cp config.example.jsonc config.json
 
 # 编辑并填入你的API密钥
 nano config.json  # 或使用其他编辑器
 ```
+
+⚠️ **注意**: 基础config.json仍需要一些设置，但~~交易员配置~~现在通过Web界面进行。
 
 #### 步骤2：一键启动
 ```bash
@@ -416,13 +418,15 @@ cd ..
 
 #### 🌟 新手模式配置（推荐）
 
-**步骤1**：复制并重命名示例配置文件
+~~**步骤1**：复制并重命名示例配置文件~~
 
-```bash
-cp config.json.example config.json
-```
+~~```bash
+cp config.example.jsonc config.json
+```~~
 
-**步骤2**：编辑`config.json`填入您的API密钥
+~~**步骤2**：编辑`config.json`填入您的API密钥~~ 
+
+*现在通过Web界面配置，无需编辑JSON文件*
 
 ```json
 {
@@ -487,7 +491,7 @@ cp config.json.example config.json
 3. **去掉`0x`前缀**
 4. 在[Hyperliquid](https://hyperliquid.xyz)上为钱包充值
 
-**步骤2**：为Hyperliquid配置`config.json`
+~~**步骤2**：为Hyperliquid配置`config.json`~~ *通过Web界面配置*
 
 ```json
 {
@@ -541,7 +545,7 @@ cp config.json.example config.json
    - API钱包地址（Signer）
    - API钱包私钥（⚠️ 仅显示一次！）
 
-**步骤2**：为Aster配置`config.json`
+~~**步骤2**：为Aster配置`config.json`~~ *通过Web界面配置*
 
 ```json
 {
@@ -789,9 +793,9 @@ go build -o nofx
 
 | 错误信息 | 解决方案 |
 |---------|---------|
-| `invalid API key` | 检查config.json中的币安API密钥 |
+| `invalid API key` | ~~检查config.json中的币安API密钥~~ *检查Web界面中的API密钥* |
 | `TA-Lib not found` | 运行`brew install ta-lib`（macOS） |
-| `port 8080 already in use` | 修改config.json中的`api_server_port` |
+| `port 8080 already in use` | ~~修改config.json中的`api_server_port`~~ *修改.env文件中的`API_PORT`* |
 | `DeepSeek API error` | 验证DeepSeek API密钥和余额 |
 
 **✅ 后端运行正常的标志：**
@@ -865,7 +869,7 @@ VITE v5.x.x  ready in xxx ms
 
 ```bash
 # 在新终端窗口中
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 应返回：`{"status":"ok"}`
@@ -1072,7 +1076,7 @@ GET /api/statistics?trader_id=xxx        # 统计信息
 ### 系统接口
 
 ```bash
-GET /health                   # 健康检查
+GET /api/health                   # 健康检查
 GET /api/config               # 系统配置
 ```
 
@@ -1228,7 +1232,7 @@ sudo apt-get install libta-lib0-dev
 **解决**:
 - 币种池API是可选的
 - 如果API失败，系统会使用默认主流币种（BTC、ETH等）
-- 检查config.json中的API URL和auth参数
+- ~~检查config.json中的API URL和auth参数~~ *检查Web界面中的配置*
 
 ---
 

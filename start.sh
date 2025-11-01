@@ -70,25 +70,61 @@ check_env() {
     if [ ! -f ".env" ]; then
         print_warning ".env 不存在，从模板复制..."
         cp .env.example .env
-        print_info "请编辑 .env 填入你的环境变量配置"
-        print_info "运行: nano .env 或使用其他编辑器"
-        exit 1
+        print_info "✓ 已使用默认环境变量创建 .env"
+        print_info "💡 如需修改端口等设置，可编辑 .env 文件"
     fi
     print_success "环境变量文件存在"
 }
 
 # ------------------------------------------------------------------------
-# Validation: Configuration File (config.json)
+# Validation: Configuration File (config.json) - BASIC SETTINGS ONLY
 # ------------------------------------------------------------------------
 check_config() {
     if [ ! -f "config.json" ]; then
         print_warning "config.json 不存在，从模板复制..."
         cp config.json.example config.json
-        print_info "请编辑 config.json 填入你的 API 密钥"
-        print_info "运行: nano config.json 或使用其他编辑器"
-        exit 1
+        print_info "✓ 已使用默认配置创建 config.json"
+        print_info "💡 如需修改基础设置（杠杆大小、开仓币种、管理员模式、JWT密钥等），可编辑 config.json"
+        print_info "💡 模型/交易所/交易员配置请使用Web界面"
     fi
     print_success "配置文件存在"
+}
+
+# ------------------------------------------------------------------------
+# Utility: Read Environment Variables
+# ------------------------------------------------------------------------
+read_env_vars() {
+    if [ -f ".env" ]; then
+        # 读取端口配置，设置默认值
+        NOFX_FRONTEND_PORT=$(grep "^NOFX_FRONTEND_PORT=" .env 2>/dev/null | cut -d'=' -f2 || echo "3000")
+        NOFX_BACKEND_PORT=$(grep "^NOFX_BACKEND_PORT=" .env 2>/dev/null | cut -d'=' -f2 || echo "8080")
+        
+        # 去除可能的引号和空格
+        NOFX_FRONTEND_PORT=$(echo "$NOFX_FRONTEND_PORT" | tr -d '"'"'" | tr -d ' ')
+        NOFX_BACKEND_PORT=$(echo "$NOFX_BACKEND_PORT" | tr -d '"'"'" | tr -d ' ')
+        
+        # 如果为空则使用默认值
+        NOFX_FRONTEND_PORT=${NOFX_FRONTEND_PORT:-3000}
+        NOFX_BACKEND_PORT=${NOFX_BACKEND_PORT:-8080}
+    else
+        # 如果.env不存在，使用默认端口
+        NOFX_FRONTEND_PORT=3000
+        NOFX_BACKEND_PORT=8080
+    fi
+}
+
+# ------------------------------------------------------------------------
+# Validation: Database File (config.db)
+# ------------------------------------------------------------------------
+check_database() {
+    if [ ! -f "config.db" ]; then
+        print_warning "数据库文件不存在，创建空数据库文件..."
+        # 创建空文件以避免Docker创建目录
+        touch config.db
+        print_info "✓ 已创建空数据库文件，系统将在启动时初始化"
+    else
+        print_success "数据库文件存在"
+    fi
 }
 
 # ------------------------------------------------------------------------
@@ -126,6 +162,9 @@ check_config() {
 start() {
     print_info "正在启动 NOFX AI Trading System..."
 
+    # 读取环境变量
+    read_env_vars
+
     # Auto-build frontend if missing or forced
     # if [ ! -d "web/dist" ] || [ "$1" == "--build" ]; then
     #     build_frontend
@@ -141,8 +180,8 @@ start() {
     fi
 
     print_success "服务已启动！"
-    print_info "Web 界面: http://localhost:3000"
-    print_info "API 端点: http://localhost:8080"
+    print_info "Web 界面: http://localhost:${NOFX_FRONTEND_PORT}"
+    print_info "API 端点: http://localhost:${NOFX_BACKEND_PORT}"
     print_info ""
     print_info "查看日志: ./start.sh logs"
     print_info "停止服务: ./start.sh stop"
@@ -181,11 +220,14 @@ logs() {
 # Monitoring: Status
 # ------------------------------------------------------------------------
 status() {
+    # 读取环境变量
+    read_env_vars
+    
     print_info "服务状态:"
     $COMPOSE_CMD ps
     echo ""
     print_info "健康检查:"
-    curl -s http://localhost:8080/health | jq '.' || echo "后端未响应"
+    curl -s "http://localhost:${NOFX_BACKEND_PORT}/api/health" | jq '.' || echo "后端未响应"
 }
 
 # ------------------------------------------------------------------------
@@ -247,6 +289,7 @@ main() {
         start)
             check_env
             check_config
+            check_database
             start "$2"
             ;;
         stop)

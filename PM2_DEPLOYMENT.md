@@ -79,7 +79,7 @@ npm install -g pm2
 
 - **前端 Web 界面**: http://localhost:3000
 - **后端 API**: http://localhost:8080
-- **健康检查**: http://localhost:8080/health
+- **健康检查**: http://localhost:8080/api/health
 
 ---
 
@@ -206,8 +206,11 @@ go build -o nofx
 ### 后端无法启动
 
 ```bash
-# 检查 config.json 是否存在
-ls -l config.json
+# ~~检查 config.json 是否存在~~
+# ~~ls -l config.json~~
+
+# 检查数据库文件是否存在
+ls -l trading.db
 
 # 检查权限
 chmod +x nofx

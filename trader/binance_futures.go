@@ -131,6 +131,46 @@ func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// SetMarginMode 设置仓位模式
+func (t *FuturesTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	var marginType futures.MarginType
+	if isCrossMargin {
+		marginType = futures.MarginTypeCrossed
+	} else {
+		marginType = futures.MarginTypeIsolated
+	}
+	
+	// 尝试设置仓位模式
+	err := t.client.NewChangeMarginTypeService().
+		Symbol(symbol).
+		MarginType(marginType).
+		Do(context.Background())
+	
+	marginModeStr := "全仓"
+	if !isCrossMargin {
+		marginModeStr = "逐仓"
+	}
+	
+	if err != nil {
+		// 如果错误信息包含"No need to change"，说明仓位模式已经是目标值
+		if contains(err.Error(), "No need to change margin type") {
+			log.Printf("  ✓ %s 仓位模式已是 %s", symbol, marginModeStr)
+			return nil
+		}
+		// 如果有持仓，无法更改仓位模式，但不影响交易
+		if contains(err.Error(), "Margin type cannot be changed if there exists position") {
+			log.Printf("  ⚠️ %s 有持仓，无法更改仓位模式，继续使用当前模式", symbol)
+			return nil
+		}
+		log.Printf("  ⚠️ 设置仓位模式失败: %v", err)
+		// 不返回错误，让交易继续
+		return nil
+	}
+	
+	log.Printf("  ✓ %s 仓位模式已设置为 %s", symbol, marginModeStr)
+	return nil
+}
+
 // SetLeverage 设置杠杆（智能判断+冷却期）
 func (t *FuturesTrader) SetLeverage(symbol string, leverage int) error {
 	// 先尝试获取当前杠杆（从持仓信息）
@@ -177,31 +217,6 @@ func (t *FuturesTrader) SetLeverage(symbol string, leverage int) error {
 	return nil
 }
 
-// SetMarginType 设置保证金模式
-func (t *FuturesTrader) SetMarginType(symbol string, marginType futures.MarginType) error {
-	err := t.client.NewChangeMarginTypeService().
-		Symbol(symbol).
-		MarginType(marginType).
-		Do(context.Background())
-
-	if err != nil {
-		// 如果已经是该模式，不算错误
-		if contains(err.Error(), "No need to change") {
-			log.Printf("  ✓ %s 保证金模式已是 %s", symbol, marginType)
-			return nil
-		}
-		return fmt.Errorf("设置保证金模式失败: %w", err)
-	}
-
-	log.Printf("  ✓ %s 保证金模式已切换为 %s", symbol, marginType)
-
-	// 切换保证金模式后等待3秒（避免冷却期错误）
-	log.Printf("  ⏱ 等待3秒冷却期...")
-	time.Sleep(3 * time.Second)
-
-	return nil
-}
-
 // OpenLong 开多仓
 func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
 	// 先取消该币种的所有委托单（清理旧的止损止盈单）
@@ -214,10 +229,7 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 		return nil, err
 	}
 
-	// 设置逐仓模式
-	if err := t.SetMarginType(symbol, futures.MarginTypeIsolated); err != nil {
-		return nil, err
-	}
+	// 注意：仓位模式应该由调用方（AutoTrader）在开仓前通过 SetMarginMode 设置
 
 	// 格式化数量到正确精度
 	quantityStr, err := t.FormatQuantity(symbol, quantity)
@@ -260,10 +272,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 		return nil, err
 	}
 
-	// 设置逐仓模式
-	if err := t.SetMarginType(symbol, futures.MarginTypeIsolated); err != nil {
-		return nil, err
-	}
+	// 注意：仓位模式应该由调用方（AutoTrader）在开仓前通过 SetMarginMode 设置
 
 	// 格式化数量到正确精度
 	quantityStr, err := t.FormatQuantity(symbol, quantity)
