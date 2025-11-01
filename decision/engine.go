@@ -258,6 +258,17 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
 	sb.WriteString("4. **保证金**: 总使用率 ≤ 90%\n\n")
 
+	// === 盈利保护与止损纪律 ===
+	sb.WriteString("## 🛡️ 盈利保护与止损纪律\n\n")
+	sb.WriteString("**盈利保护**:\n")
+	sb.WriteString("- 盈利≥2%: 止损上移至盈亏平衡点\n")
+	sb.WriteString("- 盈利≥4%: 使用移动止损（如ATR）至少保护50%利润\n")
+	sb.WriteString("- 盈利≥8%: 锁定80%利润，让剩余仓位跟随趋势\n\n")
+	sb.WriteString("**硬性止损**:\n")
+	sb.WriteString("- 单笔浮亏≥账户净值3% → 立即复盘，调整止损或减仓\n")
+	sb.WriteString("- 浮亏≥5% 或 多时间框架中有2个以上反向 → 必须停止亏损扩散\n")
+	sb.WriteString("- 调整止损/止盈时，请输出 `update_protection` 动作，并在JSON中提供新的 `stop_loss` / `take_profit`\n\n")
+
 	// === 做空激励 ===
 	sb.WriteString("# 📉 做多做空平衡\n\n")
 	sb.WriteString("**重要**: 下跌趋势做空的利润 = 上涨趋势做多的利润\n\n")
@@ -347,9 +358,10 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n\n")
 	sb.WriteString("**字段说明**:\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | update_protection | hold | wait\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
 	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
+	sb.WriteString("- `update_protection` 时: 仅填写需要调整的 `stop_loss` / `take_profit`，其余数值保持0；`reasoning` 必须说明调整依据\n\n")
 
 	// === 关键提醒 ===
 	sb.WriteString("---\n\n")
@@ -411,6 +423,9 @@ func buildUserPrompt(ctx *Context) string {
 
 			// 使用FormatMarketData输出完整市场数据
 			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
+				if health := formatPositionHealth(pos, marketData); health != "" {
+					sb.WriteString(fmt.Sprintf("_健康度_: %s\n\n", health))
+				}
 				sb.WriteString(market.Format(marketData))
 				sb.WriteString("\n")
 			}
@@ -453,6 +468,23 @@ func buildUserPrompt(ctx *Context) string {
 		if jsonData, err := json.Marshal(ctx.Performance); err == nil {
 			if err := json.Unmarshal(jsonData, &perfData); err == nil {
 				sb.WriteString(fmt.Sprintf("## 📊 夏普比率: %.2f\n\n", perfData.SharpeRatio))
+
+				switch {
+				case perfData.SharpeRatio < -0.3:
+					sb.WriteString("🚨 **纪律要求**：夏普比率低于 -0.3，立即执行以下动作：\n")
+					sb.WriteString("- 暂停新开仓至少18分钟（6个周期），除非信心度≥85且风险回报≥1:5\n")
+					sb.WriteString("- 若仍持仓，优先审视亏损仓位并考虑减仓或使用 `update_protection` 收紧止损\n")
+					sb.WriteString("- 所有风控动作需明确写入思维链并在 JSON 中体现\n\n")
+				case perfData.SharpeRatio < 0:
+					sb.WriteString("⚠️ **纪律提醒**：夏普比率为负，谨慎操作：\n")
+					sb.WriteString("- 新开仓信心度≥80，风险回报≥1:4\n")
+					sb.WriteString("- 优先管理现有仓位，必要时通过 `update_protection` 锁定利润或限制亏损\n")
+					sb.WriteString("- 避免同一币种 30 分钟内重复开仓\n\n")
+				case perfData.SharpeRatio > 0.7:
+					sb.WriteString("✅ 表现优秀，可维持节奏，但仍需严格遵守风险回报与保护单更新。\n\n")
+				default:
+					sb.WriteString("ℹ️ 保持当前策略，同时持续观察夏普比率，如有回落及时收紧风险。\n\n")
+				}
 			}
 		}
 	}
@@ -461,6 +493,110 @@ func buildUserPrompt(ctx *Context) string {
 	sb.WriteString("现在请分析并输出决策（思维链 + JSON）\n")
 
 	return sb.String()
+}
+
+func formatPositionHealth(pos PositionInfo, data *market.Data) string {
+	if data == nil {
+		return ""
+	}
+
+	var messages []string
+
+	pnl := pos.UnrealizedPnLPct
+	switch {
+	case pnl >= 8:
+		messages = append(messages, "✅ 盈利超过8%，请锁定至少80%的利润并保留趋势仓位")
+	case pnl >= 4:
+		messages = append(messages, "🟢 盈利超过4%，考虑启用移动止损保护收益")
+	case pnl >= 2:
+		messages = append(messages, "🟡 盈利超过2%，可将止损上移至盈亏平衡点")
+	case pnl <= -5:
+		messages = append(messages, "🔴 浮亏超过5%，需立即复盘趋势并考虑执行止损")
+	case pnl <= -3:
+		messages = append(messages, "🟠 浮亏超过3%，检查是否触发硬性止损条件")
+	default:
+		messages = append(messages, "⚪ 盈亏仍在可控范围，保持计划但密切关注趋势")
+	}
+
+	upCount, downCount := 0, 0
+	if v, ok := latestMACD(data.IntradaySeries); ok {
+		if v > 0 {
+			upCount++
+		} else if v < 0 {
+			downCount++
+		}
+	}
+	if v, ok := latestMACD15m(data.MidTermSeries15m); ok {
+		if v > 0 {
+			upCount++
+		} else if v < 0 {
+			downCount++
+		}
+	}
+	if v, ok := latestMACD1h(data.MidTermSeries1h); ok {
+		if v > 0 {
+			upCount++
+		} else if v < 0 {
+			downCount++
+		}
+	}
+	if v, ok := latestMACD4h(data.LongerTermContext); ok {
+		if v > 0 {
+			upCount++
+		} else if v < 0 {
+			downCount++
+		}
+	}
+
+	if pos.Side == "long" {
+		if data.CurrentPrice < data.CurrentEMA20 {
+			messages = append(messages, "⚠️ 现价跌破EMA20，短期动能减弱，请收紧止损")
+		}
+		if downCount >= 2 {
+			messages = append(messages, "⚠️ 至少两个时间框架转弱，必要时执行 `update_protection` 调整保护单")
+		} else if upCount >= 2 {
+			messages = append(messages, "✅ 多数时间框架仍支持多头趋势，可让利润奔跑")
+		}
+	} else {
+		if data.CurrentPrice > data.CurrentEMA20 {
+			messages = append(messages, "⚠️ 现价升破EMA20，短期可能反弹，注意回补止损")
+		}
+		if upCount >= 2 {
+			messages = append(messages, "⚠️ 至少两个时间框架转多，警惕趋势反转并及时调整保护单")
+		} else if downCount >= 2 {
+			messages = append(messages, "✅ 多数时间框架仍支持空头趋势，保持耐心")
+		}
+	}
+
+	return strings.Join(messages, " ")
+}
+
+func latestMACD(series *market.IntradayData) (float64, bool) {
+	if series == nil || len(series.MACDValues) == 0 {
+		return 0, false
+	}
+	return series.MACDValues[len(series.MACDValues)-1], true
+}
+
+func latestMACD15m(series *market.MidTermData15m) (float64, bool) {
+	if series == nil || len(series.MACDValues) == 0 {
+		return 0, false
+	}
+	return series.MACDValues[len(series.MACDValues)-1], true
+}
+
+func latestMACD1h(series *market.MidTermData1h) (float64, bool) {
+	if series == nil || len(series.MACDValues) == 0 {
+		return 0, false
+	}
+	return series.MACDValues[len(series.MACDValues)-1], true
+}
+
+func latestMACD4h(series *market.LongerTermData) (float64, bool) {
+	if series == nil || len(series.MACDValues) == 0 {
+		return 0, false
+	}
+	return series.MACDValues[len(series.MACDValues)-1], true
 }
 
 // parseFullDecisionResponse 解析AI的完整决策响应
@@ -587,6 +723,7 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		"close_short": true,
 		"hold":        true,
 		"wait":        true,
+		"update_protection": true,
 	}
 
 	if !validActions[d.Action] {
@@ -663,6 +800,13 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		if riskRewardRatio < 3.0 {
 			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥3.0:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
 				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
+		}
+	} else if d.Action == "update_protection" {
+		if d.StopLoss <= 0 && d.TakeProfit <= 0 {
+			return fmt.Errorf("更新保护单时至少需要提供新的止损或止盈价格")
+		}
+		if d.StopLoss < 0 || d.TakeProfit < 0 {
+			return fmt.Errorf("保护单价格必须大于0")
 		}
 	}
 

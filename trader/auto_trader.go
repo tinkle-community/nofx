@@ -554,6 +554,8 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 		return at.executeCloseLongWithRecord(decision, actionRecord)
 	case "close_short":
 		return at.executeCloseShortWithRecord(decision, actionRecord)
+	case "update_protection":
+		return at.executeUpdateProtectionWithRecord(decision, actionRecord)
 	case "hold", "wait":
 		// 无需执行，仅记录
 		return nil
@@ -717,6 +719,89 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	log.Printf("  ✓ 平仓成功")
+	return nil
+}
+
+// executeUpdateProtectionWithRecord 更新止损/止盈保护单
+func (at *AutoTrader) executeUpdateProtectionWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  🛡 更新保护单: %s", decision.Symbol)
+
+	if decision.StopLoss <= 0 && decision.TakeProfit <= 0 {
+		return fmt.Errorf("未提供新的止损或止盈，忽略更新")
+	}
+
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return fmt.Errorf("获取持仓失败: %w", err)
+	}
+
+	var (
+		positionSide string
+		quantity     float64
+		leverage     int
+	)
+
+	for _, pos := range positions {
+		symbol, ok := pos["symbol"].(string)
+		if !ok || symbol != decision.Symbol {
+			continue
+		}
+
+		side, ok := pos["side"].(string)
+		if !ok {
+			continue
+		}
+
+		qty, ok := pos["positionAmt"].(float64)
+		if !ok {
+			continue
+		}
+		if qty < 0 {
+			qty = -qty
+		}
+
+		positionSide = strings.ToUpper(side)
+		quantity = qty
+
+		if lev, ok := pos["leverage"].(float64); ok && lev > 0 {
+			leverage = int(lev)
+		}
+		break
+	}
+
+	if quantity == 0 || positionSide == "" {
+		return fmt.Errorf("未找到 %s 的持仓，无法更新保护单", decision.Symbol)
+	}
+
+	// 记录数量与杠杆
+	actionRecord.Quantity = quantity
+	if leverage > 0 {
+		actionRecord.Leverage = leverage
+	}
+
+	// 获取当前价格用于日志
+	if marketData, err := market.Get(decision.Symbol); err == nil {
+		actionRecord.Price = marketData.CurrentPrice
+	}
+
+	// 取消旧的保护单，失败时继续尝试设置新保护
+	if err := at.trader.CancelAllOrders(decision.Symbol); err != nil {
+		log.Printf("  ⚠ 取消旧保护单失败（可能不存在挂单）: %v", err)
+	}
+
+	if decision.StopLoss > 0 {
+		if err := at.trader.SetStopLoss(decision.Symbol, positionSide, quantity, decision.StopLoss); err != nil {
+			return fmt.Errorf("设置新的止损失败: %w", err)
+		}
+	}
+
+	if decision.TakeProfit > 0 {
+		if err := at.trader.SetTakeProfit(decision.Symbol, positionSide, quantity, decision.TakeProfit); err != nil {
+			return fmt.Errorf("设置新的止盈失败: %w", err)
+		}
+	}
+
+	log.Printf("  ✓ 保护单更新完成（止损: %.4f, 止盈: %.4f）", decision.StopLoss, decision.TakeProfit)
 	return nil
 }
 
