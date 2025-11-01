@@ -26,6 +26,7 @@ type AutoTraderConfig struct {
 	// 币安API配置
 	BinanceAPIKey    string
 	BinanceSecretKey string
+	BinanceTestnet   bool // 是否使用币安测试网
 
 	// Hyperliquid配置
 	HyperliquidPrivateKey string
@@ -135,10 +136,23 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 
 	switch config.Exchange {
 	case "binance":
-		log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
+		if config.BinanceTestnet {
+			log.Printf("🏦 [%s] 使用币安测试网 (https://testnet.binancefuture.com)", config.Name)
+			log.Printf("ℹ️  [%s] 测试网模式 - 仅用于测试，不会产生真实交易", config.Name)
+		} else {
+			log.Printf("🏦 [%s] 使用币安主网 (https://fapi.binance.com)", config.Name)
+			log.Printf("⚠️  [%s] 主网模式 - 将进行真实交易，请谨慎操作！", config.Name)
+		}
+		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, config.BinanceTestnet)
 	case "hyperliquid":
 		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
+		if config.HyperliquidTestnet {
+			log.Printf("🏦 [%s] 使用Hyperliquid测试网", config.Name)
+			log.Printf("ℹ️  [%s] 测试网模式 - 仅用于测试，不会产生真实交易", config.Name)
+		} else {
+			log.Printf("🏦 [%s] 使用Hyperliquid主网", config.Name)
+			log.Printf("⚠️  [%s] 主网模式 - 将进行真实交易，请谨慎操作！", config.Name)
+		}
 		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
 		if err != nil {
 			return nil, fmt.Errorf("初始化Hyperliquid交易器失败: %w", err)

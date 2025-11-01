@@ -364,6 +364,7 @@ cp config.json.example config.json
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY",
+      "binance_testnet": false,
       "use_qwen": false,
       "deepseek_key": "sk-xxxxxxxxxxxxx",
       "qwen_key": "",
@@ -528,6 +529,7 @@ cp config.json.example config.json
       "ai_model": "qwen",
       "binance_api_key": "YOUR_BINANCE_API_KEY_1",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_1",
+      "binance_testnet": false,
       "use_qwen": true,
       "qwen_key": "sk-xxxxx",
       "deepseek_key": "",
@@ -540,6 +542,7 @@ cp config.json.example config.json
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY_2",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_2",
+      "binance_testnet": false,
       "use_qwen": false,
       "qwen_key": "",
       "deepseek_key": "sk-xxxxx",
@@ -572,9 +575,10 @@ cp config.json.example config.json
 | `exchange` | Використовувана біржа | `"binance"` або `"hyperliquid"` або `"aster"` | ✅ Так |
 | `binance_api_key` | Binance API ключ | `"abc123..."` | Потрібно при використанні Binance |
 | `binance_secret_key` | Binance Secret ключ | `"xyz789..."` | Потрібно при використанні Binance |
+| `binance_testnet` | Використовувати Binance тестнет<br>ℹ️ `true`: Тестнет (безпечне тестування)<br>⚠️ `false`: Основна мережа (реальна торгівля!) | `true` або `false` | ❌ Ні (за замовчуванням false) |
 | `hyperliquid_private_key` | Hyperliquid приватний ключ<br>⚠️ Видаліть префікс `0x` | `"your_key..."` | Потрібно при використанні Hyperliquid |
 | `hyperliquid_wallet_addr` | Hyperliquid адреса гаманця | `"0xabc..."` | Потрібно при використанні Hyperliquid |
-| `hyperliquid_testnet` | Використовувати тестнет | `true` або `false` | ❌ Ні (за замовчуванням false) |
+| `hyperliquid_testnet` | Використовувати Hyperliquid тестнет<br>ℹ️ `true`: Тестнет (безпечне тестування)<br>⚠️ `false`: Основна мережа (реальна торгівля!) | `true` або `false` | ❌ Ні (за замовчуванням false) |
 | `use_qwen` | Використовувати чи Qwen | `true` або `false` | ✅ Так |
 | `deepseek_key` | DeepSeek API ключ | `"sk-xxx"` | Потрібно при використанні DeepSeek |
 | `qwen_key` | Qwen API ключ | `"sk-xxx"` | Потрібно при використанні Qwen |
