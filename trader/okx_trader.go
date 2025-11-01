@@ -660,9 +660,15 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "sell",
-		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "long" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
+	// net mode: 必须省略 posSide 参数
+	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
 	}
 
 	// 📊 调试日志：打印请求详情
@@ -777,9 +783,15 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "buy",
-		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "short" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
+	// net mode: 必须省略 posSide 参数
+	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
 	}
 
 	// 📊 调试日志：打印请求详情
@@ -991,4 +1003,205 @@ func (t *OKXTrader) FormatQuantity(symbol string, quantity float64) (string, err
 
 	format := fmt.Sprintf("%%.%df", precision)
 	return fmt.Sprintf(format, quantity), nil
+}
+
+// AdjustMargin 调整持仓保证金
+// type: "add" 增加保证金, "reduce" 减少保证金
+func (t *OKXTrader) AdjustMargin(symbol string, posSide string, marginType string, amount float64) error {
+	// 🔥 Dry Run 模式：只记录日志，不发送真实请求
+	if t.dryRun {
+		log.Printf("📝 [DRY RUN] 调整保证金: %s %s, 类型: %s, 金额: %.2f USDT", symbol, posSide, marginType, amount)
+		return nil
+	}
+
+	if amount <= 0 {
+		return fmt.Errorf("调整金额必须大于0: %.2f", amount)
+	}
+
+	if marginType != "add" && marginType != "reduce" {
+		return fmt.Errorf("无效的调整类型: %s (应为 add 或 reduce)", marginType)
+	}
+
+	body := map[string]interface{}{
+		"instId":  symbol,
+		"posSide": posSide,
+		"type":    marginType,
+		"amt":     fmt.Sprintf("%.2f", amount),
+	}
+
+	data, err := t.request(context.Background(), "POST", "/api/v5/account/position/margin-balance", body)
+	if err != nil {
+		return fmt.Errorf("调整保证金失败: %w", err)
+	}
+
+	var results []struct {
+		Amt     string `json:"amt"`
+		InstId  string `json:"instId"`
+		PosSide string `json:"posSide"`
+		Type    string `json:"type"`
+	}
+
+	if err := json.Unmarshal(data, &results); err != nil {
+		return fmt.Errorf("解析调整保证金响应失败: %w", err)
+	}
+
+	if len(results) == 0 {
+		return fmt.Errorf("调整保证金响应为空")
+	}
+
+	actionText := "增加"
+	if marginType == "reduce" {
+		actionText = "减少"
+	}
+	log.Printf("  ✓ %s %s 保证金: %.2f USDT", actionText, symbol, amount)
+
+	return nil
+}
+
+// CheckAndAdjustMargin 检查并自动调整保证金（防爆仓 + 优化资金效率）
+func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, availableBalance float64) error {
+	for _, pos := range positions {
+		symbol, ok := pos["symbol"].(string)
+		if !ok || symbol == "" {
+			continue
+		}
+
+		side, ok := pos["side"].(string)
+		if !ok {
+			continue
+		}
+
+		markPrice, ok := pos["markPrice"].(float64)
+		if !ok || markPrice <= 0 {
+			continue
+		}
+
+		entryPrice, ok := pos["entryPrice"].(float64)
+		if !ok || entryPrice <= 0 {
+			continue
+		}
+
+		liquidationPrice, ok := pos["liquidationPrice"].(float64)
+		if !ok || liquidationPrice <= 0 {
+			continue
+		}
+
+		positionAmt, ok := pos["positionAmt"].(float64)
+		if !ok || positionAmt <= 0 {
+			continue
+		}
+
+		leverage := 10.0
+		if lev, ok := pos["leverage"].(float64); ok && lev > 0 {
+			leverage = lev
+		}
+
+		// 获取原始 posSide
+		posSide := "net"
+		if ps, ok := pos["posSide"].(string); ok && ps != "" {
+			posSide = ps
+		} else {
+			// 兼容：如果没有 posSide，根据 side 推断
+			if side == "long" {
+				posSide = "long"
+			} else if side == "short" {
+				posSide = "short"
+			}
+		}
+
+		// 🔧 转换symbol格式：XXX-USDT → XXX-USDT-SWAP
+		instId := symbol
+		if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-USDT") && !strings.HasSuffix(symbol, "-SWAP") {
+			instId = symbol + "-SWAP"
+		}
+
+		// 计算盈亏百分比
+		pnlPct := 0.0
+		if side == "long" {
+			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100
+		} else {
+			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
+		}
+
+		// 计算距离强平价的百分比
+		distanceToLiqPct := 0.0
+		if side == "long" {
+			// 多仓：当前价格 - 强平价
+			distanceToLiqPct = ((markPrice - liquidationPrice) / markPrice) * 100
+		} else {
+			// 空仓：强平价 - 当前价格
+			distanceToLiqPct = ((liquidationPrice - markPrice) / markPrice) * 100
+		}
+
+		// === 场景1: 防爆仓保护 ===
+		// 当距离强平价 < 10% 时，追加保证金
+		if distanceToLiqPct < 10 && distanceToLiqPct > 0 {
+			// 计算需要追加的保证金，使强平距离扩大到 15%
+			// 当前保证金
+			currentMargin := (positionAmt * markPrice) / leverage
+
+			// 目标：让强平距离达到 15%
+			// 需要的总保证金 = 仓位价值 / (1 / 0.15) ≈ 仓位价值 * 0.15
+			targetMarginRatio := 0.15 // 15% 的安全距离
+			targetMargin := (positionAmt * markPrice) * targetMarginRatio
+
+			addAmount := targetMargin - currentMargin
+			if addAmount > 0 {
+				// 检查可用余额是否足够
+				if addAmount > availableBalance*0.5 { // 最多使用50%的可用余额
+					addAmount = availableBalance * 0.5
+				}
+
+				if addAmount >= 0.1 { // 至少追加0.1 USDT才有意义
+					log.Printf("⚠️  %s %s 接近强平价！距离=%.2f%%, 追加保证金 %.2f USDT",
+						symbol, side, distanceToLiqPct, addAmount)
+
+					if err := t.AdjustMargin(instId, posSide, "add", addAmount); err != nil {
+						log.Printf("❌ 追加保证金失败: %v", err)
+					} else {
+						// 清除持仓缓存，下次获取最新数据
+						t.positionsCacheMutex.Lock()
+						t.cachedPositions = nil
+						t.positionsCacheMutex.Unlock()
+					}
+				}
+			}
+		}
+
+		// === 场景2: 盈利时释放保证金 ===
+		// 条件：盈利 > 20% 且 距离强平 > 30%
+		if pnlPct > 20 && distanceToLiqPct > 30 {
+			// 当前保证金
+			currentMargin := (positionAmt * markPrice) / leverage
+
+			// 目标：保持强平距离至少 20%
+			targetMarginRatio := 0.20
+			minMargin := (positionAmt * markPrice) * targetMarginRatio
+
+			reduceAmount := currentMargin - minMargin
+			if reduceAmount > 0 {
+				// 最多释放 30% 的保证金
+				maxReduce := currentMargin * 0.3
+				if reduceAmount > maxReduce {
+					reduceAmount = maxReduce
+				}
+
+				if reduceAmount >= 0.1 { // 至少释放0.1 USDT才有意义
+					log.Printf("💰 %s %s 盈利中(%.2f%%)，释放保证金 %.2f USDT，提高资金效率",
+						symbol, side, pnlPct, reduceAmount)
+
+					if err := t.AdjustMargin(instId, posSide, "reduce", reduceAmount); err != nil {
+						log.Printf("❌ 释放保证金失败: %v", err)
+					} else {
+						// 清除持仓缓存，下次获取最新数据
+						t.positionsCacheMutex.Lock()
+						t.cachedPositions = nil
+						t.positionsCacheMutex.Unlock()
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
