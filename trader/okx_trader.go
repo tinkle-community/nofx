@@ -37,6 +37,11 @@ type OKXTrader struct {
 	positionsCacheTime  time.Time
 	positionsCacheMutex sync.RWMutex
 
+	// 持仓模式配置（从 API 获取的真实配置）
+	positionMode      string // "long_short_mode" 或 "net_mode"
+	positionModeCache time.Time
+	posModeMutex      sync.RWMutex
+
 	// 缓存有效期（15秒）
 	cacheDuration time.Duration
 }
@@ -316,36 +321,68 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// detectPositionMode 检测账户的持仓模式（单向 net 或双向 long/short）
-func (t *OKXTrader) detectPositionMode() string {
-	// 获取现有持仓
-	positions, err := t.GetPositions()
-	if err != nil || len(positions) == 0 {
-		// 如果没有持仓或获取失败，默认使用 net 模式（更通用）
-		return "net"
+// GetAccountConfig 获取账户配置（包含持仓模式）
+func (t *OKXTrader) GetAccountConfig() (string, error) {
+	// 🔥 Dry Run 模式：返回默认配置
+	if t.dryRun {
+		return "net_mode", nil
 	}
 
-	// 检查第一个持仓的 posSide
-	if posSide, ok := positions[0]["posSide"].(string); ok {
-		if posSide == "net" {
-			return "net"
-		}
-		// 如果是 "long" 或 "short"，说明是双向持仓模式
-		return "dual" // 返回 "dual" 表示双向持仓模式
+	// 先检查缓存是否有效（缓存1小时，持仓模式不会频繁变化）
+	t.posModeMutex.RLock()
+	if t.positionMode != "" && time.Since(t.positionModeCache) < time.Hour {
+		posMode := t.positionMode
+		t.posModeMutex.RUnlock()
+		return posMode, nil
+	}
+	t.posModeMutex.RUnlock()
+
+	// 缓存过期或不存在，调用API
+	data, err := t.request(context.Background(), "GET", "/api/v5/account/config", nil)
+	if err != nil {
+		return "", fmt.Errorf("获取账户配置失败: %w", err)
 	}
 
-	// 默认返回 net 模式
-	return "net"
+	var configs []struct {
+		PosMode string `json:"posMode"` // "long_short_mode" 或 "net_mode"
+	}
+
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return "", fmt.Errorf("解析账户配置失败: %w", err)
+	}
+
+	if len(configs) == 0 {
+		return "", fmt.Errorf("账户配置数据为空")
+	}
+
+	posMode := configs[0].PosMode
+	log.Printf("📋 OKX 账户持仓模式: %s", posMode)
+
+	// 更新缓存
+	t.posModeMutex.Lock()
+	t.positionMode = posMode
+	t.positionModeCache = time.Now()
+	t.posModeMutex.Unlock()
+
+	return posMode, nil
 }
 
-// getPosSideForOpen 获取开仓时应该使用的 posSide
-// 根据账户持仓模式和方向（long/short）返回正确的 posSide
-func (t *OKXTrader) getPosSideForOpen(direction string) string {
-	mode := t.detectPositionMode()
-	if mode == "net" {
+// getPosSideForTrade 获取交易时应该使用的 posSide
+// 根据账户真实配置的持仓模式和方向（long/short）返回正确的 posSide
+func (t *OKXTrader) getPosSideForTrade(direction string) string {
+	// 获取账户配置的持仓模式
+	posMode, err := t.GetAccountConfig()
+	if err != nil {
+		log.Printf("⚠️  获取持仓模式失败，默认使用单向持仓: %v", err)
+		return "net" // 出错时默认使用单向持仓
+	}
+
+	// 根据持仓模式返回正确的 posSide
+	if posMode == "net_mode" {
 		return "net" // 单向持仓模式
 	}
-	return direction // 双向持仓模式，返回 "long" 或 "short"
+	// long_short_mode - 双向持仓模式
+	return direction // 返回 "long" 或 "short"
 }
 
 // setLeverageInternal 设置杠杆（内部方法，带持仓方向）
@@ -426,9 +463,9 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
 	}
 
-	// 🔧 检测并使用正确的 posSide
-	posSide := t.getPosSideForOpen("long")
-	log.Printf("  📊 检测到持仓模式: %s, 开多仓使用 posSide=%s", t.detectPositionMode(), posSide)
+	// 🔧 获取正确的 posSide（基于账户真实配置）
+	posSide := t.getPosSideForTrade("long")
+	log.Printf("  📊 开多仓使用 posSide=%s", posSide)
 
 	// 设置杠杆
 	if err := t.setLeverageInternal(symbol, leverage, posSide); err != nil {
@@ -502,9 +539,9 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
 	}
 
-	// 🔧 检测并使用正确的 posSide
-	posSide := t.getPosSideForOpen("short")
-	log.Printf("  📊 检测到持仓模式: %s, 开空仓使用 posSide=%s", t.detectPositionMode(), posSide)
+	// 🔧 获取正确的 posSide（基于账户真实配置）
+	posSide := t.getPosSideForTrade("short")
+	log.Printf("  📊 开空仓使用 posSide=%s", posSide)
 
 	// 设置杠杆
 	if err := t.setLeverageInternal(symbol, leverage, posSide); err != nil {
