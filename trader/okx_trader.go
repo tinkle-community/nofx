@@ -244,8 +244,9 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		LiqPx   string `json:"liqPx"`
 		PosSide string `json:"posSide"`
 		MgnMode string `json:"mgnMode"`
-		CTime   string `json:"cTime"` // 持仓创建时间（Unix毫秒时间戳）
-		UTime   string `json:"uTime"` // 持仓更新时间（Unix毫秒时间戳）
+		Margin  string `json:"margin"` // 保证金余额（来自OKX API）
+		CTime   string `json:"cTime"`  // 持仓创建时间（Unix毫秒时间戳）
+		UTime   string `json:"uTime"`  // 持仓更新时间（Unix毫秒时间戳）
 	}
 
 	if err := json.Unmarshal(data, &positions); err != nil {
@@ -272,6 +273,7 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		posMap["unRealizedProfit"], _ = strconv.ParseFloat(pos.Upl, 64)
 		posMap["leverage"], _ = strconv.ParseFloat(pos.Lever, 64)
 		posMap["liquidationPrice"], _ = strconv.ParseFloat(pos.LiqPx, 64)
+		posMap["margin"], _ = strconv.ParseFloat(pos.Margin, 64) // 保证金余额（来自API）
 
 		// 判断方向
 		// OKX有两种持仓模式：
@@ -860,18 +862,14 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 }
 
 // CancelAllOrders 取消该币种的所有挂单
+// ⚠️ 注意：OKX没有提供"取消指定币种所有挂单"的直接API
+// /api/v5/trade/cancel-all-after 是倒计时全部撤单API，需要timeOut参数
+// 正确实现需要：先查询挂单列表，然后批量取消
+// TODO: 实现完整的取消逻辑（查询+批量取消）
 func (t *OKXTrader) CancelAllOrders(symbol string) error {
-	body := map[string]interface{}{
-		"instId": symbol,
-	}
-
-	_, err := t.request(context.Background(), "POST", "/api/v5/trade/cancel-all-after", body)
-	if err != nil {
-		// 如果没有挂单，不算错误
-		return nil
-	}
-
-	log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
+	// 临时实现：暂不执行任何操作
+	// 因为原实现使用了错误的API endpoint
+	log.Printf("  ⚠️  跳过取消 %s 挂单（功能待实现）", symbol)
 	return nil
 }
 
@@ -922,15 +920,16 @@ func (t *OKXTrader) SetStopLoss(symbol string, positionSide string, quantity, st
 		return err
 	}
 
+	// 🔧 根据OKX文档，ordType="conditional"（止盈止损）应使用 slTriggerPx/slOrdPx
 	body := map[string]interface{}{
-		"instId":    symbol,
-		"tdMode":    "isolated",
-		"side":      side,
-		"posSide":   posSide,
-		"ordType":   "conditional",
-		"sz":        quantityStr,
-		"triggerPx": fmt.Sprintf("%.8f", stopPrice),
-		"orderPx":   "-1", // 市价
+		"instId":      symbol,
+		"tdMode":      "isolated",
+		"side":        side,
+		"posSide":     posSide,
+		"ordType":     "conditional", // 单向止盈止损
+		"sz":          quantityStr,
+		"slTriggerPx": fmt.Sprintf("%.8f", stopPrice), // 止损触发价
+		"slOrdPx":     "-1",                           // -1 表示市价止损
 	}
 
 	_, err = t.request(context.Background(), "POST", "/api/v5/trade/order-algo", body)
@@ -961,15 +960,16 @@ func (t *OKXTrader) SetTakeProfit(symbol string, positionSide string, quantity, 
 		return err
 	}
 
+	// 🔧 根据OKX文档，ordType="conditional"（止盈止损）应使用 tpTriggerPx/tpOrdPx
 	body := map[string]interface{}{
-		"instId":    symbol,
-		"tdMode":    "isolated",
-		"side":      side,
-		"posSide":   posSide,
-		"ordType":   "conditional",
-		"sz":        quantityStr,
-		"triggerPx": fmt.Sprintf("%.8f", takeProfitPrice),
-		"orderPx":   "-1", // 市价
+		"instId":      symbol,
+		"tdMode":      "isolated",
+		"side":        side,
+		"posSide":     posSide,
+		"ordType":     "conditional", // 单向止盈止损
+		"sz":          quantityStr,
+		"tpTriggerPx": fmt.Sprintf("%.8f", takeProfitPrice), // 止盈触发价
+		"tpOrdPx":     "-1",                                 // -1 表示市价止盈
 	}
 
 	_, err = t.request(context.Background(), "POST", "/api/v5/trade/order-algo", body)
