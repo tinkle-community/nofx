@@ -24,17 +24,18 @@ type LeverageConfig struct {
 
 // ConfigFile 配置文件结构，只包含需要同步到数据库的字段
 type ConfigFile struct {
-	AdminMode          bool           `json:"admin_mode"`
-	APIServerPort      int            `json:"api_server_port"`
-	UseDefaultCoins    bool           `json:"use_default_coins"`
-	DefaultCoins       []string       `json:"default_coins"`
-	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
-	OITopAPIURL        string         `json:"oi_top_api_url"`
-	MaxDailyLoss       float64        `json:"max_daily_loss"`
-	MaxDrawdown        float64        `json:"max_drawdown"`
-	StopTradingMinutes int            `json:"stop_trading_minutes"`
-	Leverage           LeverageConfig `json:"leverage"`
-	JWTSecret          string         `json:"jwt_secret"`
+	AdminMode          bool                `json:"admin_mode"`
+	APIServerPort      int                 `json:"api_server_port"`
+	UseDefaultCoins    bool                `json:"use_default_coins"`
+	DefaultCoins       []string            `json:"default_coins"`
+	CoinPoolAPIURL     string              `json:"coin_pool_api_url"`
+	OITopAPIURL        string              `json:"oi_top_api_url"`
+	MaxDailyLoss       float64             `json:"max_daily_loss"`
+	MaxDrawdown        float64             `json:"max_drawdown"`
+	StopTradingMinutes int                 `json:"stop_trading_minutes"`
+	Leverage           LeverageConfig      `json:"leverage"`
+	JWTSecret          string              `json:"jwt_secret"`
+	News               []config.NewsConfig `json:"news"`
 }
 
 // syncConfigToDatabase 从config.json读取配置并同步到数据库
@@ -61,14 +62,14 @@ func syncConfigToDatabase(database *config.Database) error {
 
 	// 同步各配置项到数据库
 	configs := map[string]string{
-		"admin_mode":            fmt.Sprintf("%t", configFile.AdminMode),
-		"api_server_port":       strconv.Itoa(configFile.APIServerPort),
-		"use_default_coins":     fmt.Sprintf("%t", configFile.UseDefaultCoins),
-		"coin_pool_api_url":     configFile.CoinPoolAPIURL,
-		"oi_top_api_url":        configFile.OITopAPIURL,
-		"max_daily_loss":        fmt.Sprintf("%.1f", configFile.MaxDailyLoss),
-		"max_drawdown":          fmt.Sprintf("%.1f", configFile.MaxDrawdown),
-		"stop_trading_minutes":  strconv.Itoa(configFile.StopTradingMinutes),
+		"admin_mode":           fmt.Sprintf("%t", configFile.AdminMode),
+		"api_server_port":      strconv.Itoa(configFile.APIServerPort),
+		"use_default_coins":    fmt.Sprintf("%t", configFile.UseDefaultCoins),
+		"coin_pool_api_url":    configFile.CoinPoolAPIURL,
+		"oi_top_api_url":       configFile.OITopAPIURL,
+		"max_daily_loss":       fmt.Sprintf("%.1f", configFile.MaxDailyLoss),
+		"max_drawdown":         fmt.Sprintf("%.1f", configFile.MaxDrawdown),
+		"stop_trading_minutes": strconv.Itoa(configFile.StopTradingMinutes),
 	}
 
 	// 同步default_coins（转换为JSON字符串存储）
@@ -90,6 +91,14 @@ func syncConfigToDatabase(database *config.Database) error {
 	// 如果JWT密钥不为空，也同步
 	if configFile.JWTSecret != "" {
 		configs["jwt_secret"] = configFile.JWTSecret
+	}
+
+	// 新闻配置
+	if len(configFile.News) != 0 {
+		newsJSON, err := json.Marshal(configFile.News)
+		if err == nil {
+			configs["news_config"] = string(newsJSON)
+		}
 	}
 
 	// 更新数据库配置
@@ -133,11 +142,11 @@ func main() {
 	useDefaultCoinsStr, _ := database.GetSystemConfig("use_default_coins")
 	useDefaultCoins := useDefaultCoinsStr == "true"
 	apiPortStr, _ := database.GetSystemConfig("api_server_port")
-	
+
 	// 获取管理员模式配置
 	adminModeStr, _ := database.GetSystemConfig("admin_mode")
 	adminMode := adminModeStr != "false" // 默认为true
-	
+
 	// 设置JWT密钥
 	jwtSecret, _ := database.GetSystemConfig("jwt_secret")
 	if jwtSecret == "" {
@@ -145,7 +154,7 @@ func main() {
 		log.Printf("⚠️  使用默认JWT密钥，建议在生产环境中配置")
 	}
 	auth.SetJWTSecret(jwtSecret)
-	
+
 	// 在管理员模式下，确保admin用户存在
 	if adminMode {
 		err := database.EnsureAdminUser()
@@ -156,7 +165,7 @@ func main() {
 		}
 		auth.SetAdminMode(true)
 	}
-	
+
 	log.Printf("✓ 配置数据库初始化成功")
 	fmt.Println()
 
@@ -192,7 +201,7 @@ func main() {
 		pool.SetCoinPoolAPI(coinPoolAPIURL)
 		log.Printf("✓ 已配置AI500币种池API")
 	}
-	
+
 	oiTopAPIURL, _ := database.GetSystemConfig("oi_top_api_url")
 	if oiTopAPIURL != "" {
 		pool.SetOITopAPI(oiTopAPIURL)
@@ -237,7 +246,7 @@ func main() {
 				status = "运行中"
 			}
 			fmt.Printf("  • %s (%s + %s) - 用户: %s - 初始资金: %.0f USDT [%s]\n",
-				trader.Name, strings.ToUpper(trader.AIModelID), strings.ToUpper(trader.ExchangeID), 
+				trader.Name, strings.ToUpper(trader.AIModelID), strings.ToUpper(trader.ExchangeID),
 				trader.UserID, trader.InitialBalance, status)
 		}
 	}
@@ -256,7 +265,7 @@ func main() {
 	fmt.Println()
 
 	// 获取API服务器端口
-    apiPort := 8080 // 默认端口
+	apiPort := 8080 // 默认端口
 	if apiPortStr != "" {
 		if port, err := strconv.Atoi(apiPortStr); err == nil {
 			apiPort = port

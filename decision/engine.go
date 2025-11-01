@@ -6,9 +6,12 @@ import (
 	"log"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/news"
 	"nofx/pool"
 	"strings"
 	"time"
+
+	"github.com/samber/lo"
 )
 
 // PositionInfo 持仓信息
@@ -55,17 +58,18 @@ type OITopData struct {
 
 // Context 交易上下文（传递给AI的完整信息）
 type Context struct {
-	CurrentTime     string                  `json:"current_time"`
-	RuntimeMinutes  int                     `json:"runtime_minutes"`
-	CallCount       int                     `json:"call_count"`
-	Account         AccountInfo             `json:"account"`
-	Positions       []PositionInfo          `json:"positions"`
-	CandidateCoins  []CandidateCoin         `json:"candidate_coins"`
-	MarketDataMap   map[string]*market.Data `json:"-"` // 不序列化，但内部使用
-	OITopDataMap    map[string]*OITopData   `json:"-"` // OI Top数据映射
-	Performance     interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
-	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
-	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	CurrentTime     string                     `json:"current_time"`
+	RuntimeMinutes  int                        `json:"runtime_minutes"`
+	CallCount       int                        `json:"call_count"`
+	Account         AccountInfo                `json:"account"`
+	Positions       []PositionInfo             `json:"positions"`
+	CandidateCoins  []CandidateCoin            `json:"candidate_coins"`
+	MarketDataMap   map[string]*market.Data    `json:"-"`              // 不序列化，但内部使用
+	OITopDataMap    map[string]*OITopData      `json:"-"`              // OI Top数据映射
+	Performance     interface{}                `json:"-"`              // 历史表现分析（logger.PerformanceAnalysis）
+	BTCETHLeverage  int                        `json:"-"`              // BTC/ETH杠杆倍数（从配置读取）
+	AltcoinLeverage int                        `json:"-"`              // 山寨币杠杆倍数（从配置读取）
+	News            map[string][]news.NewsItem `json:"news,omitempty"` // 新闻数据（可选）按symbol分组传给AI
 }
 
 // Decision AI的交易决策
@@ -377,6 +381,18 @@ func buildUserPrompt(ctx *Context) string {
 			if err := json.Unmarshal(jsonData, &perfData); err == nil {
 				sb.WriteString(fmt.Sprintf("## 📊 夏普比率: %.2f\n\n", perfData.SharpeRatio))
 			}
+		}
+	}
+
+	// 新闻内容
+	newsItem := make([]news.NewsItem, 0, 100)
+	for _, symbol := range lo.Keys(ctx.News) {
+		newsItem = append(newsItem, ctx.News[symbol]...)
+	}
+	if len(newsItem) > 0 {
+		sb.WriteString("\n## 相关新闻\n")
+		for _, item := range newsItem {
+			sb.WriteString(item.String())
 		}
 	}
 
