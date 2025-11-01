@@ -1,15 +1,43 @@
-# 🤖 NOFX - AI-Driven Crypto Futures Auto Trading Competition System
+# 🤖 NOFX - Agentic Trading OS
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat&logo=react)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Backed by Amber.ac](https://img.shields.io/badge/Backed%20by-Amber.ac-orange.svg)](https://amber.ac)
 
 **Languages:** [English](README.md) | [中文](README.zh-CN.md) | [Українська](README.uk.md) | [Русский](README.ru.md)
 
+**Official Twitter:** [@nofx_ai](https://x.com/nofx_ai)
+
 ---
 
-An automated crypto futures trading system powered by **DeepSeek/Qwen AI**, supporting **Binance, Hyperliquid, and Aster DEX exchanges**, **multi-AI model live trading competition**, featuring comprehensive market analysis, AI decision-making, **self-learning mechanism**, and professional Web monitoring interface.
+## 🚀 Universal AI Trading Operating System
+
+**NOFX** is a **universal Agentic Trading OS** built on a unified architecture. We've successfully closed the loop in crypto markets: **"Multi-Agent Decision → Unified Risk Control → Low-Latency Execution → Live/Paper Account Backtesting"**, and are now expanding this same technology stack to **stocks, futures, options, forex, and all financial markets**.
+
+### 🎯 Core Features
+
+- **Universal Data & Backtesting Layer**: Cross-market, cross-timeframe, cross-exchange unified representation and factor library, accumulating transferable "strategy memory"
+- **Multi-Agent Self-Play & Self-Evolution**: Strategies automatically compete and select the best, continuously iterating based on account-level PnL and risk constraints
+- **Integrated Execution & Risk Control**: Low-latency routing, slippage/risk control sandbox, account-level limits, one-click market switching
+
+### 🏢 Backed by [Amber.ac](https://amber.ac)
+
+### 👥 Core Team
+
+- **Tinkle** - [@Web3Tinkle](https://x.com/Web3Tinkle)
+- **Zack** - [@0x_ZackH](https://x.com/0x_ZackH)
+
+### 💼 Seed Funding Round Open
+
+We are currently raising our **seed round**. 
+
+**For investment inquiries**, please DM **Tinkle** or **Zack** via Twitter.
+
+**For partnerships and collaborations**, please DM our official Twitter [@nofx_ai](https://x.com/nofx_ai).
+
+---
 
 > ⚠️ **Risk Warning**: This system is experimental. AI auto-trading carries significant risks. Strongly recommended for learning/research purposes or testing with small amounts only!
 
@@ -90,58 +118,64 @@ A Binance-compatible decentralized perpetual futures exchange!
 
 ---
 
-## ✨ Core Features
+## ✨ Current Implementation - Crypto Markets
 
-### 🏆 Multi-AI Competition Mode
-- **Qwen vs DeepSeek** live trading battle
-- Independent account management and decision logs
-- Real-time performance comparison charts
-- ROI PK and win rate statistics
+NOFX is currently **fully operational in cryptocurrency markets** with the following proven capabilities:
 
-### 🧠 AI Self-Learning Mechanism (NEW!)
-- **Historical Feedback**: Analyzes last 20 cycles of trading performance before each decision
-- **Smart Optimization**:
-  - Identifies best/worst performing coins
-  - Calculates win rate, profit/loss ratio, average profit
-  - Avoids repeating mistakes (consecutive losing coins)
+### 🏆 Multi-Agent Competition Framework
+- **Live Agent Battle**: Qwen vs DeepSeek models compete in real-time trading
+- **Independent Account Management**: Each agent maintains its own decision logs and performance metrics
+- **Real-time Performance Comparison**: Live ROI tracking, win rate statistics, and head-to-head analysis
+- **Self-Evolution Loop**: Agents learn from their historical performance and continuously improve
+
+### 🧠 AI Self-Learning & Optimization
+- **Historical Feedback System**: Analyzes last 20 trading cycles before each decision
+- **Smart Performance Analysis**:
+  - Identifies best/worst performing assets
+  - Calculates win rate, profit/loss ratio, average profit in real USDT terms
+  - Avoids repeating mistakes (consecutive losing patterns)
   - Reinforces successful strategies (high win rate patterns)
-- **Dynamic Adjustment**: AI autonomously adjusts trading style based on historical performance
+- **Dynamic Strategy Adjustment**: AI autonomously adapts trading style based on backtest results
 
-### 📊 Intelligent Market Analysis
-- **3-minute K-line**: Real-time price, EMA20, MACD, RSI(7)
-- **4-hour K-line**: Long-term trend, EMA20/50, ATR, RSI(14)
-- **Open Interest Analysis**: Market sentiment, capital flow judgment
-- **OI Top Tracking**: Top 20 coins with fastest growing open interest
-- **AI500 Coin Pool**: Automatic high-score coin screening
-- **Liquidity Filter**: Auto-filters low liquidity coins (<15M USD position value)
+### 📊 Universal Market Data Layer (Crypto Implementation)
+- **Multi-Timeframe Analysis**: 3-minute real-time + 4-hour trend data
+- **Technical Indicators**: EMA20/50, MACD, RSI(7/14), ATR
+- **Open Interest Tracking**: Market sentiment, capital flow analysis
+- **Liquidity Filtering**: Auto-filters low liquidity assets (<15M USD)
+- **Cross-Exchange Support**: Binance, Hyperliquid, Aster DEX with unified data interface
 
-### 🎯 Professional Risk Control
-- **Per-Coin Position Limit**:
-  - Altcoins ≤ 1.5x account equity
-  - BTC/ETH ≤ 10x account equity
-- **Configurable Leverage** (v2.0.3+):
-  - Set maximum leverage in config.json
-  - Default: 5x for all coins (safe for subaccounts)
-  - Main accounts can increase: Altcoins up to 20x, BTC/ETH up to 50x
-  - ⚠️ Binance subaccounts restricted to ≤5x leverage
-- **Margin Management**: Total usage ≤90%, AI autonomous decision on usage rate
-- **Risk-Reward Ratio**: Mandatory ≥1:2 (stop-loss:take-profit)
-- **Prevent Position Stacking**: No duplicate opening of same coin/direction
+### 🎯 Unified Risk Control System
+- **Position Limits**: Per-asset limits (Altcoins ≤1.5x equity, BTC/ETH ≤10x equity)
+- **Configurable Leverage**: Dynamic leverage from 1x to 50x based on asset class and account type
+- **Margin Management**: Total usage ≤90%, AI-controlled allocation
+- **Risk-Reward Enforcement**: Mandatory ≥1:2 stop-loss to take-profit ratio
+- **Anti-Stacking Protection**: Prevents duplicate positions in same asset/direction
 
-### 🎨 Professional UI
-- **Professional Trading Interface**: Binance-style visual design
-- **Dark Theme**: Classic color scheme (Gold #F0B90B + dark background)
-- **Real-time Data**: 5-second refresh for accounts, positions, charts
-- **Equity Curve**: Historical account value trend (USD/percentage toggle)
-- **Performance Comparison Chart**: Real-time multi-AI ROI comparison
-- **Smooth Animations**: Fluid hover, transition, and loading effects
+### ⚡ Low-Latency Execution Engine
+- **Multi-Exchange API Integration**: Binance Futures, Hyperliquid DEX, Aster DEX
+- **Automatic Precision Handling**: Smart order size & price formatting per exchange
+- **Priority Execution**: Close existing positions first, then open new ones
+- **Slippage Control**: Pre-execution validation, real-time precision checks
 
-### 📝 Complete Decision Recording
-- **Chain of Thought**: AI's complete reasoning process (CoT)
-- **Historical Performance**: Overall win rate, average profit, profit/loss ratio
-- **Recent Trades**: Last 5 trade details (entry price → exit price → P/L%)
-- **Coin Statistics**: Per-coin performance (win rate, average P/L)
-- **JSON Logs**: Complete decision records for post-trade analysis
+### 🎨 Professional Monitoring Interface
+- **Binance-Style Dashboard**: Professional dark theme with real-time updates
+- **Equity Curves**: Historical account value tracking (USD/percentage toggle)
+- **Performance Charts**: Multi-agent ROI comparison with live updates
+- **Complete Decision Logs**: Full Chain of Thought (CoT) reasoning for every trade
+- **5-Second Data Refresh**: Real-time account, position, and P/L updates
+
+---
+
+## 🔮 Roadmap - Universal Market Expansion
+
+Our proven crypto infrastructure is being extended to:
+
+- **📈 Stock Markets**: US equities, A-shares, Hong Kong stocks
+- **📊 Futures Markets**: Commodity futures, index futures
+- **🎯 Options Trading**: Equity options, crypto options
+- **💱 Forex Markets**: Major currency pairs, cross rates
+
+**Same architecture. Same agent framework. All markets.**
 
 ---
 
@@ -1276,8 +1310,10 @@ Issues and Pull Requests are welcome!
 
 ## 📬 Contact
 
-- **Twitter/X**: [@Web3Tinkle](https://x.com/Web3Tinkle)
+
+### 🐛 Technical Support
 - **GitHub Issues**: [Submit an Issue](https://github.com/tinkle-community/nofx/issues)
+- **Developer Community**: [Telegram Group](https://t.me/nofx_dev_community)
 
 ---
 
