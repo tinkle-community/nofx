@@ -19,5 +19,22 @@
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
   "stop_trading_minutes": 60,
-  "jwt_secret": "Qk0kAa+d0iIEzXVHXbNbm+UaN3RNabmWtH8rDWZ5OPf+4GX8pBflAHodfpbipVMyrw1fsDanHsNBjhgbDeK9Jg=="
+  "jwt_secret": "Qk0kAa+d0iIEzXVHXbNbm+UaN3RNabmWtH8rDWZ5OPf+4GX8pBflAHodfpbipVMyrw1fsDanHsNBjhgbDeK9Jg==",
+  // 建议使用时删除,目前新闻源功能还比较初级
+  "news": [
+    {
+      "provider": "telegram",
+      "telegram": {
+        // 国外服务器无需配置
+        "proxyurl": "http://127.0.0.1:18080"
+      },
+      "channels": [
+        {
+          // 如t.me/ChannelPANews,id为ChannelPANews
+          "id": "ChannelPANews",
+          "name": "PANews"
+        }
+      ]
+    }
+  ]
 }
