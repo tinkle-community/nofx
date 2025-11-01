@@ -448,16 +448,59 @@ function TraderDetailsPage({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm" style={{ color: '#848E9C' }}>
-          <span>AI Model: <span className="font-semibold" style={{ color: selectedTrader.ai_model.includes('qwen') ? '#c084fc' : '#60a5fa' }}>{getModelDisplayName(selectedTrader.ai_model.split('_').pop() || selectedTrader.ai_model)}</span></span>
-          {status && (
-            <>
-              <span>•</span>
-              <span>Cycles: {status.call_count}</span>
-              <span>•</span>
-              <span>Runtime: {status.runtime_minutes} min</span>
-            </>
-          )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 text-sm" style={{ color: '#848E9C' }}>
+            <span>AI Model: <span className="font-semibold" style={{ color: selectedTrader.ai_model.includes('qwen') ? '#c084fc' : '#60a5fa' }}>{getModelDisplayName(selectedTrader.ai_model.split('_').pop() || selectedTrader.ai_model)}</span></span>
+            {status && (
+              <>
+                <span>•</span>
+                <span>Cycles: {status.call_count}</span>
+                <span>•</span>
+                <span>Runtime: {status.runtime_minutes} min</span>
+              </>
+            )}
+          </div>
+          
+          {/* Trader Actions */}
+          <div className="flex items-center gap-2">
+            {selectedTrader && (
+              <>
+                <button
+                  onClick={async () => {
+                    if (selectedTrader.is_running) {
+                      await api.stopTrader(selectedTrader.trader_id);
+                    } else {
+                      await api.startTrader(selectedTrader.trader_id);
+                    }
+                    window.location.reload();
+                  }}
+                  className="px-4 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                  style={selectedTrader.is_running
+                    ? { background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }
+                    : { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.2)' }
+                  }
+                >
+                  {selectedTrader.is_running ? '⏹ ' + t('stop', language) : '▶ ' + t('start', language)}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(t('confirmCloseAllPositions', language) || '确定要平仓所有持仓吗？')) return;
+                    try {
+                      await api.closeAllPositions(selectedTrader.trader_id);
+                      alert(t('closeAllPositionsSuccess', language) || '所有持仓已平仓');
+                      window.location.reload();
+                    } catch (error: any) {
+                      alert(error.message || t('closeAllPositionsFailed', language) || '平仓失败');
+                    }
+                  }}
+                  className="px-4 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                  style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B', border: '1px solid rgba(240, 185, 11, 0.2)' }}
+                >
+                  🔄 {t('closeAllPositions', language) || '一键平仓'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -533,6 +576,7 @@ function TraderDetailsPage({
                   <th className="pb-3 font-semibold text-gray-400">{t('leverage', language)}</th>
                   <th className="pb-3 font-semibold text-gray-400">{t('unrealizedPnL', language)}</th>
                   <th className="pb-3 font-semibold text-gray-400">{t('liqPrice', language)}</th>
+                  <th className="pb-3 font-semibold text-gray-400">{t('actions', language) || 'Actions'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -567,6 +611,26 @@ function TraderDetailsPage({
                     </td>
                     <td className="py-3 font-mono" style={{ color: '#848E9C' }}>
                       {pos.liquidation_price.toFixed(4)}
+                    </td>
+                    <td className="py-3">
+                      <button
+                        onClick={async () => {
+                          if (!confirm(t('confirmClosePosition', language) || `确定要平仓 ${pos.symbol} ${pos.side} 吗？`)) return;
+                          try {
+                            if (selectedTrader?.trader_id) {
+                              await api.closePosition(selectedTrader.trader_id, pos.symbol, pos.side);
+                              alert(t('closePositionSuccess', language) || '持仓已平仓');
+                              window.location.reload();
+                            }
+                          } catch (error: any) {
+                            alert(error.message || t('closePositionFailed', language) || '平仓失败');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded text-xs font-semibold transition-all hover:scale-105"
+                        style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B', border: '1px solid rgba(240, 185, 11, 0.2)' }}
+                      >
+                        {t('closePosition', language) || '平仓'}
+                      </button>
                     </td>
                   </tr>
                 ))}

@@ -281,4 +281,28 @@ export const api = {
     });
     if (!res.ok) throw new Error('保存用户信号源配置失败');
   },
+
+  // 平仓相关接口
+  async closeAllPositions(traderId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/traders/${traderId}/close-all-positions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || '一键平仓失败');
+    }
+  },
+
+  async closePosition(traderId: string, symbol: string, side: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/traders/${traderId}/close-position`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ symbol, side }),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || '平仓失败');
+    }
+  },
 };

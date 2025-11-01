@@ -68,8 +68,8 @@ type AutoTraderConfig struct {
 	IsCrossMargin bool // true=全仓模式, false=逐仓模式
 
 	// 币种配置
-	DefaultCoins    []string // 默认币种列表（从数据库获取）
-	TradingCoins    []string // 实际交易币种列表
+	DefaultCoins []string // 默认币种列表（从数据库获取）
+	TradingCoins []string // 实际交易币种列表
 
 	// 系统提示词模板
 	SystemPromptTemplate string // 系统提示词模板名称（如 "default", "aggressive"）
@@ -87,9 +87,9 @@ type AutoTrader struct {
 	decisionLogger        *logger.DecisionLogger // 决策日志记录器
 	initialBalance        float64
 	dailyPnL              float64
-	customPrompt          string // 自定义交易策略prompt
-	overrideBasePrompt    bool   // 是否覆盖基础prompt
-	systemPromptTemplate  string // 系统提示词模板名称
+	customPrompt          string   // 自定义交易策略prompt
+	overrideBasePrompt    bool     // 是否覆盖基础prompt
+	systemPromptTemplate  string   // 系统提示词模板名称
 	defaultCoins          []string // 默认币种列表（从数据库获取）
 	tradingCoins          []string // 实际交易币种列表
 	lastResetTime         time.Time
@@ -974,6 +974,70 @@ func (at *AutoTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// CloseAllPositions 关闭所有持仓
+func (at *AutoTrader) CloseAllPositions() error {
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return fmt.Errorf("获取持仓失败: %w", err)
+	}
+
+	if len(positions) == 0 {
+		log.Printf("📊 [%s] 当前无持仓，无需平仓", at.name)
+		return nil
+	}
+
+	log.Printf("🔄 [%s] 开始平仓所有持仓 (%d个)", at.name, len(positions))
+
+	var errors []string
+	for _, pos := range positions {
+		symbol := pos["symbol"].(string)
+		side := pos["side"].(string)
+
+		var err error
+		if side == "long" {
+			_, err = at.trader.CloseLong(symbol, 0) // 0表示全部平仓
+		} else if side == "short" {
+			_, err = at.trader.CloseShort(symbol, 0) // 0表示全部平仓
+		}
+
+		if err != nil {
+			log.Printf("❌ [%s] 平仓失败 %s %s: %v", at.name, symbol, side, err)
+			errors = append(errors, fmt.Sprintf("%s %s: %v", symbol, side, err))
+		} else {
+			log.Printf("✓ [%s] 成功平仓 %s %s", at.name, symbol, side)
+		}
+		// 短暂延迟，避免请求过快
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分平仓失败: %s", strings.Join(errors, "; "))
+	}
+
+	log.Printf("✓ [%s] 所有持仓已平仓", at.name)
+	return nil
+}
+
+// ClosePosition 关闭指定持仓
+func (at *AutoTrader) ClosePosition(symbol string, side string) error {
+	var err error
+	if side == "long" {
+		_, err = at.trader.CloseLong(symbol, 0) // 0表示全部平仓
+	} else if side == "short" {
+		_, err = at.trader.CloseShort(symbol, 0) // 0表示全部平仓
+	} else {
+		return fmt.Errorf("无效的持仓方向: %s，必须是 'long' 或 'short'", side)
+	}
+
+	if err != nil {
+		log.Printf("❌ [%s] 平仓失败 %s %s: %v", at.name, symbol, side, err)
+		return fmt.Errorf("平仓失败: %w", err)
+	}
+
+	log.Printf("✓ [%s] 成功平仓 %s %s", at.name, symbol, side)
+	return nil
+}
+
 // sortDecisionsByPriority 对决策排序：先平仓，再开仓，最后hold/wait
 // 这样可以避免换仓时仓位叠加超限
 func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision {
@@ -1016,7 +1080,7 @@ func (at *AutoTrader) getCandidateCoins() ([]decision.CandidateCoin, error) {
 	if len(at.tradingCoins) == 0 {
 		// 使用数据库配置的默认币种列表
 		var candidateCoins []decision.CandidateCoin
-		
+
 		if len(at.defaultCoins) > 0 {
 			// 使用数据库中配置的默认币种
 			for _, coin := range at.defaultCoins {
@@ -1032,7 +1096,7 @@ func (at *AutoTrader) getCandidateCoins() ([]decision.CandidateCoin, error) {
 		} else {
 			// 如果数据库中没有配置默认币种，则使用AI500+OI Top作为fallback
 			const ai500Limit = 20 // AI500取前20个评分最高的币种
-			
+
 			mergedPool, err := pool.GetMergedCoinPool(ai500Limit)
 			if err != nil {
 				return nil, fmt.Errorf("获取合并币种池失败: %w", err)
@@ -1073,11 +1137,11 @@ func (at *AutoTrader) getCandidateCoins() ([]decision.CandidateCoin, error) {
 func normalizeSymbol(symbol string) string {
 	// 转为大写
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
-	
+
 	// 确保以USDT结尾
 	if !strings.HasSuffix(symbol, "USDT") {
 		symbol = symbol + "USDT"
 	}
-	
+
 	return symbol
 }
