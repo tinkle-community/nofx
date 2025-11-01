@@ -114,7 +114,7 @@ func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error)
 	}
 
 	// 4. 解析AI响应
-	decision, err := parseFullDecisionResponse(aiResponse, ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
+	decision, err := parseFullDecisionResponse(aiResponse, ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
 	if err != nil {
 		return nil, fmt.Errorf("解析AI响应失败: %w", err)
 	}
@@ -451,7 +451,7 @@ func buildUserPrompt(ctx *Context) string {
 }
 
 // parseFullDecisionResponse 解析AI的完整决策响应
-func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthLeverage, altcoinLeverage int) (*FullDecision, error) {
+func parseFullDecisionResponse(aiResponse string, accountEquity, availableBalance float64, btcEthLeverage, altcoinLeverage int) (*FullDecision, error) {
 	// 1. 提取思维链
 	cotTrace := extractCoTTrace(aiResponse)
 
@@ -465,7 +465,7 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 	}
 
 	// 3. 验证决策
-	if err := validateDecisions(decisions, accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
+	if err := validateDecisions(decisions, accountEquity, availableBalance, btcEthLeverage, altcoinLeverage); err != nil {
 		return &FullDecision{
 			CoTTrace:  cotTrace,
 			Decisions: decisions,
@@ -533,9 +533,9 @@ func fixMissingQuotes(jsonStr string) string {
 }
 
 // validateDecisions 验证所有决策（需要账户信息和杠杆配置）
-func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
+func validateDecisions(decisions []Decision, accountEquity, availableBalance float64, btcEthLeverage, altcoinLeverage int) error {
 	for i, decision := range decisions {
-		if err := validateDecision(&decision, accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
+		if err := validateDecision(&decision, accountEquity, availableBalance, btcEthLeverage, altcoinLeverage); err != nil {
 			return fmt.Errorf("决策 #%d 验证失败: %w", i+1, err)
 		}
 	}
@@ -565,7 +565,7 @@ func findMatchingBracket(s string, start int) int {
 }
 
 // validateDecision 验证单个决策的有效性
-func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
+func validateDecision(d *Decision, accountEquity, availableBalance float64, btcEthLeverage, altcoinLeverage int) error {
 	// 验证action
 	validActions := map[string]bool{
 		"open_long":   true,
@@ -582,12 +582,15 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 
 	// 开仓操作必须提供完整参数
 	if d.Action == "open_long" || d.Action == "open_short" {
-		// 根据币种使用配置的杠杆上限
-		maxLeverage := altcoinLeverage          // 山寨币使用配置的杠杆
-		maxPositionValue := accountEquity * 1.5 // 山寨币最多1.5倍账户净值
+		// 🔧 使用和 System Prompt 一致的验证逻辑
+		// 仓位价值上限 = 可用余额 × 保证金使用率 × 杠杆
+		maxLeverage := altcoinLeverage                                       // 山寨币使用配置的杠杆
+		maxPositionValue := availableBalance * 0.6 * float64(altcoinLeverage) // 山寨币：最多用60%余额作为保证金
+		marginPctDesc := "60%可用余额"
 		if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-			maxLeverage = btcEthLeverage          // BTC和ETH使用配置的杠杆
-			maxPositionValue = accountEquity * 10 // BTC/ETH最多10倍账户净值
+			maxLeverage = btcEthLeverage                                       // BTC和ETH使用配置的杠杆
+			maxPositionValue = availableBalance * 0.8 * float64(btcEthLeverage) // BTC/ETH：最多用80%余额作为保证金
+			marginPctDesc = "80%可用余额"
 		}
 
 		if d.Leverage <= 0 || d.Leverage > maxLeverage {
@@ -599,11 +602,9 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		// 验证仓位价值上限（加1%容差以避免浮点数精度问题）
 		tolerance := maxPositionValue * 0.01 // 1%容差
 		if d.PositionSizeUSD > maxPositionValue+tolerance {
-			if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-				return fmt.Errorf("BTC/ETH单币种仓位价值不能超过%.0f USDT（10倍账户净值），实际: %.0f", maxPositionValue, d.PositionSizeUSD)
-			} else {
-				return fmt.Errorf("山寨币单币种仓位价值不能超过%.0f USDT（1.5倍账户净值），实际: %.0f", maxPositionValue, d.PositionSizeUSD)
-			}
+			requiredMargin := d.PositionSizeUSD / float64(d.Leverage)
+			return fmt.Errorf("仓位价值%.0f USDT超过限制%.0f USDT（%s × %dx杠杆），需要保证金%.2f USDT",
+				d.PositionSizeUSD, maxPositionValue, marginPctDesc, d.Leverage, requiredMargin)
 		}
 		if d.StopLoss <= 0 || d.TakeProfit <= 0 {
 			return fmt.Errorf("止损和止盈必须大于0")
