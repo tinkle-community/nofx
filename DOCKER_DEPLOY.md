@@ -73,6 +73,7 @@ nano config.json  # 或使用其他编辑器
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY", // ← 填入你的币安 Secret Key
       "deepseek_key": "YOUR_DEEPSEEK_API_KEY",         // ← 填入你的 DeepSeek API Key
       "initial_balance": 1000.0,
+      "enabled": true,
       "scan_interval_minutes": 3
     }
   ],
