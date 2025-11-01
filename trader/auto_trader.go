@@ -196,12 +196,17 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 				excludedSymbolsMap[okxFormat] = true
 			}
 		} else {
-			// BTC-USDT-SWAP -> BTCUSDT
+			// BTC-USDT-SWAP -> BTCUSDT, BTC-USDT (OKX持仓格式)
 			if strings.Contains(normalizedSymbol, "-") && strings.HasSuffix(normalizedSymbol, "-SWAP") {
 				parts := strings.Split(normalizedSymbol, "-")
 				if len(parts) == 3 {
+					// 添加 Binance 格式: BTCUSDT
 					binanceFormat := parts[0] + parts[1]
 					excludedSymbolsMap[binanceFormat] = true
+
+					// 添加 OKX 持仓格式: BTC-USDT (OKX API返回的持仓格式)
+					okxPosFormat := parts[0] + "-" + parts[1]
+					excludedSymbolsMap[okxPosFormat] = true
 				}
 			}
 		}
