@@ -40,6 +40,21 @@ func TestNormalizeSymbolToOKX(t *testing.T) {
 			input:    "SOLUSDT",
 			expected: "SOL-USDT-SWAP",
 		},
+		{
+			name:     "XXX-USDT format PENGU-USDT (fix double dash bug)",
+			input:    "PENGU-USDT",
+			expected: "PENGU-USDT-SWAP",
+		},
+		{
+			name:     "XXX-USDT format BTC-USDT",
+			input:    "BTC-USDT",
+			expected: "BTC-USDT-SWAP",
+		},
+		{
+			name:     "XXX-USDT format lowercase doge-usdt",
+			input:    "doge-usdt",
+			expected: "DOGE-USDT-SWAP",
+		},
 	}
 
 	for _, tt := range tests {

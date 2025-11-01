@@ -377,6 +377,13 @@ func normalizeSymbolToOKX(symbol string) string {
 		return symbol
 	}
 
+	// 处理 "XXX-USDT" 格式（如 PENGU-USDT，来自 OI Top API 或其他源）
+	// 必须在通用处理之前检查，避免产生双破折号
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-USDT") {
+		baseCurrency := strings.TrimSuffix(symbol, "-USDT") // 移除 "-USDT"
+		return baseCurrency + "-USDT-SWAP"
+	}
+
 	// 将 Binance 格式（如 BTCUSDT）转换为 OKX SWAP 格式（如 BTC-USDT-SWAP）
 	// 1. 先确保以 USDT 结尾
 	if !strings.HasSuffix(symbol, "USDT") {
