@@ -248,17 +248,17 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
 		template, err = GetPromptTemplate("default")
 		if err != nil {
-			// 如果连 default 都不存在，说明文件系统有严重问题
-			log.Printf("❌ 致命错误：无法加载任何提示词模板，系统无法安全运行")
-			return "" // 返回空字符串，上层应该检测并停止交易
+			// 如果连 default 都不存在，使用内置的简化版本（最后防线）
+			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
+			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
+		} else {
+			sb.WriteString(template.Content)
+			sb.WriteString("\n\n")
 		}
-		log.Printf("✓ 使用 default 模板（fallback）")
 	} else {
-		log.Printf("✓ 使用 %s 模板", templateName)
+		sb.WriteString(template.Content)
+		sb.WriteString("\n\n")
 	}
-
-	sb.WriteString(template.Content)
-	sb.WriteString("\n\n")
 
 	// 2. 硬约束（风险控制）- 动态生成（始终追加）
 	sb.WriteString("# 硬约束（风险控制）\n\n")
