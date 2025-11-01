@@ -104,7 +104,7 @@ func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error)
 	if maxPositions == 0 {
 		maxPositions = 3 // 默认3个持仓
 	}
-	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, maxPositions)
+	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.BTCETHLeverage, ctx.AltcoinLeverage, maxPositions)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -222,7 +222,7 @@ func calculateMaxCandidates(ctx *Context) int {
 }
 
 // buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
-func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage, maxPositions int) string {
+func buildSystemPrompt(accountEquity, availableBalance float64, btcEthLeverage, altcoinLeverage, maxPositions int) string {
 	var sb strings.Builder
 
 	// === 核心使命 ===
