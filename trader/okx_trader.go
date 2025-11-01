@@ -660,9 +660,15 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "sell",
-		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "long" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
+	// net mode: 必须省略 posSide 参数
+	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
 	}
 
 	// 📊 调试日志：打印请求详情
@@ -777,9 +783,15 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "buy",
-		"posSide": actualPosSide, // 🔧 使用持仓的真实 posSide（可能是 "short" 或 "net"）
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
+	// net mode: 必须省略 posSide 参数
+	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
+	if actualPosSide != "net" {
+		body["posSide"] = actualPosSide
 	}
 
 	// 📊 调试日志：打印请求详情
@@ -1140,7 +1152,7 @@ func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, ava
 					addAmount = availableBalance * 0.5
 				}
 
-				if addAmount >= 10 { // 至少追加10 USDT才有意义
+				if addAmount >= 0.1 { // 至少追加0.1 USDT才有意义
 					log.Printf("⚠️  %s %s 接近强平价！距离=%.2f%%, 追加保证金 %.2f USDT",
 						symbol, side, distanceToLiqPct, addAmount)
 
@@ -1174,7 +1186,7 @@ func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, ava
 					reduceAmount = maxReduce
 				}
 
-				if reduceAmount >= 10 { // 至少释放10 USDT才有意义
+				if reduceAmount >= 0.1 { // 至少释放0.1 USDT才有意义
 					log.Printf("💰 %s %s 盈利中(%.2f%%)，释放保证金 %.2f USDT，提高资金效率",
 						symbol, side, pnlPct, reduceAmount)
 
