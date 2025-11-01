@@ -3,7 +3,7 @@ import useSWR from 'swr';
 import { api } from '../lib/api';
 import type { CompetitionData } from '../types';
 import { ComparisonChart } from './ComparisonChart';
-import { TraderConfigModal } from './TraderConfigModal';
+import { TraderConfigViewModal } from './TraderConfigViewModal';
 import { getTraderColor } from '../utils/traderColors';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
@@ -273,8 +273,8 @@ export function CompetitionPage() {
         </div>
       )}
 
-      {/* Trader Config Modal */}
-      <TraderConfigModal
+      {/* Trader Config View Modal */}
+      <TraderConfigViewModal
         isOpen={isModalOpen}
         onClose={closeModal}
         traderData={selectedTrader}

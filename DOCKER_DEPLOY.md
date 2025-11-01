@@ -100,7 +100,7 @@ docker compose up -d
 部署成功后，打开浏览器访问：
 
 - **Web 界面**: http://localhost:3000
-- **API 文档**: http://localhost:8080/health
+- **API 文档**: http://localhost:8080/api/health
 
 ## 📊 服务管理
 
@@ -281,7 +281,7 @@ docker inspect nofx-backend | jq '.[0].State.Health'
 docker inspect nofx-frontend | jq '.[0].State.Health'
 
 # 手动测试健康端点
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 curl http://localhost:3000/health
 ```
 

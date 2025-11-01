@@ -869,7 +869,7 @@ VITE v5.x.x  ready in xxx ms
 
 ```bash
 # 在新终端窗口中
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 应返回：`{"status":"ok"}`
@@ -1076,7 +1076,7 @@ GET /api/statistics?trader_id=xxx        # 统计信息
 ### 系统接口
 
 ```bash
-GET /health                   # 健康检查
+GET /api/health                   # 健康检查
 GET /api/config               # 系统配置
 ```
 

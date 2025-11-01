@@ -796,7 +796,7 @@ VITE v5.x.x  ready in xxx ms
 
 ```bash
 # В новом окне терминала
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 Должно вернуть: `{"status":"ok"}`

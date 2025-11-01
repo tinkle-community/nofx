@@ -227,7 +227,7 @@ status() {
     $COMPOSE_CMD ps
     echo ""
     print_info "健康检查:"
-    curl -s "http://localhost:${NOFX_BACKEND_PORT}/health" | jq '.' || echo "后端未响应"
+    curl -s "http://localhost:${NOFX_BACKEND_PORT}/api/health" | jq '.' || echo "后端未响应"
 }
 
 # ------------------------------------------------------------------------

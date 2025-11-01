@@ -97,7 +97,7 @@ docker compose up -d
 Once deployed, open your browser and visit:
 
 - **Web Interface**: http://localhost:3000
-- **API Health Check**: http://localhost:8080/health
+- **API Health Check**: http://localhost:8080/api/health
 
 ## 📊 Service Management
 
@@ -280,7 +280,7 @@ docker inspect nofx-backend | jq '.[0].State.Health'
 docker inspect nofx-frontend | jq '.[0].State.Health'
 
 # Manually test health endpoints
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 curl http://localhost:3000/health
 ```
 
