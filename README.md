@@ -400,7 +400,7 @@ Before configuring the system, you need to obtain AI API keys. Choose one of the
 
 **How to get Qwen API Key:**
 
-1. **Visit**: [https://dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
+1. **Visit**: [https://dashscope.console.aliyun.com](https://dashscope.console.aliyun.com)
 2. **Register**: Sign up with Alibaba Cloud account
 3. **Enable Service**: Activate DashScope service
 4. **Create API Key**:
@@ -1321,7 +1321,7 @@ Issues and Pull Requests are welcome!
 
 - [Binance API](https://binance-docs.github.io/apidocs/futures/en/) - Binance Futures API
 - [DeepSeek](https://platform.deepseek.com/) - DeepSeek AI API
-- [Qwen](https://dashscope.aliyuncs.com/) - Alibaba Cloud Qwen
+- [Qwen](https://dashscope.console.aliyun.com/) - Alibaba Cloud Qwen
 - [TA-Lib](https://ta-lib.org/) - Technical indicator library
 - [Recharts](https://recharts.org/) - React chart library
 
