@@ -84,7 +84,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	}
 
 	// 为每个交易员获取AI模型和交易所配置
-    for _, traderCfg := range allTraders {
+	for _, traderCfg := range allTraders {
 		// 获取AI模型配置（使用交易员所属的用户ID）
 		aiModels, err := database.GetAIModels(traderCfg.UserID)
 		if err != nil {
@@ -146,7 +146,7 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 		}
 
 		// 添加到TraderManager
-        err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
+		err = tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins)
 		if err != nil {
 			log.Printf("❌ 添加交易员 %s 失败: %v", traderCfg.Name, err)
 			continue
@@ -175,7 +175,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -189,19 +189,20 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	}
 
 	// 构建AutoTraderConfig
-    traderConfig := trader.AutoTraderConfig{
+	traderConfig := trader.AutoTraderConfig{
 		ID:                    traderCfg.ID,
 		Name:                  traderCfg.Name,
 		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
 		BinanceAPIKey:         "",
 		BinanceSecretKey:      "",
+		BinanceUseTestnet:     exchangeCfg.Testnet,
 		HyperliquidPrivateKey: "",
 		HyperliquidTestnet:    exchangeCfg.Testnet,
 		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
-		DeepSeekKey:           "",
-		QwenKey:               "",
+		DeepSeekKey:           aiModelCfg.APIKey,
+		QwenKey:               aiModelCfg.APIKey,
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
@@ -239,7 +240,7 @@ func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -279,7 +280,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -300,12 +301,13 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 		Exchange:              exchangeCfg.ID,      // 使用exchange ID
 		BinanceAPIKey:         "",
 		BinanceSecretKey:      "",
+		BinanceUseTestnet:     exchangeCfg.Testnet,
 		HyperliquidPrivateKey: "",
 		HyperliquidTestnet:    exchangeCfg.Testnet,
 		CoinPoolAPIURL:        effectiveCoinPoolURL,
 		UseQwen:               aiModelCfg.Provider == "qwen",
-		DeepSeekKey:           "",
-		QwenKey:               "",
+		DeepSeekKey:           aiModelCfg.APIKey,
+		QwenKey:               aiModelCfg.APIKey,
 		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
 		InitialBalance:        traderCfg.InitialBalance,
 		BTCETHLeverage:        traderCfg.BTCETHLeverage,
@@ -343,7 +345,7 @@ func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModel
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
@@ -472,9 +474,9 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 	for _, t := range tm.traders {
 		account, err := t.GetAccountInfo()
 		status := t.GetStatus()
-		
+
 		var traderData map[string]interface{}
-		
+
 		if err != nil {
 			// 如果获取账户信息失败，使用默认值但仍然显示交易员
 			log.Printf("⚠️ 获取交易员 %s 账户信息失败: %v", t.GetID(), err)
@@ -506,7 +508,7 @@ func (tm *TraderManager) GetCompetitionData() (map[string]interface{}, error) {
 				"is_running":      status["is_running"],
 			}
 		}
-		
+
 		traders = append(traders, traderData)
 	}
 	comparison["traders"] = traders
@@ -681,7 +683,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 			}
 		}
 	}
-	
+
 	// 如果没有指定交易币种，使用默认币种
 	if len(tradingCoins) == 0 {
 		tradingCoins = defaultCoins
@@ -696,21 +698,21 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 
 	// 构建AutoTraderConfig
 	traderConfig := trader.AutoTraderConfig{
-		ID:                    traderCfg.ID,
-		Name:                  traderCfg.Name,
-		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
-		Exchange:              exchangeCfg.ID,      // 使用exchange ID
-		InitialBalance:        traderCfg.InitialBalance,
-		BTCETHLeverage:        traderCfg.BTCETHLeverage,
-		AltcoinLeverage:       traderCfg.AltcoinLeverage,
-		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
-		CoinPoolAPIURL:        effectiveCoinPoolURL,
-		MaxDailyLoss:          maxDailyLoss,
-		MaxDrawdown:           maxDrawdown,
-		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
-		IsCrossMargin:         traderCfg.IsCrossMargin,
-		DefaultCoins:          defaultCoins,
-		TradingCoins:          tradingCoins,
+		ID:              traderCfg.ID,
+		Name:            traderCfg.Name,
+		AIModel:         aiModelCfg.Provider, // 使用provider作为模型标识
+		Exchange:        exchangeCfg.ID,      // 使用exchange ID
+		InitialBalance:  traderCfg.InitialBalance,
+		BTCETHLeverage:  traderCfg.BTCETHLeverage,
+		AltcoinLeverage: traderCfg.AltcoinLeverage,
+		ScanInterval:    time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
+		CoinPoolAPIURL:  effectiveCoinPoolURL,
+		MaxDailyLoss:    maxDailyLoss,
+		MaxDrawdown:     maxDrawdown,
+		StopTradingTime: time.Duration(stopTradingMinutes) * time.Minute,
+		IsCrossMargin:   traderCfg.IsCrossMargin,
+		DefaultCoins:    defaultCoins,
+		TradingCoins:    tradingCoins,
 	}
 
 	// 根据交易所类型设置API密钥
@@ -738,7 +740,7 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}
-	
+
 	// 设置自定义prompt（如果有）
 	if traderCfg.CustomPrompt != "" {
 		at.SetCustomPrompt(traderCfg.CustomPrompt)
