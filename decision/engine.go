@@ -13,17 +13,28 @@ import (
 
 // PositionInfo 持仓信息
 type PositionInfo struct {
-	Symbol           string  `json:"symbol"`
-	Side             string  `json:"side"` // "long" or "short"
-	EntryPrice       float64 `json:"entry_price"`
-	MarkPrice        float64 `json:"mark_price"`
-	Quantity         float64 `json:"quantity"`
-	Leverage         int     `json:"leverage"`
-	UnrealizedPnL    float64 `json:"unrealized_pnl"`
-	UnrealizedPnLPct float64 `json:"unrealized_pnl_pct"`
-	LiquidationPrice float64 `json:"liquidation_price"`
-	MarginUsed       float64 `json:"margin_used"`
-	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	Symbol               string  `json:"symbol"`
+	Side                 string  `json:"side"` // "long" or "short"
+	EntryPrice           float64 `json:"entry_price"`
+	MarkPrice            float64 `json:"mark_price"`
+	Quantity             float64 `json:"quantity"`
+	Leverage             int     `json:"leverage"`
+	UnrealizedPnL        float64 `json:"unrealized_pnl"`
+	UnrealizedPnLPct     float64 `json:"unrealized_pnl_pct"`
+	LiquidationPrice     float64 `json:"liquidation_price"`
+	MarginUsed           float64 `json:"margin_used"`
+	UpdateTime           int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	InitialStopLoss      float64 `json:"initial_stop_loss,omitempty"`
+	InitialRiskPerUnit   float64 `json:"initial_risk_per_unit,omitempty"`
+	InitialRiskUSD       float64 `json:"initial_risk_usd,omitempty"`
+	TwoRThresholdUSD     float64 `json:"two_r_threshold_usd,omitempty"`
+	TwoRThresholdPct     float64 `json:"two_r_threshold_pct,omitempty"`
+	PeakPrice            float64 `json:"peak_price,omitempty"`
+	PeakUnrealizedPnL    float64 `json:"peak_unrealized_pnl,omitempty"`
+	PeakUnrealizedPnLPct float64 `json:"peak_unrealized_pnl_pct,omitempty"`
+	ProfitProtection     bool    `json:"profit_protection_active,omitempty"`
+	PlanAActivatedAt     int64   `json:"plan_a_activated_at,omitempty"`
+	TwoRReached          bool    `json:"two_r_reached,omitempty"`
 }
 
 // AccountInfo 账户信息
@@ -327,10 +338,48 @@ func buildUserPrompt(ctx *Context) string {
 				}
 			}
 
-			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s\n\n",
+			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s\n",
 				i+1, pos.Symbol, strings.ToUpper(pos.Side),
 				pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct,
 				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration))
+
+			if pos.InitialStopLoss > 0 {
+				sb.WriteString(fmt.Sprintf("    初始止损%.4f | R=%.4f (%.2f USDT) | 2R=%.2f USDT (≈%.2f%%)\n",
+					pos.InitialStopLoss,
+					pos.InitialRiskPerUnit,
+					pos.InitialRiskUSD,
+					pos.TwoRThresholdUSD,
+					pos.TwoRThresholdPct))
+			} else {
+				sb.WriteString("    初始止损: 未记录 → 无法计算R与2R阈值\n")
+			}
+
+			peakLabel := "历史最高价"
+			if strings.ToLower(pos.Side) == "short" {
+				peakLabel = "历史最低价"
+			}
+			if pos.PeakPrice > 0 {
+				sb.WriteString(fmt.Sprintf("    %s%.4f | 历史最高浮盈%+.2f USDT (%+.2f%%)\n",
+					peakLabel, pos.PeakPrice, pos.PeakUnrealizedPnL, pos.PeakUnrealizedPnLPct))
+			} else {
+				sb.WriteString("    峰值: 暂无记录\n")
+			}
+
+			twoRStatus := "⏳ 未达2R"
+			if pos.TwoRReached {
+				twoRStatus = "✅ 已达2R"
+			}
+
+			protectionStatus := "未激活"
+			if pos.ProfitProtection {
+				protectionStatus = "已激活"
+				if pos.PlanAActivatedAt > 0 {
+					protectionStatus = fmt.Sprintf("%s (自%s)", protectionStatus,
+						time.UnixMilli(pos.PlanAActivatedAt).Format("15:04:05"))
+				}
+			}
+
+			sb.WriteString(fmt.Sprintf("    %s | 方案A保护: %s\n\n", twoRStatus, protectionStatus))
 
 			// 使用FormatMarketData输出完整市场数据
 			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
