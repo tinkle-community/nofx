@@ -76,6 +76,9 @@ type AutoTraderConfig struct {
 
 	// 黑名单：AI不会对这些币种进行交易决策
 	ExcludedSymbols []string
+
+	// 流动性过滤：持仓价值低于此阈值的币种将被过滤（单位：百万美元，默认15M）
+	MinOIValueMillions float64
 }
 
 // AutoTrader 自动交易器
@@ -653,11 +656,12 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. 构建上下文
 	ctx := &decision.Context{
-		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
-		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
-		CallCount:       at.callCount,
-		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
-		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
+		CurrentTime:        time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes:     int(time.Since(at.startTime).Minutes()),
+		CallCount:          at.callCount,
+		BTCETHLeverage:     at.config.BTCETHLeverage,     // 使用配置的杠杆倍数
+		AltcoinLeverage:    at.config.AltcoinLeverage,    // 使用配置的杠杆倍数
+		MinOIValueMillions: at.config.MinOIValueMillions, // 使用配置的持仓价值阈值
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,
