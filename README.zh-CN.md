@@ -396,7 +396,7 @@ cd ..
 
 **如何获取Qwen API密钥：**
 
-1. **访问**：[https://dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
+1. **访问**：[https://dashscope.console.aliyun.com](https://dashscope.console.aliyun.com)
 2. **注册**：使用阿里云账户注册
 3. **开通服务**：激活DashScope服务
 4. **创建API密钥**：
@@ -1350,7 +1350,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 - [Binance API](https://binance-docs.github.io/apidocs/futures/cn/) - 币安合约API
 - [DeepSeek](https://platform.deepseek.com/) - DeepSeek AI API
-- [Qwen](https://dashscope.aliyuncs.com/) - 阿里云通义千问
+- [Qwen](https://dashscope.console.aliyun.com/) - 阿里云通义千问
 - [TA-Lib](https://ta-lib.org/) - 技术指标库
 - [Recharts](https://recharts.org/) - React图表库
 

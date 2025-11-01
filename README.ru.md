@@ -327,7 +327,7 @@ cd ..
 
 **Как получить Qwen API ключ:**
 
-1. **Посетите**: [https://dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
+1. **Посетите**: [https://dashscope.console.aliyun.com](https://dashscope.console.aliyun.com)
 2. **Зарегистрируйтесь**: Используя аккаунт Alibaba Cloud
 3. **Активируйте сервис**: Активируйте DashScope сервис
 4. **Создайте API ключ**:
@@ -1052,7 +1052,7 @@ sudo apt-get install libta-lib0-dev
 
 - [Binance API](https://binance-docs.github.io/apidocs/futures/en/) - Binance Futures API
 - [DeepSeek](https://platform.deepseek.com/) - DeepSeek AI API
-- [Qwen](https://dashscope.aliyuncs.com/) - Alibaba Cloud Qwen
+- [Qwen](https://dashscope.console.aliyun.com/) - Alibaba Cloud Qwen
 - [TA-Lib](https://ta-lib.org/) - Библиотека технических индикаторов
 - [Recharts](https://recharts.org/) - Библиотека графиков React
 
@@ -1243,7 +1243,7 @@ sudo apt-get install libta-lib0-dev
 
 - [Binance API](https://binance-docs.github.io/apidocs/futures/en/) - Binance Futures API
 - [DeepSeek](https://platform.deepseek.com/) - DeepSeek AI API
-- [Qwen](https://dashscope.aliyuncs.com/) - Alibaba Cloud Qwen
+- [Qwen](https://dashscope.console.aliyun.com/) - Alibaba Cloud Qwen
 - [TA-Lib](https://ta-lib.org/) - Библиотека технических индикаторов
 - [Recharts](https://recharts.org/) - Библиотека графиков React
 
