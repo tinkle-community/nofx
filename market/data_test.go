@@ -40,6 +40,21 @@ func TestNormalize(t *testing.T) {
 			input:    "SOLUSDT",
 			expected: "SOL-USDT-SWAP",
 		},
+		{
+			name:     "XXX-USDT format PEPE-USDT (fix double dash bug)",
+			input:    "PEPE-USDT",
+			expected: "PEPE-USDT-SWAP",
+		},
+		{
+			name:     "XXX-USDT format BTC-USDT",
+			input:    "BTC-USDT",
+			expected: "BTC-USDT-SWAP",
+		},
+		{
+			name:     "XXX-USDT format lowercase doge-usdt",
+			input:    "doge-usdt",
+			expected: "DOGE-USDT-SWAP",
+		},
 	}
 
 	for _, tt := range tests {

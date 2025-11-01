@@ -56,17 +56,19 @@ type OITopData struct {
 
 // Context 交易上下文（传递给AI的完整信息）
 type Context struct {
-	CurrentTime     string                  `json:"current_time"`
-	RuntimeMinutes  int                     `json:"runtime_minutes"`
-	CallCount       int                     `json:"call_count"`
-	Account         AccountInfo             `json:"account"`
-	Positions       []PositionInfo          `json:"positions"`
-	CandidateCoins  []CandidateCoin         `json:"candidate_coins"`
-	MarketDataMap   map[string]*market.Data `json:"-"` // 不序列化，但内部使用
-	OITopDataMap    map[string]*OITopData   `json:"-"` // OI Top数据映射
-	Performance     interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
-	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
-	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	CurrentTime        string                  `json:"current_time"`
+	RuntimeMinutes     int                     `json:"runtime_minutes"`
+	CallCount          int                     `json:"call_count"`
+	Account            AccountInfo             `json:"account"`
+	Positions          []PositionInfo          `json:"positions"`
+	CandidateCoins     []CandidateCoin         `json:"candidate_coins"`
+	MarketDataMap      map[string]*market.Data `json:"-"` // 不序列化，但内部使用
+	OITopDataMap       map[string]*OITopData   `json:"-"` // OI Top数据映射
+	Performance        interface{}             `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
+	BTCETHLeverage     int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
+	AltcoinLeverage    int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	MinOIValueMillions float64                 `json:"-"` // 最小持仓价值（百万美元，默认15M）
+	MaxPositions       int                     `json:"-"` // 最多持仓数量（默认3个）
 }
 
 // Decision AI的交易决策
@@ -98,7 +100,11 @@ func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error)
 	}
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPrompt(ctx.Account.AvailableBalance, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
+	maxPositions := ctx.MaxPositions
+	if maxPositions == 0 {
+		maxPositions = 3 // 默认3个持仓
+	}
+	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, maxPositions)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. 调用AI API（使用 system + user prompt）
@@ -163,17 +169,23 @@ func fetchMarketDataForContext(ctx *Context) error {
 			continue
 		}
 
-		// ⚠️ 流动性过滤：持仓价值低于15M USD的币种不做（多空都不做）
+		// ⚠️ 流动性过滤：持仓价值低于阈值的币种不做（多空都不做）
 		// 持仓价值 = 持仓量 × 当前价格
 		// 但现有持仓必须保留（需要决策是否平仓）
 		isExistingPosition := positionSymbols[symbol]
 		if !isExistingPosition && data.OpenInterest != nil && data.CurrentPrice > 0 {
+			// 使用配置的阈值，默认15M USD
+			minOIValueMillions := ctx.MinOIValueMillions
+			if minOIValueMillions == 0 {
+				minOIValueMillions = 15 // 默认15M
+			}
+
 			// 计算持仓价值（USD）= 持仓量 × 当前价格
 			oiValue := data.OpenInterest.Latest * data.CurrentPrice
 			oiValueInMillions := oiValue / 1_000_000 // 转换为百万美元单位
-			if oiValueInMillions < 15 {
-				log.Printf("⚠️  %s 持仓价值过低(%.2fM USD < 15M)，跳过此币种 [持仓量:%.0f × 价格:%.4f]",
-					symbol, oiValueInMillions, data.OpenInterest.Latest, data.CurrentPrice)
+			if oiValueInMillions < minOIValueMillions {
+				log.Printf("⚠️  %s 持仓价值过低(%.2fM USD < %.0fM)，跳过此币种 [持仓量:%.0f × 价格:%g]",
+					symbol, oiValueInMillions, minOIValueMillions, data.OpenInterest.Latest, data.CurrentPrice)
 				continue
 			}
 		}
@@ -210,8 +222,7 @@ func calculateMaxCandidates(ctx *Context) int {
 }
 
 // buildSystemPrompt 构建 System Prompt（固定规则，可缓存）
-// availableBalance: 可用余额（用于计算仓位大小建议）
-func buildSystemPrompt(availableBalance float64, btcEthLeverage, altcoinLeverage int) string {
+func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage, maxPositions int) string {
 	var sb strings.Builder
 
 	// === 核心使命 ===
@@ -232,7 +243,7 @@ func buildSystemPrompt(availableBalance float64, btcEthLeverage, altcoinLeverage
 	// === 硬约束（风险控制）===
 	sb.WriteString("# ⚖️ 硬约束（风险控制）\n\n")
 	sb.WriteString("1. **风险回报比**: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
-	sb.WriteString("2. **最多持仓**: 3个币种（质量>数量）\n")
+	sb.WriteString(fmt.Sprintf("2. **最多持仓**: %d个币种（质量>数量）\n", maxPositions))
 	sb.WriteString(fmt.Sprintf("3. **单币仓位**: 山寨%.0f-%.0f U(%dx杠杆) | BTC/ETH %.0f-%.0f U(%dx杠杆)\n",
 		availableBalance*0.8, availableBalance*1.5, altcoinLeverage, availableBalance*5, availableBalance*10, btcEthLeverage))
 	sb.WriteString("   **重要**: 仓位大小基于可用余额，不是账户净值！已占用的保证金不能用于开新仓。\n")

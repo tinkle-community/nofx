@@ -76,6 +76,12 @@ type AutoTraderConfig struct {
 
 	// 黑名单：AI不会对这些币种进行交易决策
 	ExcludedSymbols []string
+
+	// 流动性过滤：持仓价值低于此阈值的币种将被过滤（单位：百万美元，默认15M）
+	MinOIValueMillions float64
+
+	// 持仓数量限制：最多同时持有的币种数量（默认3个）
+	MaxPositions int
 }
 
 // AutoTrader 自动交易器
@@ -193,12 +199,17 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 				excludedSymbolsMap[okxFormat] = true
 			}
 		} else {
-			// BTC-USDT-SWAP -> BTCUSDT
+			// BTC-USDT-SWAP -> BTCUSDT, BTC-USDT (OKX持仓格式)
 			if strings.Contains(normalizedSymbol, "-") && strings.HasSuffix(normalizedSymbol, "-SWAP") {
 				parts := strings.Split(normalizedSymbol, "-")
 				if len(parts) == 3 {
+					// 添加 Binance 格式: BTCUSDT
 					binanceFormat := parts[0] + parts[1]
 					excludedSymbolsMap[binanceFormat] = true
+
+					// 添加 OKX 持仓格式: BTC-USDT (OKX API返回的持仓格式)
+					okxPosFormat := parts[0] + "-" + parts[1]
+					excludedSymbolsMap[okxPosFormat] = true
 				}
 			}
 		}
@@ -664,11 +675,13 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. 构建上下文
 	ctx := &decision.Context{
-		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
-		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
-		CallCount:       at.callCount,
-		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
-		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
+		CurrentTime:        time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes:     int(time.Since(at.startTime).Minutes()),
+		CallCount:          at.callCount,
+		BTCETHLeverage:     at.config.BTCETHLeverage,     // 使用配置的杠杆倍数
+		AltcoinLeverage:    at.config.AltcoinLeverage,    // 使用配置的杠杆倍数
+		MinOIValueMillions: at.config.MinOIValueMillions, // 使用配置的持仓价值阈值
+		MaxPositions:       at.config.MaxPositions,       // 使用配置的持仓数量限制
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,

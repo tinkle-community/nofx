@@ -266,9 +266,8 @@ func GetAvailableCoins() ([]string, error) {
 	var symbols []string
 	for _, coin := range coins {
 		if coin.IsAvailable {
-			// 确保symbol格式正确（转为大写USDT交易对）
-			symbol := normalizeSymbol(coin.Pair)
-			symbols = append(symbols, symbol)
+			// coin.Pair 已经是 OKX SWAP 格式（通过 convertSymbolsToCoins 转换）
+			symbols = append(symbols, coin.Pair)
 		}
 	}
 
@@ -315,8 +314,8 @@ func GetTopRatedCoins(limit int) ([]string, error) {
 
 	var symbols []string
 	for i := 0; i < maxCount; i++ {
-		symbol := normalizeSymbol(availableCoins[i].Pair)
-		symbols = append(symbols, symbol)
+		// availableCoins[i].Pair 已经是 OKX SWAP 格式（通过 convertSymbolsToCoins 转换）
+		symbols = append(symbols, availableCoins[i].Pair)
 	}
 
 	return symbols, nil

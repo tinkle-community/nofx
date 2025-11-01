@@ -11,7 +11,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -112,7 +114,12 @@ func (t *OKXTrader) request(ctx context.Context, method, path string, body inter
 	}
 
 	if apiResp.Code != "0" {
-		return nil, fmt.Errorf("API返回错误: code=%s, msg=%s", apiResp.Code, apiResp.Msg)
+		// 打印完整响应以便调试
+		debugMode := os.Getenv("DEBUG_MODE") == "true"
+		if debugMode {
+			log.Printf("[DEBUG] OKX API 错误响应: %s", string(respBody))
+		}
+		return nil, fmt.Errorf("API返回错误: code=%s, msg=%s, data=%s", apiResp.Code, apiResp.Msg, string(apiResp.Data))
 	}
 
 	return apiResp.Data, nil
@@ -526,15 +533,24 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		}
 	}
 
+	// 🔧 转换symbol格式：PENGU-USDT → PENGU-USDT-SWAP
+	// OKX持仓API返回 "XXX-USDT"，但交易API需要 "XXX-USDT-SWAP"
+	instId := symbol
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-USDT") && !strings.HasSuffix(symbol, "-SWAP") {
+		instId = symbol + "-SWAP"
+	}
+
 	// 格式化数量
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	quantityStr, err := t.FormatQuantity(instId, quantity)
 	if err != nil {
 		return nil, err
 	}
 
+	log.Printf("  📊 准备平多仓: symbol=%s, instId=%s, 原始数量=%.4f, 格式化数量=%s", symbol, instId, quantity, quantityStr)
+
 	// 创建市价卖出订单（平多）
 	body := map[string]interface{}{
-		"instId":  symbol,
+		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "sell",
 		"posSide": "long",
@@ -542,8 +558,16 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 		"sz":      quantityStr,
 	}
 
+	// 📊 调试日志：打印请求详情
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+	if debugMode {
+		bodyJSON, _ := json.Marshal(body)
+		log.Printf("[DEBUG] OKX CloseLong 请求: symbol=%s → instId=%s, body=%s", symbol, instId, string(bodyJSON))
+	}
+
 	data, err := t.request(context.Background(), "POST", "/api/v5/trade/order", body)
 	if err != nil {
+		log.Printf("❌ OKX API 调用失败: symbol=%s, instId=%s, error=%v", symbol, instId, err)
 		return nil, fmt.Errorf("平多仓失败: %w", err)
 	}
 
@@ -554,21 +578,26 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 	}
 
 	if err := json.Unmarshal(data, &orders); err != nil {
+		log.Printf("❌ 解析订单响应失败: data=%s, error=%v", string(data), err)
 		return nil, fmt.Errorf("解析订单响应失败: %w", err)
 	}
 
 	if len(orders) == 0 || orders[0].SCode != "0" {
 		msg := "未知错误"
+		sCode := "unknown"
 		if len(orders) > 0 {
 			msg = orders[0].SMsg
+			sCode = orders[0].SCode
 		}
-		return nil, fmt.Errorf("平仓失败: %s", msg)
+		log.Printf("❌ OKX 平仓订单失败: symbol=%s, instId=%s, sCode=%s, sMsg=%s, 完整data=%s",
+			symbol, instId, sCode, msg, string(data))
+		return nil, fmt.Errorf("平仓失败 (sCode=%s): %s", sCode, msg)
 	}
 
-	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
+	log.Printf("✓ 平多仓成功: %s (instId: %s) 数量: %s", symbol, instId, quantityStr)
 
 	// 平仓后取消该币种的所有挂单
-	if err := t.CancelAllOrders(symbol); err != nil {
+	if err := t.CancelAllOrders(instId); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
 	}
 
@@ -610,15 +639,22 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		}
 	}
 
+	// 🔧 转换symbol格式：PENGU-USDT → PENGU-USDT-SWAP
+	// OKX持仓API返回 "XXX-USDT"，但交易API需要 "XXX-USDT-SWAP"
+	instId := symbol
+	if strings.Contains(symbol, "-") && strings.HasSuffix(symbol, "-USDT") && !strings.HasSuffix(symbol, "-SWAP") {
+		instId = symbol + "-SWAP"
+	}
+
 	// 格式化数量
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	quantityStr, err := t.FormatQuantity(instId, quantity)
 	if err != nil {
 		return nil, err
 	}
 
 	// 创建市价买入订单（平空）
 	body := map[string]interface{}{
-		"instId":  symbol,
+		"instId":  instId,
 		"tdMode":  "isolated",
 		"side":    "buy",
 		"posSide": "short",
@@ -626,8 +662,18 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		"sz":      quantityStr,
 	}
 
+	// 📊 调试日志：打印请求详情
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+	if debugMode {
+		bodyJSON, _ := json.Marshal(body)
+		log.Printf("[DEBUG] OKX CloseShort 请求: symbol=%s → instId=%s, body=%s", symbol, instId, string(bodyJSON))
+	}
+
 	data, err := t.request(context.Background(), "POST", "/api/v5/trade/order", body)
 	if err != nil {
+		if debugMode {
+			log.Printf("[DEBUG] OKX CloseShort 失败: symbol=%s, instId=%s, error=%v", symbol, instId, err)
+		}
 		return nil, fmt.Errorf("平空仓失败: %w", err)
 	}
 
@@ -646,13 +692,17 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 		if len(orders) > 0 {
 			msg = orders[0].SMsg
 		}
+		if debugMode {
+			log.Printf("[DEBUG] OKX CloseShort 订单失败: symbol=%s, instId=%s, sCode=%s, sMsg=%s",
+				symbol, instId, orders[0].SCode, msg)
+		}
 		return nil, fmt.Errorf("平仓失败: %s", msg)
 	}
 
-	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
+	log.Printf("✓ 平空仓成功: %s (instId: %s) 数量: %s", symbol, instId, quantityStr)
 
 	// 平仓后取消该币种的所有挂单
-	if err := t.CancelAllOrders(symbol); err != nil {
+	if err := t.CancelAllOrders(instId); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
 	}
 

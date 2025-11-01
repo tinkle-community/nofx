@@ -51,6 +51,12 @@ type TraderConfig struct {
 	// 黑名单：排除这些币种，AI不会对它们进行交易决策
 	ExcludedSymbols []string `json:"excluded_symbols,omitempty"`
 
+	// 流动性过滤：持仓价值低于此阈值的币种将被过滤（单位：百万美元，默认15M）
+	MinOIValueMillions float64 `json:"min_oi_value_millions,omitempty"`
+
+	// 持仓数量限制：最多同时持有的币种数量（默认3个，质量>数量）
+	MaxPositions int `json:"max_positions,omitempty"`
+
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
 }
