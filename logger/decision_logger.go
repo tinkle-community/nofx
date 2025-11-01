@@ -320,11 +320,46 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 		return nil, fmt.Errorf("读取历史记录失败: %w", err)
 	}
 
+	// 如果没有记录，直接返回空结构
 	if len(records) == 0 {
 		return &PerformanceAnalysis{
 			RecentTrades: []TradeOutcome{},
 			SymbolStats:  make(map[string]*SymbolPerformance),
 		}, nil
+	}
+
+	// 获取更大的窗口用于补齐未平仓记录
+	prefillRecords, err := l.GetLatestRecords(lookbackCycles * 3)
+	if err != nil || len(prefillRecords) == 0 {
+		prefillRecords = records
+	}
+
+	analysis := l.buildPerformance(records, prefillRecords)
+
+	// 如果统计数据明显偏少（例如只统计到1笔成交），尝试使用完整历史重新计算
+	if analysis.TotalTrades <= 1 {
+		if files, err := ioutil.ReadDir(l.logDir); err == nil && len(files) > len(records) {
+			allRecords, err := l.GetLatestRecords(len(files))
+			if err == nil && len(allRecords) > len(records) {
+				analysis = l.buildPerformance(allRecords, allRecords)
+			}
+		}
+	}
+
+	return analysis, nil
+}
+
+// buildPerformance 根据给定的记录集合生成表现统计
+func (l *DecisionLogger) buildPerformance(records []*DecisionRecord, prefillRecords []*DecisionRecord) *PerformanceAnalysis {
+	if len(records) == 0 {
+		return &PerformanceAnalysis{
+			RecentTrades: []TradeOutcome{},
+			SymbolStats:  make(map[string]*SymbolPerformance),
+		}
+	}
+
+	if len(prefillRecords) == 0 {
+		prefillRecords = records
 	}
 
 	analysis := &PerformanceAnalysis{
@@ -335,45 +370,38 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 	// 追踪持仓状态：symbol_side -> {side, openPrice, openTime, quantity, leverage}
 	openPositions := make(map[string]map[string]interface{})
 
-	// 为了避免开仓记录在窗口外导致匹配失败，需要先从所有历史记录中找出未平仓的持仓
-	// 获取更多历史记录来构建完整的持仓状态（使用更大的窗口）
-	allRecords, err := l.GetLatestRecords(lookbackCycles * 3) // 扩大3倍窗口
-	if err == nil && len(allRecords) > len(records) {
-		// 先从扩大的窗口中收集所有开仓记录
-		for _, record := range allRecords {
-			for _, action := range record.Decisions {
-				if !action.Success {
-					continue
-				}
+	// 预填充历史持仓状态，避免窗口外开仓导致的孤立平仓
+	for _, record := range prefillRecords {
+		for _, action := range record.Decisions {
+			if !action.Success {
+				continue
+			}
 
-				symbol := action.Symbol
-				side := ""
-				if action.Action == "open_long" || action.Action == "close_long" {
-					side = "long"
-				} else if action.Action == "open_short" || action.Action == "close_short" {
-					side = "short"
-				}
-				posKey := symbol + "_" + side
+			symbol := action.Symbol
+			side := ""
+			if action.Action == "open_long" || action.Action == "close_long" {
+				side = "long"
+			} else if action.Action == "open_short" || action.Action == "close_short" {
+				side = "short"
+			}
+			posKey := symbol + "_" + side
 
-				switch action.Action {
-				case "open_long", "open_short":
-					// 记录开仓
-					openPositions[posKey] = map[string]interface{}{
-						"side":      side,
-						"openPrice": action.Price,
-						"openTime":  action.Timestamp,
-						"quantity":  action.Quantity,
-						"leverage":  action.Leverage,
-					}
-				case "close_long", "close_short":
-					// 移除已平仓记录
-					delete(openPositions, posKey)
+			switch action.Action {
+			case "open_long", "open_short":
+				openPositions[posKey] = map[string]interface{}{
+					"side":      side,
+					"openPrice": action.Price,
+					"openTime":  action.Timestamp,
+					"quantity":  action.Quantity,
+					"leverage":  action.Leverage,
 				}
+			case "close_long", "close_short":
+				delete(openPositions, posKey)
 			}
 		}
 	}
 
-	// 遍历分析窗口内的记录，生成交易结果
+	// 遍历目标窗口生成交易统计
 	for _, record := range records {
 		for _, action := range record.Decisions {
 			if !action.Success {
@@ -387,11 +415,10 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 			} else if action.Action == "open_short" || action.Action == "close_short" {
 				side = "short"
 			}
-			posKey := symbol + "_" + side // 使用symbol_side作为key，区分多空持仓
+			posKey := symbol + "_" + side
 
 			switch action.Action {
 			case "open_long", "open_short":
-				// 更新开仓记录（可能已经在预填充时记录过了）
 				openPositions[posKey] = map[string]interface{}{
 					"side":      side,
 					"openPrice": action.Price,
@@ -401,7 +428,6 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 				}
 
 			case "close_long", "close_short":
-				// 查找对应的开仓记录（可能来自预填充或当前窗口）
 				if openPos, exists := openPositions[posKey]; exists {
 					openPrice := openPos["openPrice"].(float64)
 					openTime := openPos["openTime"].(time.Time)
@@ -409,9 +435,6 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 					quantity := openPos["quantity"].(float64)
 					leverage := openPos["leverage"].(int)
 
-					// 计算实际盈亏（USDT）
-					// 合约交易 PnL 计算：quantity × 价格差
-					// 注意：杠杆不影响绝对盈亏，只影响保证金需求
 					var pnl float64
 					if side == "long" {
 						pnl = quantity * (action.Price - openPrice)
@@ -419,7 +442,6 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 						pnl = quantity * (openPrice - action.Price)
 					}
 
-					// 计算盈亏百分比（相对保证金）
 					positionValue := quantity * openPrice
 					marginUsed := positionValue / float64(leverage)
 					pnlPct := 0.0
@@ -427,7 +449,6 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 						pnlPct = (pnl / marginUsed) * 100
 					}
 
-					// 记录交易结果
 					outcome := TradeOutcome{
 						Symbol:        symbol,
 						Side:          side,
@@ -447,7 +468,6 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 					analysis.RecentTrades = append(analysis.RecentTrades, outcome)
 					analysis.TotalTrades++
 
-					// 分类交易：盈利、亏损、持平（避免将pnl=0算入亏损）
 					if pnl > 0 {
 						analysis.WinningTrades++
 						analysis.AvgWin += pnl
@@ -455,9 +475,7 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 						analysis.LosingTrades++
 						analysis.AvgLoss += pnl
 					}
-					// pnl == 0 的交易不计入盈利也不计入亏损，但计入总交易数
 
-					// 更新币种统计
 					if _, exists := analysis.SymbolStats[symbol]; !exists {
 						analysis.SymbolStats[symbol] = &SymbolPerformance{
 							Symbol: symbol,
@@ -472,20 +490,17 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 						stats.LosingTrades++
 					}
 
-					// 移除已平仓记录
 					delete(openPositions, posKey)
 				}
 			}
 		}
 	}
 
-	// 计算统计指标
 	if analysis.TotalTrades > 0 {
 		analysis.WinRate = (float64(analysis.WinningTrades) / float64(analysis.TotalTrades)) * 100
 
-		// 计算总盈利和总亏损
-		totalWinAmount := analysis.AvgWin   // 当前是累加的总和
-		totalLossAmount := analysis.AvgLoss // 当前是累加的总和（负数）
+		totalWinAmount := analysis.AvgWin
+		totalLossAmount := analysis.AvgLoss
 
 		if analysis.WinningTrades > 0 {
 			analysis.AvgWin /= float64(analysis.WinningTrades)
@@ -494,17 +509,13 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 			analysis.AvgLoss /= float64(analysis.LosingTrades)
 		}
 
-		// Profit Factor = 总盈利 / 总亏损（绝对值）
-		// 注意：totalLossAmount 是负数，所以取负号得到绝对值
 		if totalLossAmount != 0 {
 			analysis.ProfitFactor = totalWinAmount / (-totalLossAmount)
 		} else if totalWinAmount > 0 {
-			// 只有盈利没有亏损的情况，设置为一个很大的值表示完美策略
 			analysis.ProfitFactor = 999.0
 		}
 	}
 
-	// 计算各币种胜率和平均盈亏
 	bestPnL := -999999.0
 	worstPnL := 999999.0
 	for symbol, stats := range analysis.SymbolStats {
@@ -523,24 +534,20 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 		}
 	}
 
-	// 只保留最近的交易（倒序：最新的在前）
 	if len(analysis.RecentTrades) > 10 {
-		// 反转数组，让最新的在前
 		for i, j := 0, len(analysis.RecentTrades)-1; i < j; i, j = i+1, j-1 {
 			analysis.RecentTrades[i], analysis.RecentTrades[j] = analysis.RecentTrades[j], analysis.RecentTrades[i]
 		}
 		analysis.RecentTrades = analysis.RecentTrades[:10]
 	} else if len(analysis.RecentTrades) > 0 {
-		// 反转数组
 		for i, j := 0, len(analysis.RecentTrades)-1; i < j; i, j = i+1, j-1 {
 			analysis.RecentTrades[i], analysis.RecentTrades[j] = analysis.RecentTrades[j], analysis.RecentTrades[i]
 		}
 	}
 
-	// 计算夏普比率（需要至少2个数据点）
 	analysis.SharpeRatio = l.calculateSharpeRatio(records)
 
-	return analysis, nil
+	return analysis
 }
 
 // calculateSharpeRatio 计算夏普比率
