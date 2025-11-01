@@ -114,7 +114,12 @@ func (t *OKXTrader) request(ctx context.Context, method, path string, body inter
 	}
 
 	if apiResp.Code != "0" {
-		return nil, fmt.Errorf("API返回错误: code=%s, msg=%s", apiResp.Code, apiResp.Msg)
+		// 打印完整响应以便调试
+		debugMode := os.Getenv("DEBUG_MODE") == "true"
+		if debugMode {
+			log.Printf("[DEBUG] OKX API 错误响应: %s", string(respBody))
+		}
+		return nil, fmt.Errorf("API返回错误: code=%s, msg=%s, data=%s", apiResp.Code, apiResp.Msg, string(apiResp.Data))
 	}
 
 	return apiResp.Data, nil
@@ -529,6 +534,8 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("  📊 准备平多仓: symbol=%s, instId=%s, 原始数量=%.4f, 格式化数量=%s", symbol, instId, quantity, quantityStr)
 
 	// 创建市价卖出订单（平多）
 	body := map[string]interface{}{
