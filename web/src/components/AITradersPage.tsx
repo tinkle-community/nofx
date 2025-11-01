@@ -247,31 +247,18 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     if (!confirm(t('confirmDeleteModel', language))) return;
 
     try {
-      const updatedModels = allModels?.map(m =>
-        m.id === modelId ? { ...m, apiKey: '', customApiUrl: '', customModelName: '', enabled: false } : m
-      ) || [];
+      const targetModel = allModels?.find(m => m.id === modelId);
+      const identifier = targetModel?.provider || modelId;
 
-      const request = {
-        models: Object.fromEntries(
-          updatedModels.map(model => [
-            model.provider, // 使用 provider 而不是 id
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || ''
-            }
-          ])
-        )
-      };
-
-      await api.updateModelConfigs(request);
-      setAllModels(updatedModels);
+      await api.deleteModelConfig(identifier);
+      const refreshedModels = await api.getModelConfigs();
+      setAllModels(refreshedModels);
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {
       console.error('Failed to delete model config:', error);
-      alert(t('deleteConfigFailed', language));
+      const message = error instanceof Error ? error.message : t('deleteConfigFailed', language);
+      alert(message);
     }
   };
 
@@ -302,7 +289,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       const request = {
         models: Object.fromEntries(
           updatedModels.map(model => [
-            model.provider, // 使用 provider 而不是 id
+            model.provider, // 使用 provider 作为唯一键，兼容新版后端
             {
               enabled: model.enabled,
               api_key: model.apiKey || '',
@@ -318,7 +305,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       // 重新获取用户配置以确保数据同步
       const refreshedModels = await api.getModelConfigs();
       setAllModels(refreshedModels);
-
+      
       setShowModelModal(false);
       setEditingModel(null);
     } catch (error) {

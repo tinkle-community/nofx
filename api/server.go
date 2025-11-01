@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -105,6 +107,7 @@ func (s *Server) setupRoutes() {
 			// AI模型配置
 			protected.GET("/models", s.handleGetModelConfigs)
 			protected.PUT("/models", s.handleUpdateModelConfigs)
+			protected.DELETE("/models/:id", s.handleDeleteModelConfig)
 
 			// 交易所配置
 			protected.GET("/exchanges", s.handleGetExchangeConfigs)
@@ -646,6 +649,34 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 
 	log.Printf("✓ AI模型配置已更新: %+v", req.Models)
 	c.JSON(http.StatusOK, gin.H{"message": "模型配置已更新"})
+}
+
+// handleDeleteModelConfig 删除AI模型配置
+func (s *Server) handleDeleteModelConfig(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+
+	if modelID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "模型ID不能为空"})
+		return
+	}
+
+	err := s.database.DeleteAIModel(userID, modelID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "模型配置不存在"})
+			return
+		}
+		if errors.Is(err, config.ErrAIModelInUse) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "模型配置正在被交易员使用，无法删除"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("删除模型配置失败: %v", err)})
+		return
+	}
+
+	log.Printf("🗑️ 删除AI模型配置: %s (user=%s)", modelID, userID)
+	c.JSON(http.StatusOK, gin.H{"message": "模型配置已删除"})
 }
 
 // handleGetExchangeConfigs 获取交易所配置
