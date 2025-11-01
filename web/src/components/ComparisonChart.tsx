@@ -16,6 +16,7 @@ import type { CompetitionTraderData } from '../types';
 import { getTraderColor } from '../utils/traderColors';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
+import { BarChart3 } from 'lucide-react';
 
 interface ComparisonChartProps {
   traders: CompetitionTraderData[];
@@ -136,7 +137,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
   if (combinedData.length === 0) {
     return (
       <div className="text-center py-16" style={{ color: '#848E9C' }}>
-        <div className="text-6xl mb-4 opacity-50">📊</div>
+        <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-60" />
         <div className="text-lg font-semibold mb-2">{t('noHistoricalData', language)}</div>
         <div className="text-sm">{t('dataWillAppear', language)}</div>
       </div>

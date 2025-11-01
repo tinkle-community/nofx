@@ -6,13 +6,22 @@
 @tailwind utilities;
 
 :root {
+  /* Binance Brand Colors */
+  --brand-yellow: #F0B90B;
+  --brand-black: #0C0E12;
+  --brand-dark-gray: #1E2329;
+  --brand-light-gray: #EAECEF;
+  --brand-almost-white: #FAFAFA;
+  --brand-white: #FFFFFF;
+
   /* Binance Theme Colors */
   --binance-yellow: #F0B90B;
   --binance-yellow-dark: #C99400;
   --binance-yellow-light: #FCD535;
   --binance-yellow-glow: rgba(240, 185, 11, 0.2);
 
-  --background: #0B0E11;
+  --background: #181A20; /* Binance body bg */
+  --header-bg: #0B0E11;  /* Binance header bg */
   --background-elevated: #181A20;
   --foreground: #EAECEF;
   --panel-bg: #1E2329;
@@ -138,10 +147,10 @@ body {
 
 @keyframes shimmer {
   0% {
-    background-position: -200% 0;
+    transform: translateX(-100%);
   }
   100% {
-    background-position: 200% 0;
+    transform: translateX(100%);
   }
 }
 
@@ -171,12 +180,9 @@ body {
 }
 
 /* Glass effect - Binance header style */
-.glass {
-  background: var(--background-elevated);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+.header-bar {
+  background: var(--header-bg);
   border-bottom: 1px solid var(--panel-border);
-  box-shadow: var(--shadow-sm);
 }
 
 /* Monospace numbers */

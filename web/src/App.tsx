@@ -6,11 +6,13 @@ import { AITradersPage } from './components/AITradersPage';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { CompetitionPage } from './components/CompetitionPage';
+import { LandingPage } from './pages/LandingPage';
 import AILearning from './components/AILearning';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { t, type Language } from './i18n/translations';
 import { useSystemConfig } from './hooks/useSystemConfig';
+import { Zap } from 'lucide-react';
 import type {
   SystemStatus,
   AccountInfo,
@@ -169,22 +171,23 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0E11' }}>
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl animate-spin"
-               style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
-            ⚡
-          </div>
+          <img src="/images/logo.png" alt="NoFx Logo" className="w-16 h-16 mx-auto mb-4 animate-pulse" />
           <p style={{ color: '#EAECEF' }}>{t('loading', language)}</p>
         </div>
       </div>
     );
   }
 
-  // If not in admin mode and not authenticated, show login/register pages
+  // Show landing page for root route when not authenticated
   if (!systemConfig?.admin_mode && (!user || !token)) {
+    if (route === '/login') {
+      return <LoginPage />;
+    }
     if (route === '/register') {
       return <RegisterPage />;
     }
-    return <LoginPage />;
+    // Default to landing page when not authenticated
+    return <LandingPage />;
   }
 
   return (
@@ -258,7 +261,8 @@ function App() {
               {/* Admin Mode Indicator */}
               {systemConfig?.admin_mode && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
-                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>⚡ {t('adminMode', language)}</span>
+                  <Zap className="w-4 h-4" style={{ color: '#F0B90B' }} />
+                  <span className="text-sm font-semibold" style={{ color: '#F0B90B' }}>{t('adminMode', language)}</span>
                 </div>
               )}
 

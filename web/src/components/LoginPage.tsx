@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
 import { Header } from './Header';
+import { ArrowLeft } from 'lucide-react';
 
 export function LoginPage() {
   const { language } = useLanguage();
@@ -52,13 +53,26 @@ export function LoginPage() {
   return (
     <div className="min-h-screen" style={{ background: '#0B0E11' }}>
       <Header simple />
-      
+
       <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
         <div className="w-full max-w-md">
+          {/* Back to Home */}
+          <button
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="flex items-center gap-2 mb-6 text-sm hover:text-[#F0B90B] transition-colors"
+            style={{ color: '#848E9C' }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回首页
+          </button>
+
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-              <img src="/icons/nofx.svg?v=2" alt="NOFX" className="w-16 h-16" />
+              <img src="/images/logo.png" alt="NoFx Logo" className="w-16 h-16 object-contain" />
             </div>
             <h1 className="text-2xl font-bold" style={{ color: '#EAECEF' }}>
               {t('loginTitle', language)}

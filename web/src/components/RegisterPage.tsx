@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
+import { ArrowLeft } from 'lucide-react';
 
 export function RegisterPage() {
   const { language } = useLanguage();
@@ -73,10 +74,25 @@ export function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0E11' }}>
       <div className="w-full max-w-md">
+        {/* Back to Home */}
+        {step === 'register' && (
+          <button
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="flex items-center gap-2 mb-6 text-sm hover:text-[#F0B90B] transition-colors"
+            style={{ color: '#848E9C' }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回首页
+          </button>
+        )}
+
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <img src="/icons/nofx.svg?v=2" alt="NOFX" className="w-16 h-16" />
+            <img src="/images/logo.png" alt="NoFx Logo" className="w-16 h-16 object-contain" />
           </div>
           <h1 className="text-2xl font-bold" style={{ color: '#EAECEF' }}>
             {t('appTitle', language)}

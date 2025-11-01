@@ -453,7 +453,7 @@ export function TraderConfigModal({
                   className="w-4 h-4"
                 />
                 <label className="text-sm text-[#EAECEF]">覆盖默认提示词</label>
-                <span className="text-xs text-[#F0B90B]">⚠️ 启用后将完全替换默认策略</span>
+                <span className="text-xs text-[#F0B90B] inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg> 启用后将完全替换默认策略</span>
               </div>
               <div>
                 <label className="text-sm text-[#EAECEF] block mb-2">

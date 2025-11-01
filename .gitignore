@@ -3,6 +3,9 @@
 *.iml
 *.xml
 
+# AI 工具
+.claude/
+
 # 编译产物
 nofx-auto
 *.exe
