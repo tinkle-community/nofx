@@ -303,8 +303,14 @@ chmod +x start.sh
 > If you have the older standalone `docker-compose` installed, please upgrade to Docker Desktop or Docker 20.10+
 
 # Option 2: Use docker compose directly
+# Create empty database file before first run
+touch config.db
 docker compose up -d --build
 ```
+
+**Startup parameters:**
+- `--build`: Build Docker images (use on first run or after code updates)
+- `-d`: Run in detached mode (background)
 
 #### Step 2: Access Web Interface
 Open your browser and visit: **http://localhost:3000**

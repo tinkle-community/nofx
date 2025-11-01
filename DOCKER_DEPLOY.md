@@ -84,11 +84,15 @@ nano config.json  # 或使用其他编辑器
 ### 第 2 步：一键启动
 
 ```bash
-# 构建并启动所有服务（首次运行）
-docker compose up -d --build
+# 方式1：使用便捷脚本（推荐）
+chmod +x start.sh
+./start.sh start --build
 
-# 后续启动（不重新构建）
-docker compose up -d
+# 方式2：直接使用 Docker Compose
+# 如果您还在使用旧的独立 `docker-compose`，请升级到 Docker Desktop 或 Docker 20.10+
+# 首次启动前需要创建空的数据库文件
+touch config.db
+docker compose up -d --build
 ```
 
 **启动过程说明：**
