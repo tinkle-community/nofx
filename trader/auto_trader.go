@@ -343,7 +343,18 @@ func (at *AutoTrader) runCycle() error {
 	log.Printf("📊 账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// 4. 调用AI获取完整决策
+	// 🛡️ 4. 检查并调整保证金（OKX专用：防爆仓 + 优化资金效率）
+	if okxTrader, ok := at.trader.(*OKXTrader); ok && len(ctx.Positions) > 0 {
+		positions, err := at.trader.GetPositions()
+		if err == nil {
+			log.Println("🛡️  检查持仓保证金...")
+			if err := okxTrader.CheckAndAdjustMargin(positions, ctx.Account.AvailableBalance); err != nil {
+				log.Printf("⚠️  保证金检查失败: %v", err)
+			}
+		}
+	}
+
+	// 5. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := decision.GetFullDecision(ctx, at.mcpClient)
 
