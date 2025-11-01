@@ -99,7 +99,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const enabledExchanges = allExchanges?.filter(e => {
     if (!e.enabled) return false;
 
-    // Aster 交易所需要特殊字段
+    // Aster 交易所只需要特殊字段，不需要 apiKey 和 secretKey
     if (e.id === 'aster') {
       return e.asterUser && e.asterSigner && e.asterPrivateKey;
     }
@@ -595,7 +595,11 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                       </div>
                     </div>
                   </div>
-                  <div className={`w-3 h-3 rounded-full ${exchange.enabled && exchange.apiKey ? 'bg-green-400' : 'bg-gray-500'}`} />
+                  <div className={`w-3 h-3 rounded-full ${
+                    exchange.id === 'aster' 
+                      ? (exchange.enabled && exchange.asterUser && exchange.asterSigner && exchange.asterPrivateKey ? 'bg-green-400' : 'bg-gray-500')
+                      : (exchange.enabled && exchange.apiKey ? 'bg-green-400' : 'bg-gray-500')
+                  }`} />
                 </div>
               );
             })}
@@ -1120,6 +1124,9 @@ function ExchangeConfigModal({
   const [apiKey, setApiKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [asterUser, setAsterUser] = useState('');
+  const [asterSigner, setAsterSigner] = useState('');
+  const [asterPrivateKey, setAsterPrivateKey] = useState('');
   const [testnet, setTestnet] = useState(false);
 
   // 获取当前编辑的交易所信息
@@ -1132,6 +1139,9 @@ function ExchangeConfigModal({
       setSecretKey(selectedExchange.secretKey || '');
       setPassphrase(''); // Don't load existing passphrase for security
       setTestnet(selectedExchange.testnet || false);
+      setAsterUser(selectedExchange.asterUser || '');
+      setAsterSigner(selectedExchange.asterSigner || '');
+      setAsterPrivateKey(selectedExchange.asterPrivateKey || '');
     }
   }, [editingExchangeId, selectedExchange]);
 
@@ -1140,13 +1150,28 @@ function ExchangeConfigModal({
     if (!selectedExchangeId) return;
     
     // 根据交易所类型验证不同字段
-    if (selectedExchange?.id === 'binance') {
+    if (selectedExchange?.id === 'aster') {
+      // Aster 只需要这三个参数
+      if (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim()) return;
+    } else if (selectedExchange?.id === 'binance') {
       if (!apiKey.trim() || !secretKey.trim()) return;
     } else if (selectedExchange?.id === 'okx') {
       if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return;
+    } else {
+      // 其他交易所默认需要 apiKey 和 secretKey
+      if (!apiKey.trim() || !secretKey.trim()) return;
     }
     
-    await onSave(selectedExchangeId, apiKey.trim(), secretKey.trim(), testnet, undefined, undefined, undefined, undefined);
+    await onSave(
+      selectedExchangeId,
+      apiKey.trim(),
+      secretKey.trim(),
+      testnet,
+      undefined,
+      asterUser.trim(),
+      asterSigner.trim(),
+      asterPrivateKey.trim()
+    );
   };
 
   // 可选择的交易所列表（所有支持的交易所）
@@ -1217,51 +1242,104 @@ function ExchangeConfigModal({
 
           {selectedExchange && (
             <>
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={t('enterAPIKey', language)}
-                  className="w-full px-3 py-2 rounded"
-                  style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
-                  required
-                />
-              </div>
+              {/* Aster 交易所只需要这三个字段 */}
+              {selectedExchange.id === 'aster' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                      Aster User
+                    </label>
+                    <input
+                      type="text"
+                      value={asterUser}
+                      onChange={(e) => setAsterUser(e.target.value)}
+                      placeholder="输入 Aster User"
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      required
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-                  Secret Key
-                </label>
-                <input
-                  type="password"
-                  value={secretKey}
-                  onChange={(e) => setSecretKey(e.target.value)}
-                  placeholder={t('enterSecretKey', language)}
-                  className="w-full px-3 py-2 rounded"
-                  style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
-                  required
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                      Aster Signer
+                    </label>
+                    <input
+                      type="text"
+                      value={asterSigner}
+                      onChange={(e) => setAsterSigner(e.target.value)}
+                      placeholder="输入 Aster Signer"
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      required
+                    />
+                  </div>
 
-              {selectedExchange.id === 'okx' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
-                    Passphrase
-                  </label>
-                  <input
-                    type="password"
-                    value={passphrase}
-                    onChange={(e) => setPassphrase(e.target.value)}
-                    placeholder={t('enterPassphrase', language)}
-                    className="w-full px-3 py-2 rounded"
-                    style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
-                    required
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                      Aster Private Key
+                    </label>
+                    <input
+                      type="password"
+                      value={asterPrivateKey}
+                      onChange={(e) => setAsterPrivateKey(e.target.value)}
+                      placeholder="输入 Aster Private Key"
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      required
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* 其他交易所的字段 */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                      API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={t('enterAPIKey', language)}
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                      Secret Key
+                    </label>
+                    <input
+                      type="password"
+                      value={secretKey}
+                      onChange={(e) => setSecretKey(e.target.value)}
+                      placeholder={t('enterSecretKey', language)}
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      required
+                    />
+                  </div>
+
+                  {selectedExchange.id === 'okx' && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-2" style={{ color: '#EAECEF' }}>
+                        Passphrase
+                      </label>
+                      <input
+                        type="password"
+                        value={passphrase}
+                        onChange={(e) => setPassphrase(e.target.value)}
+                        placeholder={t('enterPassphrase', language)}
+                        className="w-full px-3 py-2 rounded"
+                        style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                        required
+                      />
+                    </div>
+                  )}
+                </>
               )}
 
               <div>
@@ -1304,7 +1382,15 @@ function ExchangeConfigModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedExchange || !apiKey.trim() || !secretKey.trim() || (selectedExchange?.id === 'okx' && !passphrase.trim())}
+              disabled={
+                !selectedExchange || 
+                (selectedExchange?.id === 'aster' 
+                  ? (!asterUser.trim() || !asterSigner.trim() || !asterPrivateKey.trim())
+                  : selectedExchange?.id === 'okx' 
+                    ? (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())
+                    : (!apiKey.trim() || !secretKey.trim())
+                )
+              }
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
               style={{ background: '#F0B90B', color: '#000' }}
             >
