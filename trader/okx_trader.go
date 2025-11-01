@@ -483,9 +483,13 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 		"instId":  symbol,
 		"tdMode":  "isolated", // 逐仓模式
 		"side":    "buy",
-		"posSide": posSide, // 🔧 使用检测到的正确 posSide
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 posSide 处理：net mode 省略此参数，long/short mode 必须提供
+	if posSide != "net" {
+		body["posSide"] = posSide
 	}
 
 	data, err := t.request(context.Background(), "POST", "/api/v5/trade/order", body)
@@ -559,9 +563,13 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 		"instId":  symbol,
 		"tdMode":  "isolated", // 逐仓模式
 		"side":    "sell",
-		"posSide": posSide, // 🔧 使用检测到的正确 posSide
 		"ordType": "market",
 		"sz":      quantityStr,
+	}
+
+	// 🔧 posSide 处理：net mode 省略此参数，long/short mode 必须提供
+	if posSide != "net" {
+		body["posSide"] = posSide
 	}
 
 	data, err := t.request(context.Background(), "POST", "/api/v5/trade/order", body)
@@ -657,18 +665,13 @@ func (t *OKXTrader) CloseLong(symbol string, quantity float64) (map[string]inter
 
 	// 创建市价卖出订单（平多）
 	body := map[string]interface{}{
-		"instId":  instId,
-		"tdMode":  "isolated",
-		"side":    "sell",
-		"ordType": "market",
-		"sz":      quantityStr,
-	}
-
-	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
-	// net mode: 必须省略 posSide 参数
-	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
-	if actualPosSide != "net" {
-		body["posSide"] = actualPosSide
+		"instId":     instId,
+		"tdMode":     "isolated",
+		"side":       "sell",
+		"posSide":    actualPosSide, // 🔧 isolated模式下必须提供posSide，即使是net mode也要设置为"net"
+		"ordType":    "market",
+		"sz":         quantityStr,
+		"reduceOnly": true, // 🔧 明确标识这是平仓操作，不会开新仓
 	}
 
 	// 📊 调试日志：打印请求详情
@@ -780,18 +783,13 @@ func (t *OKXTrader) CloseShort(symbol string, quantity float64) (map[string]inte
 
 	// 创建市价买入订单（平空）
 	body := map[string]interface{}{
-		"instId":  instId,
-		"tdMode":  "isolated",
-		"side":    "buy",
-		"ordType": "market",
-		"sz":      quantityStr,
-	}
-
-	// 🔧 在双向持仓模式下需要 posSide，在单向持仓模式下必须省略
-	// net mode: 必须省略 posSide 参数
-	// long/short mode: 必须设置 posSide 为 "long" 或 "short"
-	if actualPosSide != "net" {
-		body["posSide"] = actualPosSide
+		"instId":     instId,
+		"tdMode":     "isolated",
+		"side":       "buy",
+		"posSide":    actualPosSide, // 🔧 isolated模式下必须提供posSide，即使是net mode也要设置为"net"
+		"ordType":    "market",
+		"sz":         quantityStr,
+		"reduceOnly": true, // 🔧 明确标识这是平仓操作，不会开新仓
 	}
 
 	// 📊 调试日志：打印请求详情
