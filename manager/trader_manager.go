@@ -623,7 +623,12 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 	}
 
 	// 根据AI模型设置API密钥
-	if aiModelCfg.Provider == "qwen" {
+	if aiModelCfg.Provider == "custom" {
+		// 若为自定义模型，使用已有自定义API字段承载
+		traderConfig.CustomAPIURL = aiModelCfg.Endpoint
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		traderConfig.CustomModelName = aiModelCfg.Name
+	} else if aiModelCfg.Provider == "qwen" {
 		traderConfig.QwenKey = aiModelCfg.APIKey
 	} else if aiModelCfg.Provider == "deepseek" {
 		traderConfig.DeepSeekKey = aiModelCfg.APIKey
