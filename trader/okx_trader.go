@@ -123,9 +123,9 @@ func (t *OKXTrader) GetBalance() (map[string]interface{}, error) {
 	// 🔥 Dry Run 模式：返回模拟账户数据
 	if t.dryRun {
 		result := make(map[string]interface{})
-		result["totalWalletBalance"] = 1000.0  // 模拟初始余额
-		result["availableBalance"] = 1000.0     // 全部可用
-		result["totalUnrealizedProfit"] = 0.0   // 无未实现盈亏
+		result["totalWalletBalance"] = 1000.0 // 模拟初始余额
+		result["availableBalance"] = 1000.0   // 全部可用
+		result["totalUnrealizedProfit"] = 0.0 // 无未实现盈亏
 		log.Printf("📝 [DRY RUN] 模拟账户余额: 总余额=1000.00, 可用=1000.00")
 		return result, nil
 	}
@@ -223,15 +223,17 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 	}
 
 	var positions []struct {
-		InstId    string `json:"instId"`
-		Pos       string `json:"pos"`
-		AvgPx     string `json:"avgPx"`
-		MarkPx    string `json:"markPx"`
-		Upl       string `json:"upl"`
-		Lever     string `json:"lever"`
-		LiqPx     string `json:"liqPx"`
-		PosSide   string `json:"posSide"`
-		MgnMode   string `json:"mgnMode"`
+		InstId  string `json:"instId"`
+		Pos     string `json:"pos"`
+		AvgPx   string `json:"avgPx"`
+		MarkPx  string `json:"markPx"`
+		Upl     string `json:"upl"`
+		Lever   string `json:"lever"`
+		LiqPx   string `json:"liqPx"`
+		PosSide string `json:"posSide"`
+		MgnMode string `json:"mgnMode"`
+		CTime   string `json:"cTime"` // 持仓创建时间（Unix毫秒时间戳）
+		UTime   string `json:"uTime"` // 持仓更新时间（Unix毫秒时间戳）
 	}
 
 	if err := json.Unmarshal(data, &positions); err != nil {
@@ -283,7 +285,16 @@ func (t *OKXTrader) GetPositions() ([]map[string]interface{}, error) {
 		}
 
 		posMap["side"] = side
-		log.Printf("  └─ ✓ 解析成功: symbol=%s, side=%s, amount=%.4f", pos.InstId, side, posAmt)
+
+		// 解析开仓时间（cTime是Unix毫秒时间戳）
+		if pos.CTime != "" {
+			cTime, err := strconv.ParseInt(pos.CTime, 10, 64)
+			if err == nil {
+				posMap["openTime"] = cTime // 毫秒时间戳
+			}
+		}
+
+		log.Printf("  └─ ✓ 解析成功: symbol=%s, side=%s, amount=%.4f, openTime=%s", pos.InstId, side, posAmt, pos.CTime)
 
 		result = append(result, posMap)
 	}
@@ -384,10 +395,10 @@ func (t *OKXTrader) OpenLong(symbol string, quantity float64, leverage int) (map
 	}
 
 	var orders []struct {
-		OrdId  string `json:"ordId"`
+		OrdId   string `json:"ordId"`
 		ClOrdId string `json:"clOrdId"`
-		SCode  string `json:"sCode"`
-		SMsg   string `json:"sMsg"`
+		SCode   string `json:"sCode"`
+		SMsg    string `json:"sMsg"`
 	}
 
 	if err := json.Unmarshal(data, &orders); err != nil {
@@ -456,10 +467,10 @@ func (t *OKXTrader) OpenShort(symbol string, quantity float64, leverage int) (ma
 	}
 
 	var orders []struct {
-		OrdId  string `json:"ordId"`
+		OrdId   string `json:"ordId"`
 		ClOrdId string `json:"clOrdId"`
-		SCode  string `json:"sCode"`
-		SMsg   string `json:"sMsg"`
+		SCode   string `json:"sCode"`
+		SMsg    string `json:"sMsg"`
 	}
 
 	if err := json.Unmarshal(data, &orders); err != nil {
