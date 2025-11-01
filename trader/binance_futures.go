@@ -30,8 +30,15 @@ type FuturesTrader struct {
 }
 
 // NewFuturesTrader 创建合约交易器
-func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
+func NewFuturesTrader(apiKey, secretKey string, testnet bool) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
+	
+	// 如果使用测试网，设置测试网 API 端点
+	if testnet {
+		client.SetApiEndpoint("https://testnet.binancefuture.com")
+		log.Printf("🔧 使用币安测试网: https://testnet.binancefuture.com")
+	}
+	
 	return &FuturesTrader{
 		client:        client,
 		cacheDuration: 15 * time.Second, // 15秒缓存
