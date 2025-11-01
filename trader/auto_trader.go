@@ -469,6 +469,12 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 			continue
 		}
 
+		// 🚫 黑名单检查：跳过黑名单币种，不展示给 AI
+		if at.excludedSymbolsMap[symbol] {
+			log.Printf("🚫 跳过黑名单持仓: %s (该持仓不会出现在AI决策中)", symbol)
+			continue
+		}
+
 		side, ok := pos["side"].(string)
 		if !ok || side == "" {
 			log.Printf("警告: 持仓 %s 缺少有效的 side，跳过该持仓", symbol)
@@ -797,6 +803,11 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  🔄 平多仓: %s", decision.Symbol)
 
+	// 🚫 黑名单检查：拒绝对黑名单币种进行交易
+	if at.excludedSymbolsMap[decision.Symbol] {
+		return fmt.Errorf("❌ %s 在黑名单中，拒绝平仓", decision.Symbol)
+	}
+
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
 	if err != nil {
@@ -822,6 +833,11 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, ac
 // executeCloseShortWithRecord 执行平空仓并记录详细信息
 func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  🔄 平空仓: %s", decision.Symbol)
+
+	// 🚫 黑名单检查：拒绝对黑名单币种进行交易
+	if at.excludedSymbolsMap[decision.Symbol] {
+		return fmt.Errorf("❌ %s 在黑名单中，拒绝平仓", decision.Symbol)
+	}
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
