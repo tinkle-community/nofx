@@ -1123,26 +1123,29 @@ func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, ava
 			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
 		}
 
-		// 计算距离强平价的百分比
+		// 计算距离强平价的百分比（考虑杠杆）
+		// 价格距离百分比 × 杠杆 = 保证金安全度
 		distanceToLiqPct := 0.0
 		if side == "long" {
-			// 多仓：当前价格 - 强平价
-			distanceToLiqPct = ((markPrice - liquidationPrice) / markPrice) * 100
+			// 多仓：(当前价格 - 强平价) / 强平价 × 杠杆
+			priceDistancePct := ((markPrice - liquidationPrice) / liquidationPrice) * 100
+			distanceToLiqPct = priceDistancePct * leverage
 		} else {
-			// 空仓：强平价 - 当前价格
-			distanceToLiqPct = ((liquidationPrice - markPrice) / markPrice) * 100
+			// 空仓：(强平价 - 当前价格) / 当前价格 × 杠杆
+			priceDistancePct := ((liquidationPrice - markPrice) / markPrice) * 100
+			distanceToLiqPct = priceDistancePct * leverage
 		}
 
 		// === 场景1: 防爆仓保护 ===
-		// 当距离强平价 < 10% 时，追加保证金
-		if distanceToLiqPct < 10 && distanceToLiqPct > 0 {
-			// 计算需要追加的保证金，使强平距离扩大到 15%
+		// 当保证金安全度 < 50% 时，追加保证金（考虑杠杆后的安全度）
+		if distanceToLiqPct < 50 && distanceToLiqPct > 0 {
+			// 计算需要追加的保证金，使安全度扩大到 100%
 			// 当前保证金
 			currentMargin := (positionAmt * markPrice) / leverage
 
-			// 目标：让强平距离达到 15%
-			// 需要的总保证金 = 仓位价值 / (1 / 0.15) ≈ 仓位价值 * 0.15
-			targetMarginRatio := 0.15 // 15% 的安全距离
+			// 目标：让安全度达到 100%（相当于价格距离 100%/杠杆）
+			// 目标保证金率 = 100% / 杠杆 / 100 = 1 / 杠杆
+			targetMarginRatio := 1.0 / leverage * 1.5 // 增加50%的缓冲
 			targetMargin := (positionAmt * markPrice) * targetMarginRatio
 
 			addAmount := targetMargin - currentMargin
@@ -1153,8 +1156,8 @@ func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, ava
 				}
 
 				if addAmount >= 0.1 { // 至少追加0.1 USDT才有意义
-					log.Printf("⚠️  %s %s 接近强平价！距离=%.2f%%, 追加保证金 %.2f USDT",
-						symbol, side, distanceToLiqPct, addAmount)
+					log.Printf("⚠️  %s %s 接近强平价！保证金安全度=%.2f%% (杠杆%dx), 追加保证金 %.2f USDT",
+						symbol, side, distanceToLiqPct, int(leverage), addAmount)
 
 					if err := t.AdjustMargin(instId, posSide, "add", addAmount); err != nil {
 						log.Printf("❌ 追加保证金失败: %v", err)
@@ -1169,13 +1172,13 @@ func (t *OKXTrader) CheckAndAdjustMargin(positions []map[string]interface{}, ava
 		}
 
 		// === 场景2: 盈利时释放保证金 ===
-		// 条件：盈利 > 20% 且 距离强平 > 30%
-		if pnlPct > 20 && distanceToLiqPct > 30 {
+		// 条件：盈利 > 20% 且 保证金安全度 > 200%
+		if pnlPct > 20 && distanceToLiqPct > 200 {
 			// 当前保证金
 			currentMargin := (positionAmt * markPrice) / leverage
 
-			// 目标：保持强平距离至少 20%
-			targetMarginRatio := 0.20
+			// 目标：保持安全度至少 150%（相当于价格距离 150%/杠杆）
+			targetMarginRatio := 1.5 / leverage
 			minMargin := (positionAmt * markPrice) * targetMarginRatio
 
 			reduceAmount := currentMargin - minMargin
