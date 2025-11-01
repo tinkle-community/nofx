@@ -8,12 +8,14 @@ import (
 	"nofx/auth"
 	"nofx/config"
 	"nofx/manager"
+	"nofx/market"
 	"nofx/pool"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // LeverageConfig 杠杆配置
@@ -28,6 +30,7 @@ type ConfigFile struct {
 	APIServerPort      int            `json:"api_server_port"`
 	UseDefaultCoins    bool           `json:"use_default_coins"`
 	DefaultCoins       []string       `json:"default_coins"`
+	InsideCoins        bool           `json:"inside_coins"`
 	CoinPoolAPIURL     string         `json:"coin_pool_api_url"`
 	OITopAPIURL        string         `json:"oi_top_api_url"`
 	MaxDailyLoss       float64        `json:"max_daily_loss"`
@@ -35,6 +38,7 @@ type ConfigFile struct {
 	StopTradingMinutes int            `json:"stop_trading_minutes"`
 	Leverage           LeverageConfig `json:"leverage"`
 	JWTSecret          string         `json:"jwt_secret"`
+	DataKLineTime      string         `json:"data_k_line_time"`
 }
 
 // syncConfigToDatabase 从config.json读取配置并同步到数据库
@@ -61,14 +65,15 @@ func syncConfigToDatabase(database *config.Database) error {
 
 	// 同步各配置项到数据库
 	configs := map[string]string{
-		"admin_mode":            fmt.Sprintf("%t", configFile.AdminMode),
-		"api_server_port":       strconv.Itoa(configFile.APIServerPort),
-		"use_default_coins":     fmt.Sprintf("%t", configFile.UseDefaultCoins),
-		"coin_pool_api_url":     configFile.CoinPoolAPIURL,
-		"oi_top_api_url":        configFile.OITopAPIURL,
-		"max_daily_loss":        fmt.Sprintf("%.1f", configFile.MaxDailyLoss),
-		"max_drawdown":          fmt.Sprintf("%.1f", configFile.MaxDrawdown),
-		"stop_trading_minutes":  strconv.Itoa(configFile.StopTradingMinutes),
+		"admin_mode":           fmt.Sprintf("%t", configFile.AdminMode),
+		"api_server_port":      strconv.Itoa(configFile.APIServerPort),
+		"use_default_coins":    fmt.Sprintf("%t", configFile.UseDefaultCoins),
+		"inside_coins":         fmt.Sprintf("%t", configFile.InsideCoins),
+		"coin_pool_api_url":    configFile.CoinPoolAPIURL,
+		"oi_top_api_url":       configFile.OITopAPIURL,
+		"max_daily_loss":       fmt.Sprintf("%.1f", configFile.MaxDailyLoss),
+		"max_drawdown":         fmt.Sprintf("%.1f", configFile.MaxDrawdown),
+		"stop_trading_minutes": strconv.Itoa(configFile.StopTradingMinutes),
 	}
 
 	// 同步default_coins（转换为JSON字符串存储）
@@ -132,12 +137,14 @@ func main() {
 	// 获取系统配置
 	useDefaultCoinsStr, _ := database.GetSystemConfig("use_default_coins")
 	useDefaultCoins := useDefaultCoinsStr == "true"
+	InsideCoinsStr, _ := database.GetSystemConfig("inside_coins")
+	insideCoins := InsideCoinsStr == "true"
 	apiPortStr, _ := database.GetSystemConfig("api_server_port")
-	
+
 	// 获取管理员模式配置
 	adminModeStr, _ := database.GetSystemConfig("admin_mode")
 	adminMode := adminModeStr != "false" // 默认为true
-	
+
 	// 设置JWT密钥
 	jwtSecret, _ := database.GetSystemConfig("jwt_secret")
 	if jwtSecret == "" {
@@ -145,7 +152,7 @@ func main() {
 		log.Printf("⚠️  使用默认JWT密钥，建议在生产环境中配置")
 	}
 	auth.SetJWTSecret(jwtSecret)
-	
+
 	// 在管理员模式下，确保admin用户存在
 	if adminMode {
 		err := database.EnsureAdminUser()
@@ -156,7 +163,7 @@ func main() {
 		}
 		auth.SetAdminMode(true)
 	}
-	
+
 	log.Printf("✓ 配置数据库初始化成功")
 	fmt.Println()
 
@@ -180,6 +187,25 @@ func main() {
 
 	pool.SetDefaultCoins(defaultCoins)
 
+	//内置AI评分
+	if insideCoins {
+		log.Printf("✓ 启用内置AI评分币种列表")
+		monitor := market.NewWSMonitor(150)
+		go func() {
+			monitor.Start()
+			// 定时器设置默认的币种列表 - 覆蓋defaultCoins设置
+			for {
+				if len(monitor.FilterSymbol) > 0 {
+					for _, coin := range defaultCoins {
+						monitor.FilterSymbol = append(monitor.FilterSymbol, coin)
+					}
+					pool.SetDefaultCoins(monitor.FilterSymbol)
+					monitor.FilterSymbol = nil
+				}
+				time.Sleep(1 * time.Minute)
+			}
+		}()
+	}
 	// 设置是否使用默认主流币种
 	pool.SetUseDefaultCoins(useDefaultCoins)
 	if useDefaultCoins {
@@ -192,7 +218,7 @@ func main() {
 		pool.SetCoinPoolAPI(coinPoolAPIURL)
 		log.Printf("✓ 已配置AI500币种池API")
 	}
-	
+
 	oiTopAPIURL, _ := database.GetSystemConfig("oi_top_api_url")
 	if oiTopAPIURL != "" {
 		pool.SetOITopAPI(oiTopAPIURL)
@@ -208,37 +234,26 @@ func main() {
 		log.Fatalf("❌ 加载交易员失败: %v", err)
 	}
 
-	// 获取所有用户的交易员配置（用于显示）
-	userIDs, err := database.GetAllUsers()
+	// 获取数据库中的所有交易员配置（用于显示，使用default用户）
+	traders, err := database.GetTraders("default")
 	if err != nil {
-		log.Printf("⚠️ 获取用户列表失败: %v", err)
-		userIDs = []string{"default"} // 回退到default用户
-	}
-
-	var allTraders []*config.TraderRecord
-	for _, userID := range userIDs {
-		traders, err := database.GetTraders(userID)
-		if err != nil {
-			log.Printf("⚠️ 获取用户 %s 的交易员失败: %v", userID, err)
-			continue
-		}
-		allTraders = append(allTraders, traders...)
+		log.Fatalf("❌ 获取交易员列表失败: %v", err)
 	}
 
 	// 显示加载的交易员信息
 	fmt.Println()
 	fmt.Println("🤖 数据库中的AI交易员配置:")
-	if len(allTraders) == 0 {
+	if len(traders) == 0 {
 		fmt.Println("  • 暂无配置的交易员，请通过Web界面创建")
 	} else {
-		for _, trader := range allTraders {
+		for _, trader := range traders {
 			status := "停止"
 			if trader.IsRunning {
 				status = "运行中"
 			}
-			fmt.Printf("  • %s (%s + %s) - 用户: %s - 初始资金: %.0f USDT [%s]\n",
-				trader.Name, strings.ToUpper(trader.AIModelID), strings.ToUpper(trader.ExchangeID), 
-				trader.UserID, trader.InitialBalance, status)
+			fmt.Printf("  • %s (%s + %s) - 初始资金: %.0f USDT [%s]\n",
+				trader.Name, strings.ToUpper(trader.AIModelID), strings.ToUpper(trader.ExchangeID),
+				trader.InitialBalance, status)
 		}
 	}
 
@@ -256,7 +271,7 @@ func main() {
 	fmt.Println()
 
 	// 获取API服务器端口
-    apiPort := 8080 // 默认端口
+	apiPort := 8080 // 默认端口
 	if apiPortStr != "" {
 		if port, err := strconv.Atoi(apiPortStr); err == nil {
 			apiPort = port

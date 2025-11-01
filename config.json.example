@@ -5,6 +5,7 @@
     "altcoin_leverage": 5
   },
   "use_default_coins": true,
+  "inside_coins": true,
   "default_coins": [
     "BTCUSDT",
     "ETHUSDT",
