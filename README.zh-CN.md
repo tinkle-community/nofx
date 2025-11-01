@@ -430,6 +430,7 @@ cp config.json.example config.json
     {
       "id": "my_trader",
       "name": "我的AI交易员",
+      "enabled": true,
       "ai_model": "deepseek",
       "binance_api_key": "YOUR_BINANCE_API_KEY",
       "binance_secret_key": "YOUR_BINANCE_SECRET_KEY",
