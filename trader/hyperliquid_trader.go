@@ -679,3 +679,13 @@ func absFloat(x float64) float64 {
 	}
 	return x
 }
+
+// SetMarginMode 设置保证金模式（全仓/逐仓）
+// Hyperliquid 默认使用全仓模式，不支持逐仓模式
+func (t *HyperliquidTrader) SetMarginMode(symbol string, isCrossMargin bool) error {
+	if !isCrossMargin {
+		log.Printf("  ⚠️ Hyperliquid 不支持逐仓模式，将使用默认的全仓模式")
+	}
+	// Hyperliquid 默认全仓，无需设置
+	return nil
+}

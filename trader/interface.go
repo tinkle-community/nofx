@@ -38,4 +38,7 @@ type Trader interface {
 
 	// FormatQuantity 格式化数量到正确的精度
 	FormatQuantity(symbol string, quantity float64) (string, error)
+
+	// SetMarginMode 设置保证金模式（全仓/逐仓）
+	SetMarginMode(symbol string, isCrossMargin bool) error
 }
