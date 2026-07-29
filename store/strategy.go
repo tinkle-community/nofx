@@ -955,6 +955,15 @@ type ExternalDataSource struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	DataPath    string            `json:"data_path,omitempty"`    // JSON data path
 	RefreshSecs int               `json:"refresh_secs,omitempty"` // refresh interval (seconds)
+
+	// Payment opts this source into x402: a 402 response is paid with the
+	// trader's claw402 wallet key. Unset (default) never pays.
+	Payment string `json:"payment,omitempty"` // "" (never pay) | "x402"
+	// Both caps are required when Payment is set. MaxUSDPerCall bounds a single
+	// authorization; MaxUSDPerDay bounds cumulative spend per source per UTC
+	// day — a per-call cap alone is unbounded under refresh_secs polling.
+	MaxUSDPerCall float64 `json:"max_usd_per_call,omitempty"`
+	MaxUSDPerDay  float64 `json:"max_usd_per_day,omitempty"`
 }
 
 // RiskControlConfig risk control configuration
