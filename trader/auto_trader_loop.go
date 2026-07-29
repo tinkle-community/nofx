@@ -637,7 +637,26 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		CandidateCoins: candidateCoins,
 	}
 
-	// 7. Add recent closed trades (if store is available)
+	// 7. Fetch user-defined external data sources (if configured). Paid
+	// (payment: "x402") sources record their settled spend into ai_charges so
+	// data spend appears in the cost dashboard next to inference spend.
+	if at.strategyEngine != nil && len(strategyConfig.Indicators.ExternalDataSources) > 0 {
+		externalData, err := at.strategyEngine.FetchExternalData()
+		if err != nil {
+			at.logWarnf("⚠️ Failed to fetch external data sources: %v", err)
+		} else if len(externalData) > 0 {
+			ctx.ExternalData = externalData
+		}
+		if at.store != nil {
+			for _, charge := range at.strategyEngine.DrainPaidDataCharges() {
+				if err := at.store.AICharge().RecordWithCost(at.id, charge.SourceName, "x402-data", charge.CostUSD); err != nil {
+					at.logWarnf("⚠️ Failed to record x402 data charge for [%s]: %v", charge.SourceName, err)
+				}
+			}
+		}
+	}
+
+	// 8. Add recent closed trades (if store is available)
 	if at.store != nil {
 		// Get recent 10 closed trades for AI context
 		recentTrades, err := at.store.Position().GetRecentTrades(at.id, 10)
