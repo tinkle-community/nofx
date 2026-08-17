@@ -273,7 +273,7 @@ NOFX tracks meaningful contributions and intends to reward contributors as the e
 
 If NOFX is useful to you, a star helps other traders find it.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.dera.page/#NoFxAiOS/nofx&Date)
 
 ## License
 

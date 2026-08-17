@@ -273,7 +273,7 @@ NOFX는 의미 있는 기여를 기록하며, 생태계가 성장함에 따라 �
 
 NOFX가 도움이 되었다면, 스타 하나가 다른 트레이더들이 이 프로젝트를 발견하는 데 큰 힘이 됩니다.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.dera.page/#NoFxAiOS/nofx&Date)
 
 ## 라이선스
 

@@ -273,7 +273,7 @@ NOFX 会记录有价值的贡献，并计划随着生态发展回馈贡献者。
 
 如果 NOFX 对你有帮助，点个 Star 能让更多交易者发现它。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.dera.page/#NoFxAiOS/nofx&Date)
 
 ## 许可证
 

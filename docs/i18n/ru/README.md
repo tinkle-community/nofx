@@ -273,7 +273,7 @@ NOFX отслеживает значимые вклады и намерен во
 
 Если NOFX вам полезен, звезда помогает другим трейдерам его найти.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.dera.page/#NoFxAiOS/nofx&Date)
 
 ## Лицензия
 

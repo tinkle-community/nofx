@@ -273,7 +273,7 @@ NOFX відстежує значущі внески й має намір вин�
 
 Якщо NOFX вам корисний, зірка допоможе іншим трейдерам його знайти.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.com/#NoFxAiOS/nofx&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NoFxAiOS/nofx&type=Date)](https://star-history.dera.page/#NoFxAiOS/nofx&Date)
 
 ## Ліцензія
 
