@@ -8,7 +8,7 @@ import (
 
 const (
 	DefaultOpenAIBaseURL = "https://api.openai.com/v1"
-	DefaultOpenAIModel   = "gpt-5.4"
+	DefaultOpenAIModel   = "gpt-5.6"
 )
 
 func init() {
