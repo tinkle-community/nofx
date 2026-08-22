@@ -7,12 +7,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
 // Private/Reserved IP ranges that should be blocked to prevent SSRF
 var privateIPBlocks []*net.IPNet
+
+const trustedPrivateAPIHostsEnv = "NOFX_TRUSTED_PRIVATE_API_HOSTS"
 
 func init() {
 	// Initialize private IP blocks
@@ -80,6 +83,37 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
+func isTrustedPrivateAPIHost(host string) bool {
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if host == "" {
+		return false
+	}
+
+	allowed := strings.Split(os.Getenv(trustedPrivateAPIHostsEnv), ",")
+	parsedHostIP := net.ParseIP(host)
+	for _, rawEntry := range allowed {
+		entry := strings.TrimSpace(strings.Trim(rawEntry, "[]"))
+		if entry == "" {
+			continue
+		}
+
+		if strings.EqualFold(host, entry) {
+			return true
+		}
+
+		if strings.Contains(entry, "/") {
+			if parsedHostIP == nil {
+				continue
+			}
+			if _, cidr, err := net.ParseCIDR(entry); err == nil && cidr.Contains(parsedHostIP) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // ValidateURL checks if a URL is safe to request (not pointing to internal networks)
 // Returns an error if the URL is potentially dangerous
 func ValidateURL(rawURL string) error {
@@ -104,6 +138,7 @@ func ValidateURL(rawURL string) error {
 	if host == "" {
 		return &SSRFError{URL: rawURL, Reason: "empty hostname"}
 	}
+	trustedHost := isTrustedPrivateAPIHost(host)
 
 	// Block localhost and common internal hostnames
 	lowerHost := strings.ToLower(host)
@@ -117,7 +152,7 @@ func ValidateURL(rawURL string) error {
 		"instance-data",
 	}
 	for _, blocked := range blockedHosts {
-		if lowerHost == blocked {
+		if !trustedHost && lowerHost == blocked {
 			return &SSRFError{URL: rawURL, Reason: fmt.Sprintf("blocked hostname: %s", host)}
 		}
 	}
@@ -133,7 +168,7 @@ func ValidateURL(rawURL string) error {
 		// If DNS resolution fails, we still need to check if it's an IP address directly
 		ip := net.ParseIP(host)
 		if ip != nil {
-			if isPrivateIP(ip) {
+			if isPrivateIP(ip) && !trustedHost {
 				return &SSRFError{URL: rawURL, Reason: "resolves to private IP address"}
 			}
 			return nil // It's a valid public IP
@@ -145,7 +180,7 @@ func ValidateURL(rawURL string) error {
 
 	// Check all resolved IPs
 	for _, ipAddr := range ips {
-		if isPrivateIP(ipAddr.IP) {
+		if isPrivateIP(ipAddr.IP) && !trustedHost {
 			return &SSRFError{URL: rawURL, Reason: fmt.Sprintf("resolves to private IP: %s", ipAddr.IP)}
 		}
 	}
@@ -168,6 +203,7 @@ func SafeHTTPClient(timeout time.Duration) *http.Client {
 			if err != nil {
 				host = addr
 			}
+			trustedHost := isTrustedPrivateAPIHost(host)
 
 			// Resolve and check the IP
 			ips, err := net.LookupIP(host)
@@ -176,7 +212,7 @@ func SafeHTTPClient(timeout time.Duration) *http.Client {
 			}
 
 			for _, ip := range ips {
-				if isPrivateIP(ip) {
+				if isPrivateIP(ip) && !trustedHost {
 					return nil, fmt.Errorf("SSRF protection: blocked connection to private IP %s", ip)
 				}
 			}

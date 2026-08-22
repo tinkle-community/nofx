@@ -25,6 +25,7 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - AI_MAX_TOKENS=8000
+      - NOFX_TRUSTED_PRIVATE_API_HOSTS=${NOFX_TRUSTED_PRIVATE_API_HOSTS:-chatgpt-codex-proxy}
     networks:
       - nofx-network
     healthcheck:
@@ -49,6 +50,36 @@ services:
       - nofx
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ChatGPT subscription compatibility sidecar for NOFX's existing OpenAI path.
+  # The companion NOFX service allowlists this container hostname via
+  # NOFX_TRUSTED_PRIVATE_API_HOSTS so it can be used over the private Docker network.
+  chatgpt-codex-proxy:
+    profiles: ["chatgpt-codex-proxy"]
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.chatgpt-codex-proxy
+    container_name: chatgpt-codex-proxy
+    restart: unless-stopped
+    ports:
+      - "${CHATGPT_PROXY_PORT:-8081}:8081"
+    environment:
+      - PROXY_ADDR=:8081
+      - EXPECTED_API_KEY=${CHATGPT_PROXY_SHARED_SECRET:-}
+      - CODEX_AUTH_FILE=/run/secrets/codex_auth.json
+      - CODEX_CLIENT_VERSION=${CHATGPT_PROXY_CLIENT_VERSION:-0.133.0}
+      - CODEX_CLIENT_NAME=${CHATGPT_PROXY_CLIENT_NAME:-codex_cli_rs}
+      - CODEX_BASE_URL=${CHATGPT_PROXY_BASE_URL:-}
+    volumes:
+      - ${CHATGPT_PROXY_AUTH_FILE:-./.chatgpt-proxy-disabled-auth.json}:/run/secrets/codex_auth.json:ro
+    networks:
+      - nofx-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8081/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3

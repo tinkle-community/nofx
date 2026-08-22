@@ -203,7 +203,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 			cleanURL := strings.TrimSuffix(modelData.CustomAPIURL, "#")
 			if err := security.ValidateURL(cleanURL); err != nil {
 				logger.Warnf("Invalid custom_api_url for model %s: %v", modelID, err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid custom_api_url for model %s: URL must be a valid HTTPS endpoint", modelID)})
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid custom_api_url for model %s: URL must be a valid HTTP(S) endpoint and not resolve to an untrusted private host", modelID)})
 				return
 			}
 		}
