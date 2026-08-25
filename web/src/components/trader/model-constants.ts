@@ -56,7 +56,7 @@ export const CLAW402_MODELS: Claw402Model[] = [
 
 // AI Provider configuration - default models and API links
 export const AI_PROVIDER_CONFIG: Record<string, AIProviderConfig> = {
-  claw402: {
+claw402: {
     defaultModel: DEFAULT_CLAW402_MODEL,
     apiUrl: 'https://claw402.ai',
     apiName: 'Claw402',
