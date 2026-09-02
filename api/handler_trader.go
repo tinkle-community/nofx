@@ -108,6 +108,8 @@ func missingExchangeFields(exchange *store.Exchange) []string {
 
 	var missing []string
 	switch exchange.ExchangeType {
+	case "mexc_paper":
+		return nil
 	case "binance", "bybit", "gate", "indodax":
 		if exchange.APIKey == "" {
 			missing = append(missing, "API Key")
@@ -190,7 +192,7 @@ func validateExchangeForTraderCreation(exchange *store.Exchange) (string, string
 	}
 
 	switch exchange.ExchangeType {
-	case "binance", "bybit", "okx", "bitget", "gate", "kucoin", "hyperliquid", "aster", "lighter", "indodax":
+	case "binance", "bybit", "okx", "bitget", "gate", "kucoin", "hyperliquid", "aster", "lighter", "indodax", "mexc_paper":
 		return "", "", nil
 	default:
 		return formatTraderCreationError(

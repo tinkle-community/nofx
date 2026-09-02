@@ -17,6 +17,7 @@ import (
 	hyperliquidtrader "nofx/trader/hyperliquid"
 	"nofx/trader/kucoin"
 	"nofx/trader/lighter"
+	"nofx/trader/mexcpaper"
 	"nofx/trader/okx"
 
 	"github.com/gin-gonic/gin"
@@ -157,6 +158,8 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 	// Use ExchangeType (e.g., "binance") instead of ExchangeID (which is now UUID)
 	// Convert EncryptedString fields to string
 	switch exchangeCfg.ExchangeType {
+	case "mexc_paper":
+		tempTrader, createErr = mexcpaper.NewMEXCPaperTrader(exchangeCfg.ID, mexcpaper.DefaultInitialBalance)
 	case "binance":
 		tempTrader = binance.NewFuturesTrader(string(exchangeCfg.APIKey), string(exchangeCfg.SecretKey), userID)
 	case "hyperliquid":

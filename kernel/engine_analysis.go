@@ -203,7 +203,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 
 	// 1. First fetch data for position coins (must fetch)
 	for _, pos := range ctx.Positions {
-		data, err := market.GetWithTimeframes(pos.Symbol, timeframes, primaryTimeframe, klineCount)
+		data, err := market.GetWithTimeframesForExchange(pos.Symbol, timeframes, primaryTimeframe, klineCount, engine.MarketExchange())
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for position %s: %v", pos.Symbol, err)
 			continue
@@ -224,7 +224,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 			continue
 		}
 
-		data, err := market.GetWithTimeframes(coin.Symbol, timeframes, primaryTimeframe, klineCount)
+		data, err := market.GetWithTimeframesForExchange(coin.Symbol, timeframes, primaryTimeframe, klineCount, engine.MarketExchange())
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for %s: %v", coin.Symbol, err)
 			continue
@@ -233,7 +233,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		// Liquidity filter (skip for xyz dex assets - they don't have OI data from Binance)
 		isExistingPosition := positionSymbols[coin.Symbol]
 		isXyzAsset := market.IsXyzDexAsset(coin.Symbol)
-		if !isExistingPosition && !isXyzAsset && data.OpenInterest != nil && data.CurrentPrice > 0 {
+		if !isExistingPosition && !isXyzAsset && engine.MarketExchange() != "mexc_paper" && data.OpenInterest != nil && data.CurrentPrice > 0 {
 			oiValue := data.OpenInterest.Latest * data.CurrentPrice
 			oiValueInMillions := oiValue / 1_000_000
 			if oiValueInMillions < minOIThresholdMillions {

@@ -57,6 +57,8 @@ NOFX is free and open source. Opening an account through the partner links below
 | <img src="web/public/exchange-icons/aster.svg" width="20" height="20" style="vertical-align: middle;"/> **Aster**           |   ✅   | [Register](https://www.asterdex.com/en/referral/fdfc0e)                             |
 | <img src="web/public/exchange-icons/lighter.png" width="20" height="20" style="vertical-align: middle;"/> **Lighter**       |   ✅   | [Register](https://app.lighter.xyz/?referral=68151432)                              |
 
+For strategy testing without exchange credentials or real funds, choose **MEXC Paper Trading** in the exchange setup. NOFX reads public MEXC spot prices and simulates balances, positions, fees, stop-losses, take-profits, and order history locally from a 10,000 USDT starting balance. This mode never sends an order to MEXC.
+
 <br/>
 
 ## Demo

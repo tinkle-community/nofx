@@ -18,6 +18,7 @@ import (
 	"nofx/trader/indodax"
 	"nofx/trader/kucoin"
 	"nofx/trader/lighter"
+	"nofx/trader/mexcpaper"
 	"nofx/trader/okx"
 	"nofx/wallet"
 	"sync"
@@ -78,7 +79,7 @@ type AutoTraderConfig struct {
 	AIModel    string // AI model: "qwen" or "deepseek"
 
 	// Trading platform selection
-	Exchange   string // Exchange type: "binance", "bybit", "okx", "bitget", "gate", "hyperliquid", "aster" or "lighter"
+	Exchange   string // Exchange type: "binance", "bybit", "okx", "bitget", "gate", "hyperliquid", "aster", "lighter" or "mexc_paper"
 	ExchangeID string // Exchange account UUID (for multi-account support)
 
 	// Binance API configuration
@@ -287,6 +288,12 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	logger.Infof("📊 [%s] Position mode: %s", config.Name, marginModeStr)
 
 	switch config.Exchange {
+	case "mexc_paper":
+		logger.Infof("🏦 [%s] Using MEXC Paper Trading (public prices, simulated orders)", config.Name)
+		trader, err = mexcpaper.NewMEXCPaperTrader(config.ExchangeID, config.InitialBalance)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize MEXC paper trader: %w", err)
+		}
 	case "binance":
 		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
 		trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
@@ -385,6 +392,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		claw402Key = config.CustomAPIKey
 	}
 	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig, claw402Key)
+	strategyEngine.SetMarketExchange(config.Exchange)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
 	return &AutoTrader{

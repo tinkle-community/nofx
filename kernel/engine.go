@@ -187,6 +187,7 @@ type OIDeltaData struct {
 // StrategyEngine strategy execution engine
 type StrategyEngine struct {
 	config             *store.StrategyConfig
+	marketExchange     string
 	nofxosClient       *nofxos.Client
 	vergexClient       *vergex.Client
 	vergexRankingCache map[string]*vergex.DirectionChangeItem
@@ -281,6 +282,19 @@ func (e *StrategyEngine) GetLanguage() Language {
 // GetConfig gets complete strategy configuration
 func (e *StrategyEngine) GetConfig() *store.StrategyConfig {
 	return e.config
+}
+
+// SetMarketExchange selects the market-data venue used by strategy analysis.
+// Existing callers keep Binance behavior until this is explicitly set.
+func (e *StrategyEngine) SetMarketExchange(exchange string) {
+	e.marketExchange = strings.ToLower(strings.TrimSpace(exchange))
+}
+
+func (e *StrategyEngine) MarketExchange() string {
+	if e == nil || e.marketExchange == "" {
+		return "binance"
+	}
+	return e.marketExchange
 }
 
 // ============================================================================

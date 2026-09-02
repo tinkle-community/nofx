@@ -20,6 +20,7 @@ import (
 	"nofx/trader/indodax"
 	"nofx/trader/kucoin"
 	"nofx/trader/lighter"
+	"nofx/trader/mexcpaper"
 	"nofx/trader/okx"
 
 	"github.com/gin-gonic/gin"
@@ -224,6 +225,8 @@ func probeExchangeAccountState(exchangeCfg *store.Exchange, userID string) Excha
 
 func buildExchangeProbeTrader(exchangeCfg *store.Exchange, userID string) (trader.Trader, error) {
 	switch exchangeCfg.ExchangeType {
+	case "mexc_paper":
+		return mexcpaper.NewMEXCPaperTrader(exchangeCfg.ID, mexcpaper.DefaultInitialBalance)
 	case "binance":
 		return binance.NewFuturesTrader(string(exchangeCfg.APIKey), string(exchangeCfg.SecretKey), userID), nil
 	case "bybit":

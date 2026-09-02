@@ -40,8 +40,11 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 	// Check if this is an xyz dex asset (use Hyperliquid API)
 	isXyzAsset := IsXyzDexAsset(symbol)
 
+	exchangeLower := strings.ToLower(exchange)
+
 	// For hyperliquid exchange, also use Hyperliquid API
 	useHyperliquidAPI := isXyzAsset || strings.ToLower(exchange) == "hyperliquid"
+	useMEXCAPI := exchangeLower == "mexc_paper"
 
 	// Get 3-minute K-line data (or 5-minute for xyz assets as 3m may not be available)
 	if useHyperliquidAPI {
@@ -49,6 +52,11 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 		klines3m, err = getKlinesFromHyperliquid(symbol, "5m", 100)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get 5-minute K-line from Hyperliquid: %v", err)
+		}
+	} else if useMEXCAPI {
+		klines3m, err = GetMEXCKlines(symbol, "3m", 100)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get 3-minute K-line from MEXC: %v", err)
 		}
 	} else {
 		// Use CoinAnk for regular crypto assets with exchange-specific data
@@ -69,6 +77,11 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 		klines4h, err = getKlinesFromHyperliquid(symbol, "4h", 100)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get 4-hour K-line from Hyperliquid: %v", err)
+		}
+	} else if useMEXCAPI {
+		klines4h, err = GetMEXCKlines(symbol, "4h", 100)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get 4-hour K-line from MEXC: %v", err)
 		}
 	} else {
 		klines4h, err = getKlinesFromCoinAnk(symbol, "4h", exchange, 100)
@@ -146,6 +159,12 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 // primaryTimeframe: primary timeframe (used for calculating current indicators), defaults to timeframes[0]
 // count: number of K-lines for each timeframe
 func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe string, count int) (*Data, error) {
+	return GetWithTimeframesForExchange(symbol, timeframes, primaryTimeframe, count, "binance")
+}
+
+// GetWithTimeframesForExchange retrieves multi-timeframe data from the
+// selected execution venue when a native public market-data adapter exists.
+func GetWithTimeframesForExchange(symbol string, timeframes []string, primaryTimeframe string, count int, exchange string) (*Data, error) {
 	symbol = Normalize(symbol)
 
 	if len(timeframes) == 0 {
@@ -175,22 +194,31 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 
 	// Check if this is an xyz dex asset (use Hyperliquid API)
 	isXyzAsset := IsXyzDexAsset(symbol)
+	exchangeLower := strings.ToLower(strings.TrimSpace(exchange))
+	useHyperliquidAPI := isXyzAsset || exchangeLower == "hyperliquid"
+	useMEXCAPI := exchangeLower == "mexc_paper"
 
 	// Get K-line data for each timeframe
 	for _, tf := range timeframes {
 		var klines []Kline
 		var err error
 
-		if isXyzAsset {
+		if useHyperliquidAPI {
 			// Use Hyperliquid API for xyz dex assets
 			klines, err = getKlinesFromHyperliquid(symbol, tf, 200)
 			if err != nil {
 				logger.Infof("⚠️ Failed to get %s %s K-line from Hyperliquid: %v", symbol, tf, err)
 				continue
 			}
+		} else if useMEXCAPI {
+			klines, err = GetMEXCKlines(symbol, tf, 200)
+			if err != nil {
+				logger.Infof("⚠️ Failed to get %s %s K-line from MEXC: %v", symbol, tf, err)
+				continue
+			}
 		} else {
-			// Use CoinAnk for regular crypto assets (default to Binance)
-			klines, err = getKlinesFromCoinAnk(symbol, tf, "binance", 200)
+			// Use CoinAnk for regular crypto assets.
+			klines, err = getKlinesFromCoinAnk(symbol, tf, exchangeLower, 200)
 			if err != nil {
 				logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk: %v", symbol, tf, err)
 				continue

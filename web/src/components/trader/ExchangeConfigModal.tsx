@@ -24,6 +24,11 @@ import { getShortName } from './utils'
 
 // Supported exchange templates
 const SUPPORTED_EXCHANGE_TEMPLATES = [
+  {
+    exchange_type: 'mexc_paper',
+    name: 'MEXC Paper Trading',
+    type: 'cex' as const,
+  },
   { exchange_type: 'binance', name: 'Binance Futures', type: 'cex' as const },
   { exchange_type: 'bybit', name: 'Bybit Futures', type: 'cex' as const },
   { exchange_type: 'okx', name: 'OKX Futures', type: 'cex' as const },
@@ -314,7 +319,17 @@ export function ExchangeConfigModal({
 
     setIsSaving(true)
     try {
-      if (currentExchangeType === 'binance' || currentExchangeType === 'bybit' || currentExchangeType === 'indodax') {
+      if (currentExchangeType === 'mexc_paper') {
+        await onSave(
+          exchangeId,
+          exchangeType,
+          trimmedAccountName,
+          '',
+          '',
+          '',
+          false
+        )
+      } else if (currentExchangeType === 'binance' || currentExchangeType === 'bybit' || currentExchangeType === 'indodax') {
         if (!apiKey.trim() || !secretKey.trim()) return
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), '', testnet)
       } else if (currentExchangeType === 'okx' || currentExchangeType === 'bitget' || currentExchangeType === 'kucoin') {
@@ -427,7 +442,11 @@ export function ExchangeConfigModal({
                         template={template}
                         selected={selectedExchangeType === template.exchange_type}
                         onClick={() => handleSelectExchange(template.exchange_type)}
-                        disabled={webCryptoStatus !== 'secure' && webCryptoStatus !== 'disabled'}
+                        disabled={
+                          template.exchange_type !== 'mexc_paper' &&
+                          webCryptoStatus !== 'secure' &&
+                          webCryptoStatus !== 'disabled'
+                        }
                       />
                     ))}
                   </div>
@@ -468,23 +487,37 @@ export function ExchangeConfigModal({
                     {selectedTemplate.type.toUpperCase()} • {selectedTemplate.exchange_type}
                   </div>
                 </div>
-                <a
-                  href={exchangeRegistrationLinks[currentExchangeType || '']?.url || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:scale-105"
-                  style={{ background: 'rgba(224, 72, 59, 0.1)', border: '1px solid rgba(224, 72, 59, 0.3)' }}
-                >
-                  <UserPlus className="w-4 h-4" style={{ color: '#E0483B' }} />
-                  <span className="text-sm font-medium" style={{ color: '#E0483B' }}>
-                    {t('exchangeConfig.register', language)}
-                  </span>
-                  {exchangeRegistrationLinks[currentExchangeType || '']?.hasReferral && (
-                    <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(46, 139, 87, 0.2)', color: '#2E8B57' }}>
-                      {t('exchangeConfig.bonus', language)}
+                {currentExchangeType !== 'mexc_paper' && (
+                  <a
+                    href={
+                      exchangeRegistrationLinks[currentExchangeType || '']
+                        ?.url || '#'
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:scale-105"
+                    style={{
+                      background: 'rgba(224, 72, 59, 0.1)',
+                      border: '1px solid rgba(224, 72, 59, 0.3)',
+                    }}
+                  >
+                    <UserPlus className="w-4 h-4" style={{ color: '#E0483B' }} />
+                    <span className="text-sm font-medium" style={{ color: '#E0483B' }}>
+                      {t('exchangeConfig.register', language)}
                     </span>
-                  )}
-                </a>
+                    {exchangeRegistrationLinks[currentExchangeType || '']?.hasReferral && (
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded"
+                        style={{
+                          background: 'rgba(46, 139, 87, 0.2)',
+                          color: '#2E8B57',
+                        }}
+                      >
+                        {t('exchangeConfig.bonus', language)}
+                      </span>
+                    )}
+                  </a>
+                )}
               </div>
 
               {/* Account Name */}
@@ -503,6 +536,31 @@ export function ExchangeConfigModal({
                   required
                 />
               </div>
+
+              {currentExchangeType === 'mexc_paper' && (
+                <div
+                  className="p-4 rounded-xl"
+                  style={{
+                    background: 'rgba(46, 139, 87, 0.08)',
+                    border: '1px solid rgba(46, 139, 87, 0.25)',
+                  }}
+                >
+                  <div
+                    className="text-sm font-semibold mb-1"
+                    style={{ color: '#2E8B57' }}
+                  >
+                    Safe paper trading with MEXC prices
+                  </div>
+                  <div
+                    className="text-xs leading-5"
+                    style={{ color: '#5F5A50' }}
+                  >
+                    NOFX reads public MEXC prices while balances, positions, and
+                    orders remain simulated locally. No API key is required and
+                    no real order can be sent. Initial balance is 10,000 USDT.
+                  </div>
+                </div>
+              )}
 
               {/* CEX Fields */}
               {(currentExchangeType === 'binance' || currentExchangeType === 'bybit' || currentExchangeType === 'okx' || currentExchangeType === 'bitget' || currentExchangeType === 'gate' || currentExchangeType === 'kucoin' || currentExchangeType === 'indodax') && (

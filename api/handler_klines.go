@@ -47,6 +47,12 @@ func (s *Server) handleKlines(c *gin.Context) {
 
 	// Route to appropriate data source based on exchange type
 	switch exchangeLower {
+	case "mexc_paper":
+		klines, err = market.GetMEXCKlines(symbol, interval, limit)
+		if err != nil {
+			SafeInternalError(c, "Get klines from MEXC", err)
+			return
+		}
 	case "alpaca":
 		// US Stocks via Alpaca
 		klines, err = s.getKlinesFromAlpaca(symbol, interval, limit)
@@ -470,6 +476,27 @@ func (s *Server) handleSymbols(c *gin.Context) {
 
 	exchangeLower := strings.ToLower(exchange)
 	switch exchangeLower {
+	case "mexc_paper":
+		mexcSymbols, err := market.GetMEXCSymbols()
+		if err != nil {
+			SafeInternalError(c, "Get MEXC symbols", err)
+			return
+		}
+		for _, item := range mexcSymbols {
+			base := strings.TrimSuffix(item.Symbol, "USDT")
+			symbols = append(symbols, SymbolInfo{
+				Symbol:       item.Symbol,
+				Display:      base + "/USDT",
+				Name:         base,
+				Category:     "crypto",
+				Exchange:     "mexc_paper",
+				Volume24h:    item.QuoteVolume,
+				MarkPrice:    item.LastPrice,
+				Change24hPct: item.Change24hPct,
+				MaxLeverage:  20,
+				SzDecimals:   item.BasePrecision,
+			})
+		}
 	case "hyperliquid", "hyperliquid-xyz", "xyz":
 		ctx := context.Background()
 

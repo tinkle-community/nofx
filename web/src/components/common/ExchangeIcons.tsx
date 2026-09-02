@@ -84,6 +84,31 @@ export const getExchangeIcon = (
   props: IconProps = {}
 ) => {
   const lowerType = exchangeType.toLowerCase()
+  if (lowerType === 'mexc_paper') {
+    const size = props.width || 24
+    return (
+      <div
+        className={props.className}
+        style={{
+          width: size,
+          height: props.height || size,
+          borderRadius: 6,
+          background: '#2E8B57',
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: Math.max(7, size * 0.2),
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
+          flexShrink: 0,
+        }}
+      >
+        PAPER
+      </div>
+    )
+  }
+
   const type = lowerType.includes('binance')
     ? 'binance'
     : lowerType.includes('bybit')
