@@ -26,6 +26,8 @@ export function getModelDisplayName(modelId: string): string {
       return 'Qwen'
     case 'claude':
       return 'Claude'
+    case 'atlascloud':
+      return 'Atlas Cloud'
     default:
       return modelId.toUpperCase()
   }
@@ -130,6 +132,11 @@ export const CLAW402_MODELS: Claw402Model[] = [
 
 // AI Provider configuration - default models and API links
 export const AI_PROVIDER_CONFIG: Record<string, AIProviderConfig> = {
+  atlascloud: {
+    defaultModel: 'qwen/qwen3.5-flash',
+    apiUrl: 'https://www.atlascloud.ai/console/api-keys',
+    apiName: 'Atlas Cloud',
+  },
   claw402: {
     defaultModel: DEFAULT_CLAW402_MODEL,
     apiUrl: 'https://claw402.ai',

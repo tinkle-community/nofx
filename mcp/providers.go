@@ -9,9 +9,10 @@ const (
 	ProviderClaude   = "claude"
 	ProviderQwen     = "qwen"
 	ProviderGemini   = "gemini"
-	ProviderGrok     = "grok"
-	ProviderKimi     = "kimi"
-	ProviderMiniMax  = "minimax"
+	ProviderGrok       = "grok"
+	ProviderKimi       = "kimi"
+	ProviderMiniMax    = "minimax"
+	ProviderAtlasCloud = "atlascloud"
 
 	ProviderClaw402 = "claw402"
 
@@ -26,4 +27,8 @@ const (
 	// Default MiniMax configuration (used by WithMiniMaxConfig convenience option)
 	DefaultMiniMaxBaseURL = "https://api.minimax.io/v1"
 	DefaultMiniMaxModel   = "MiniMax-M2.7"
+
+	// Default Atlas Cloud configuration (OpenAI-compatible)
+	DefaultAtlasCloudBaseURL = "https://api.atlascloud.ai/v1"
+	DefaultAtlasCloudModel   = "qwen/qwen3.5-flash"
 )

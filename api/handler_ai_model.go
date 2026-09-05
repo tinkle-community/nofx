@@ -68,6 +68,7 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 	if len(models) == 0 {
 		logger.Infof("⚠️ No AI models in database, returning defaults")
 		defaultModels := []SafeModelConfig{
+			{ID: "atlascloud", Name: "Atlas Cloud", Provider: "atlascloud", Enabled: false, HasAPIKey: false},
 			{ID: "claw402", Name: "Claw402 (Base USDC)", Provider: "claw402", Enabled: false, HasAPIKey: false},
 		}
 		c.JSON(http.StatusOK, defaultModels)
@@ -109,6 +110,7 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 	if len(safeModels) == 0 {
 		logger.Infof("⚠️ No visible AI models in database, returning defaults")
 		defaultModels := []SafeModelConfig{
+			{ID: "atlascloud", Name: "Atlas Cloud", Provider: "atlascloud", Enabled: false, HasAPIKey: false},
 			{ID: "claw402", Name: "Claw402 (Base USDC)", Provider: "claw402", Enabled: false, HasAPIKey: false},
 		}
 		c.JSON(http.StatusOK, defaultModels)
@@ -244,6 +246,7 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 func (s *Server) handleGetSupportedModels(c *gin.Context) {
 	// Return static list of supported AI models with default versions
 	supportedModels := []map[string]interface{}{
+		{"id": "atlascloud", "name": "Atlas Cloud", "provider": "atlascloud", "defaultModel": "qwen/qwen3.5-flash"},
 		{"id": "claw402", "name": "Claw402 (Base USDC)", "provider": "claw402", "defaultModel": "gpt-5.6"},
 	}
 

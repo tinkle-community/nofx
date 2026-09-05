@@ -188,10 +188,11 @@ func hasUsableAPIKey(model AIModel) bool {
 		"openai":   "OPENAI_API_KEY",
 		"claude":   "ANTHROPIC_API_KEY",
 		"gemini":   "GEMINI_API_KEY",
-		"grok":     "XAI_API_KEY",
-		"kimi":     "MOONSHOT_API_KEY",
-		"minimax":  "MINIMAX_API_KEY",
-		"qwen":     "DASHSCOPE_API_KEY",
+		"grok":       "XAI_API_KEY",
+		"kimi":       "MOONSHOT_API_KEY",
+		"minimax":    "MINIMAX_API_KEY",
+		"qwen":       "DASHSCOPE_API_KEY",
+		"atlascloud": "ATLASCLOUD_API_KEY",
 	}
 	envKey := envKeyByProvider[strings.ToLower(strings.TrimSpace(model.Provider))]
 	return envKey != "" && strings.TrimSpace(os.Getenv(envKey)) != ""
@@ -267,6 +268,8 @@ func (s *AIModelStore) UpdateWithName(userID, id, name string, enabled bool, api
 			defaultName = "DeepSeek AI"
 		} else if provider == "qwen" {
 			defaultName = "Qwen AI"
+		} else if provider == "atlascloud" {
+			defaultName = "Atlas Cloud"
 		} else {
 			defaultName = provider + " AI"
 		}

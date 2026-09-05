@@ -81,3 +81,39 @@ func TestOptionsWithQwenClient(t *testing.T) {
 		t.Error("MaxTokens should be 6000")
 	}
 }
+
+func TestOptionsWithAtlasCloudClient(t *testing.T) {
+	logger := mcp.NewNoopLogger()
+
+	client := NewAtlasCloudClientWithOptions(
+		mcp.WithAPIKey("sk-atlas-key"),
+		mcp.WithLogger(logger),
+		mcp.WithMaxTokens(7000),
+	)
+
+	atlasClient := client.(*AtlasCloudClient)
+
+	if atlasClient.Provider != mcp.ProviderAtlasCloud {
+		t.Error("Provider should be Atlas Cloud")
+	}
+
+	if atlasClient.BaseURL != mcp.DefaultAtlasCloudBaseURL {
+		t.Error("BaseURL should be Atlas Cloud default")
+	}
+
+	if atlasClient.Model != mcp.DefaultAtlasCloudModel {
+		t.Error("Model should be Atlas Cloud default")
+	}
+
+	if atlasClient.APIKey != "sk-atlas-key" {
+		t.Error("APIKey should be set from options")
+	}
+
+	if atlasClient.Log != logger {
+		t.Error("Log should be set from options")
+	}
+
+	if atlasClient.MaxTokens != 7000 {
+		t.Error("MaxTokens should be 7000")
+	}
+}

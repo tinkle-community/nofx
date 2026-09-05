@@ -161,6 +161,27 @@ func TestWithQwenConfig(t *testing.T) {
 	}
 }
 
+func TestWithAtlasCloudConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	WithAtlasCloudConfig("sk-atlas-key")(cfg)
+
+	if cfg.Provider != ProviderAtlasCloud {
+		t.Errorf("Provider should be '%s', got '%s'", ProviderAtlasCloud, cfg.Provider)
+	}
+
+	if cfg.APIKey != "sk-atlas-key" {
+		t.Errorf("APIKey should be 'sk-atlas-key', got '%s'", cfg.APIKey)
+	}
+
+	if cfg.BaseURL != DefaultAtlasCloudBaseURL {
+		t.Errorf("BaseURL should be '%s', got '%s'", DefaultAtlasCloudBaseURL, cfg.BaseURL)
+	}
+
+	if cfg.Model != DefaultAtlasCloudModel {
+		t.Errorf("Model should be '%s', got '%s'", DefaultAtlasCloudModel, cfg.Model)
+	}
+}
+
 // ============================================================
 // Test Options Combination
 // ============================================================

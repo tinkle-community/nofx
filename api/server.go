@@ -281,8 +281,8 @@ CRITICAL: The "id" field (e.g. "abc123_deepseek") is what you must use for ai_mo
 				s.handleGetModelConfigs)
 			s.routeWithSchema(protected, "PUT", "/models", "Configure an AI model provider",
 				`Body: {"models":{"<model_id>":{"enabled":<bool>,"api_key":"<string>","custom_api_url":"<string, leave empty to use provider default>","custom_model_name":"<string, leave empty to use provider default>"}}}
-model_id values: "openai","deepseek","qwen","kimi","grok","gemini","claude"
-Defaults when custom fields empty: openai→api.openai.com/v1, deepseek→api.deepseek.com, qwen→dashscope.aliyuncs.com/compatible-mode/v1, kimi→api.moonshot.ai/v1, grok→api.x.ai/v1, gemini→generativelanguage.googleapis.com/v1beta/openai, claude→api.anthropic.com/v1`,
+model_id values: "openai","deepseek","qwen","kimi","grok","gemini","claude","atlascloud"
+Defaults when custom fields empty: openai→api.openai.com/v1, deepseek→api.deepseek.com, qwen→dashscope.aliyuncs.com/compatible-mode/v1, kimi→api.moonshot.ai/v1, grok→api.x.ai/v1, gemini→generativelanguage.googleapis.com/v1beta/openai, claude→api.anthropic.com/v1, atlascloud→api.atlascloud.ai/v1`,
 				s.handleUpdateModelConfigs)
 
 			// Exchange configuration

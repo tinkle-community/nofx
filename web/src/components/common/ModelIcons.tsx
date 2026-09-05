@@ -15,6 +15,7 @@ const MODEL_COLORS: Record<string, string> = {
   openai: '#10A37F',
   minimax: '#E45735',
   claw402: '#7C3AED',
+  atlascloud: '#2563EB',
   zhipu: '#3859F3',
 }
 

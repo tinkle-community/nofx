@@ -88,6 +88,9 @@ func TestGetContextLimit(t *testing.T) {
 	if got := GetContextLimit("deepseek"); got != 131072 {
 		t.Errorf("deepseek limit = %d, want 131072", got)
 	}
+	if got := GetContextLimit("atlascloud"); got != 131072 {
+		t.Errorf("atlascloud limit = %d, want 131072", got)
+	}
 	if got := GetContextLimit("unknown_provider"); got != 131072 {
 		t.Errorf("unknown provider should return default 131072, got %d", got)
 	}

@@ -1315,9 +1315,10 @@ const (
 	contextLimitClaude   = 200_000   // 200K
 	contextLimitQwen     = 131_072   // 128K
 	contextLimitGemini   = 1_000_000 // 1M
-	contextLimitGrok     = 131_072   // 128K
-	contextLimitKimi     = 131_072   // 128K
-	contextLimitMinimax  = 1_000_000 // 1M
+	contextLimitGrok       = 131_072   // 128K
+	contextLimitKimi       = 131_072   // 128K
+	contextLimitMinimax    = 1_000_000 // 1M
+	contextLimitAtlasCloud = 131_072   // 128K
 )
 
 // ModelContextLimits maps provider names to their context window sizes (in tokens)
@@ -1327,9 +1328,10 @@ var ModelContextLimits = map[string]int{
 	"claude":   contextLimitClaude,
 	"qwen":     contextLimitQwen,
 	"gemini":   contextLimitGemini,
-	"grok":     contextLimitGrok,
-	"kimi":     contextLimitKimi,
-	"minimax":  contextLimitMinimax,
+	"grok":       contextLimitGrok,
+	"kimi":       contextLimitKimi,
+	"minimax":    contextLimitMinimax,
+	"atlascloud": contextLimitAtlasCloud,
 }
 
 // GetContextLimit returns the context limit for a given provider

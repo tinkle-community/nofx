@@ -191,3 +191,17 @@ func WithMiniMaxConfig(apiKey string) ClientOption {
 		c.Model = DefaultMiniMaxModel
 	}
 }
+
+// WithAtlasCloudConfig sets Atlas Cloud OpenAI-compatible configuration.
+//
+// Usage example:
+//
+//	client := mcp.NewClient(mcp.WithAtlasCloudConfig("sk-xxx"))
+func WithAtlasCloudConfig(apiKey string) ClientOption {
+	return func(c *Config) {
+		c.Provider = ProviderAtlasCloud
+		c.APIKey = apiKey
+		c.BaseURL = DefaultAtlasCloudBaseURL
+		c.Model = DefaultAtlasCloudModel
+	}
+}
