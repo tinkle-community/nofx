@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"encoding/json"
 	"fmt"
 	"nofx/market"
 	"nofx/provider/nofxos"
@@ -87,6 +88,11 @@ func formatContextData(ctx *Context, lang Language) string {
 		} else {
 			sb.WriteString(formatCandidateCoinsEN(ctx))
 		}
+	}
+
+	// User-defined external data sources (if available)
+	if len(ctx.ExternalData) > 0 {
+		sb.WriteString(formatExternalData(ctx.ExternalData, lang))
 	}
 
 	// 7. OI ranking data (if available)
@@ -631,4 +637,32 @@ func getOIInterpretationEN(oiChange, priceChange string) string {
 	} else {
 		return OIInterpretation.OIDown_PriceDown.EN
 	}
+}
+
+// formatExternalData formats user-defined external data sources for the AI
+// context. Each source's JSON is rendered compactly under its configured name,
+// in sorted order for deterministic prompts.
+func formatExternalData(externalData map[string]interface{}, lang Language) string {
+	var sb strings.Builder
+	if lang == LangChinese {
+		sb.WriteString("## 外部数据源\n\n")
+	} else {
+		sb.WriteString("## External Data Sources\n\n")
+	}
+
+	names := make([]string, 0, len(externalData))
+	for name := range externalData {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		encoded, err := json.Marshal(externalData[name])
+		if err != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("- %s: %s\n", name, string(encoded)))
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }

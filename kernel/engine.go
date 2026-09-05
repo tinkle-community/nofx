@@ -2,12 +2,15 @@ package kernel
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
+	"nofx/mcp/payment"
 	"nofx/provider/hyperliquid"
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
@@ -18,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 // ============================================================================
@@ -110,6 +115,7 @@ type Context struct {
 	OIRankingData      *nofxos.OIRankingData              `json:"-"` // Market-wide OI ranking data
 	NetFlowRankingData *nofxos.NetFlowRankingData         `json:"-"` // Market-wide fund flow ranking data
 	PriceRankingData   *nofxos.PriceRankingData           `json:"-"` // Market-wide price gainers/losers
+	ExternalData       map[string]interface{}             `json:"-"` // User-defined external data sources, keyed by source name
 	BTCETHLeverage     int                                `json:"-"`
 	AltcoinLeverage    int                                `json:"-"`
 	Timeframes         []string                           `json:"-"`
@@ -190,6 +196,33 @@ type StrategyEngine struct {
 	nofxosClient       *nofxos.Client
 	vergexClient       *vergex.Client
 	vergexRankingCache map[string]*vergex.DirectionChangeItem
+
+	// x402Key signs payments for user-defined external data sources with
+	// payment: "x402" (same wallet that pays claw402 inference). Nil when no
+	// wallet key is configured — paid sources are then skipped with a log line.
+	x402Key *ecdsa.PrivateKey
+
+	// externalMu guards the two fields below; fetches may run per trader loop.
+	externalMu sync.Mutex
+	// externalDailySpend tracks per-source cumulative paid spend for the
+	// current UTC day (in-memory; resets on restart — see PR notes).
+	externalDailySpend map[string]*externalDailySpend
+	// paidDataCharges accumulates settled payments until the trader drains
+	// them into the ai_charges cost tracking (see DrainPaidDataCharges).
+	paidDataCharges []PaidDataCharge
+}
+
+// externalDailySpend is one source's spend within a UTC day window.
+type externalDailySpend struct {
+	day string // "2006-01-02" in UTC
+	usd float64
+}
+
+// PaidDataCharge is a settled x402 payment for an external data source,
+// drained by the trader into cost tracking.
+type PaidDataCharge struct {
+	SourceName string
+	CostUSD    float64
 }
 
 // NewStrategyEngine creates strategy execution engine.
@@ -210,6 +243,18 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 	if walletKey == "" {
 		walletKey = os.Getenv("CLAW402_WALLET_KEY")
 	}
+	// Parse the wallet key once; it also signs x402 payments for user-defined
+	// external data sources (payment: "x402"), independent of claw402 routing.
+	var x402Key *ecdsa.PrivateKey
+	if walletKey != "" {
+		pk, err := ethcrypto.HexToECDSA(strings.TrimPrefix(walletKey, "0x"))
+		if err == nil {
+			x402Key = pk
+		} else {
+			logger.Warnf("⚠️ Invalid wallet key for x402 external data sources: %v", err)
+		}
+	}
+
 	if walletKey != "" {
 		claw402URL := os.Getenv("CLAW402_URL")
 		if claw402URL == "" {
@@ -234,6 +279,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			nofxosClient:       client,
 			vergexClient:       vergexClient,
 			vergexRankingCache: make(map[string]*vergex.DirectionChangeItem),
+			x402Key:            x402Key,
+			externalDailySpend: make(map[string]*externalDailySpend),
 		}
 	}
 
@@ -241,6 +288,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		config:             config,
 		nofxosClient:       client,
 		vergexRankingCache: make(map[string]*vergex.DirectionChangeItem),
+		x402Key:            x402Key,
+		externalDailySpend: make(map[string]*externalDailySpend),
 	}
 }
 
@@ -988,8 +1037,12 @@ func (e *StrategyEngine) fetchSingleExternalSource(source store.ExternalDataSour
 		timeout = 30 * time.Second
 	}
 
-	// Use SSRF-safe HTTP client
+	// Use SSRF-safe HTTP client (also for the paid retry path)
 	client := security.SafeHTTPClient(timeout)
+
+	if source.Payment == "x402" {
+		return e.fetchPaidExternalSource(source, client)
+	}
 
 	req, err := http.NewRequest(source.Method, source.URL, nil)
 	if err != nil {
@@ -1011,6 +1064,12 @@ func (e *StrategyEngine) fetchSingleExternalSource(source store.ExternalDataSour
 		return nil, err
 	}
 
+	return decodeExternalPayload(body, source)
+}
+
+// decodeExternalPayload parses an external source response body and applies
+// the optional data_path extraction. Shared by the paid and unpaid paths.
+func decodeExternalPayload(body []byte, source store.ExternalDataSource) (interface{}, error) {
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
@@ -1021,6 +1080,158 @@ func (e *StrategyEngine) fetchSingleExternalSource(source store.ExternalDataSour
 	}
 
 	return result, nil
+}
+
+// fetchPaidExternalSource fetches a payment: "x402" source. A 402 response is
+// paid with the trader's wallet key via the existing x402 payment flow, but
+// only after the offer passes checkX402Offer (scheme, network, both caps).
+// Settled spend is recorded into the daily counter and the paid-charge queue.
+func (e *StrategyEngine) fetchPaidExternalSource(source store.ExternalDataSource, client *http.Client) (interface{}, error) {
+	if e.x402Key == nil {
+		return nil, fmt.Errorf("source [%s] sets payment=x402 but no wallet key is configured", source.Name)
+	}
+	if source.MaxUSDPerCall <= 0 || source.MaxUSDPerDay <= 0 {
+		return nil, fmt.Errorf("source [%s] payment=x402 requires both max_usd_per_call and max_usd_per_day", source.Name)
+	}
+
+	tag := "x402:" + source.Name
+
+	// signedUSD carries the authorized amount of the most recent signature.
+	// signFn may run more than once (an expired 402 is re-signed for the same
+	// call), so spend is recorded once after success, not at signing time.
+	var signedUSD float64
+	signFn := func(paymentHeaderB64 string) (string, error) {
+		usd, err := e.checkX402Offer(source, paymentHeaderB64)
+		if err != nil {
+			return "", err
+		}
+		signedUSD = usd
+		return payment.SignBasePaymentHeader(e.x402Key, paymentHeaderB64, tag)
+	}
+
+	buildReq := func() (*http.Request, error) {
+		req, err := http.NewRequest(source.Method, source.URL, nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range source.Headers {
+			req.Header.Set(k, v)
+		}
+		return req, nil
+	}
+
+	body, err := payment.DoX402Request(context.Background(), client, buildReq, signFn, tag, &logger.MCPLogger{})
+	if err != nil {
+		return nil, err
+	}
+
+	if signedUSD > 0 {
+		e.recordExternalSpend(source.Name, signedUSD, source.MaxUSDPerDay)
+	}
+
+	return decodeExternalPayload(body, source)
+}
+
+// checkX402Offer validates a 402 offer before anything is signed and returns
+// the authorized amount in USD. The authorized amount from accepts[0] is the
+// bound regardless of scheme: under "upto" it is the worst case. Only "exact"
+// and "upto" on Base (eip155:8453) are accepted in v1.
+func (e *StrategyEngine) checkX402Offer(source store.ExternalDataSource, paymentHeaderB64 string) (float64, error) {
+	decoded, err := payment.X402DecodeHeader(paymentHeaderB64)
+	if err != nil {
+		return 0, err
+	}
+	var pr payment.X402v2PaymentRequired
+	if err := json.Unmarshal(decoded, &pr); err != nil {
+		return 0, fmt.Errorf("failed to parse x402 payment header: %w", err)
+	}
+	if len(pr.Accepts) == 0 {
+		return 0, fmt.Errorf("no payment options in x402 response")
+	}
+	opt := pr.Accepts[0]
+
+	scheme := opt.Scheme
+	if scheme == "" {
+		scheme = "exact"
+	}
+	if scheme != "exact" && scheme != "upto" {
+		return 0, fmt.Errorf("source [%s] offered unsupported x402 scheme %q", source.Name, opt.Scheme)
+	}
+	if opt.Network != payment.BaseNetwork {
+		return 0, fmt.Errorf("source [%s] offered network %q; only Base (%s) is supported", source.Name, opt.Network, payment.BaseNetwork)
+	}
+
+	usd, err := x402AmountUSD(opt.Amount)
+	if err != nil {
+		return 0, fmt.Errorf("source [%s] offered unparseable amount %q: %w", source.Name, opt.Amount, err)
+	}
+	if usd <= 0 {
+		return 0, fmt.Errorf("source [%s] offered non-positive amount %q", source.Name, opt.Amount)
+	}
+	if usd > source.MaxUSDPerCall {
+		return 0, fmt.Errorf("source [%s] offer $%.6f exceeds max_usd_per_call $%.6f", source.Name, usd, source.MaxUSDPerCall)
+	}
+
+	e.externalMu.Lock()
+	defer e.externalMu.Unlock()
+	spent := e.dailySpendLocked(source.Name)
+	if spent+usd > source.MaxUSDPerDay {
+		return 0, fmt.Errorf("source [%s] daily budget exhausted: $%.6f spent + $%.6f offer > max_usd_per_day $%.6f",
+			source.Name, spent, usd, source.MaxUSDPerDay)
+	}
+	return usd, nil
+}
+
+// x402AmountUSD converts an x402 amount (USDC atomic units, 6 decimals, as a
+// decimal or 0x-hex string) to USD.
+func x402AmountUSD(amount string) (float64, error) {
+	s := strings.TrimSpace(amount)
+	units := new(big.Int)
+	var ok bool
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		_, ok = units.SetString(s[2:], 16)
+	} else {
+		_, ok = units.SetString(s, 10)
+	}
+	if !ok {
+		return 0, fmt.Errorf("not an integer amount")
+	}
+	usd, _ := new(big.Float).Quo(new(big.Float).SetInt(units), big.NewFloat(1e6)).Float64()
+	return usd, nil
+}
+
+// dailySpendLocked returns today's (UTC) spend for a source, rolling the
+// window when the day has changed. Caller must hold externalMu.
+func (e *StrategyEngine) dailySpendLocked(sourceName string) float64 {
+	today := time.Now().UTC().Format("2006-01-02")
+	entry := e.externalDailySpend[sourceName]
+	if entry == nil || entry.day != today {
+		e.externalDailySpend[sourceName] = &externalDailySpend{day: today}
+		return 0
+	}
+	return entry.usd
+}
+
+// recordExternalSpend records a settled payment into the daily counter and
+// queues it for cost tracking.
+func (e *StrategyEngine) recordExternalSpend(sourceName string, usd, maxUSDPerDay float64) {
+	e.externalMu.Lock()
+	defer e.externalMu.Unlock()
+	spent := e.dailySpendLocked(sourceName)
+	e.externalDailySpend[sourceName].usd = spent + usd
+	e.paidDataCharges = append(e.paidDataCharges, PaidDataCharge{SourceName: sourceName, CostUSD: usd})
+	logger.Infof("💸 [x402:%s] paid $%.6f (today $%.6f of $%.6f)", sourceName, usd, spent+usd, maxUSDPerDay)
+}
+
+// DrainPaidDataCharges returns queued paid-source charges and clears the
+// queue. The trader records them into ai_charges so data spend appears in the
+// cost dashboard next to inference spend.
+func (e *StrategyEngine) DrainPaidDataCharges() []PaidDataCharge {
+	e.externalMu.Lock()
+	defer e.externalMu.Unlock()
+	charges := e.paidDataCharges
+	e.paidDataCharges = nil
+	return charges
 }
 
 func extractJSONPath(data interface{}, path string) interface{} {

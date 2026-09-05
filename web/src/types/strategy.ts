@@ -189,6 +189,12 @@ export interface ExternalDataSource {
   headers?: Record<string, string>;
   data_path?: string;
   refresh_secs?: number;
+  // x402 payment (opt-in). When payment is "x402", both caps are required:
+  // max_usd_per_call bounds one authorization, max_usd_per_day bounds
+  // cumulative spend per source per UTC day.
+  payment?: 'x402';
+  max_usd_per_call?: number;
+  max_usd_per_day?: number;
 }
 
 export interface RiskControlConfig {
