@@ -70,10 +70,14 @@ func (t *OKXTrader) GetBalance() (map[string]interface{}, error) {
 		return nil, err
 	}
 
+	// OKX totalEq already includes unrealized PnL, so expose it as totalEquity
+	// and keep totalWalletBalance UPL-free — otherwise the generic fallback
+	// (equity = wallet + unrealized) counts the UPL twice.
 	result := map[string]interface{}{
-		"totalWalletBalance":    totalEq,
+		"totalWalletBalance":    totalEq - usdtUPL,
 		"availableBalance":      usdtAvail,
 		"totalUnrealizedProfit": usdtUPL,
+		"totalEquity":           totalEq,
 	}
 
 	logger.Infof("✓ OKX balance: Total equity=%.2f, Available=%.2f, Unrealized PnL=%.2f", totalEq, usdtAvail, usdtUPL)
