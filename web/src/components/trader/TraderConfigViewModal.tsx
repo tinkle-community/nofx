@@ -2,6 +2,7 @@ import type { TraderConfigData } from '../../types'
 import { t } from '../../i18n/translations'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { PunkAvatar, getTraderAvatar } from '../common/PunkAvatar'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 
 // Extract the name part after the last underscore
 function getShortName(fullName: string): string {
@@ -43,7 +44,10 @@ export function TraderConfigViewModal({
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+    <ModalPortal>
+      <div
+        className={`fixed inset-0 ${MODAL_LAYERS.primary} flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm`}
+      >
       <div
         className="bg-nofx-bg-lighter border border-nofx-gold/20 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -161,6 +165,7 @@ export function TraderConfigViewModal({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner'
 import { Tooltip } from './Tooltip'
 import { getShortName } from './utils'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 
 // Supported exchange templates
 const SUPPORTED_EXCHANGE_TEMPLATES = [
@@ -343,7 +344,10 @@ export function ExchangeConfigModal({
   const dexExchanges = SUPPORTED_EXCHANGE_TEMPLATES.filter(t => t.type === 'dex')
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto backdrop-blur-sm">
+    <ModalPortal>
+      <div
+        className={`fixed inset-0 bg-black/60 flex items-center justify-center ${MODAL_LAYERS.primary} p-4 overflow-y-auto backdrop-blur-sm`}
+      >
       <div
         className="rounded-2xl w-full max-w-2xl relative my-8 shadow-2xl"
         style={{ background: '#F7F4EC', maxHeight: 'calc(100vh - 4rem)' }}
@@ -783,7 +787,10 @@ export function ExchangeConfigModal({
 
       {/* Binance Guide Modal */}
       {showGuide && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4" onClick={() => setShowGuide(false)}>
+        <div
+          className={`fixed inset-0 bg-black/75 flex items-center justify-center ${MODAL_LAYERS.nested} p-4`}
+          onClick={() => setShowGuide(false)}
+        >
           <div className="rounded-2xl p-6 w-full max-w-4xl" style={{ background: '#F7F4EC' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1A1813' }}>
@@ -810,6 +817,7 @@ export function ExchangeConfigModal({
         onCancel={() => setSecureInputTarget(null)}
         onComplete={handleSecureInputComplete}
       />
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

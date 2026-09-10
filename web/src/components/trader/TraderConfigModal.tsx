@@ -17,6 +17,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { httpClient } from '../../lib/httpClient'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 import { NofxSelect } from '../ui/select'
 
 // Extract the name part after the underscore
@@ -195,7 +196,10 @@ export function TraderConfigModal({
   const selectedStrategy = strategies.find((s) => s.id === formData.strategy_id)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 overflow-y-auto">
+    <ModalPortal>
+      <div
+        className={`fixed inset-0 ${MODAL_LAYERS.primary} flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 overflow-y-auto`}
+      >
       <div
         className="bg-nofx-bg-lighter border border-nofx-gold/20 rounded-xl shadow-2xl max-w-2xl w-full my-8"
         style={{ maxHeight: 'calc(100vh - 4rem)' }}
@@ -606,6 +610,7 @@ export function TraderConfigModal({
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { api } from '../../lib/api'
 import type { TelegramConfig, AIModel } from '../../types'
 import { t, type Language } from '../../i18n/translations'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 import { NofxSelect } from '../ui/select'
 
 // Step indicator (reused pattern from ExchangeConfigModal)
@@ -156,7 +157,10 @@ export function TelegramConfigModal({ onClose, language }: TelegramConfigModalPr
   )
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto backdrop-blur-sm">
+    <ModalPortal>
+      <div
+        className={`fixed inset-0 bg-black/60 flex items-center justify-center ${MODAL_LAYERS.primary} p-4 overflow-y-auto backdrop-blur-sm`}
+      >
       <div
         className="rounded-2xl w-full max-w-lg relative my-8 shadow-2xl"
         style={{ background: '#F7F4EC' }}
@@ -442,7 +446,8 @@ export function TelegramConfigModal({ onClose, language }: TelegramConfigModalPr
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }
 

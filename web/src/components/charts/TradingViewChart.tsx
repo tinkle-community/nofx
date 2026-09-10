@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo } from 'react'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { t } from '../../i18n/translations'
 import { ChevronDown, TrendingUp, X } from 'lucide-react'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 
 // Supported exchanges list (futures format)
 const EXCHANGES = [
@@ -163,10 +164,10 @@ function TradingViewChartComponent({
     }
   }
 
-  return (
+  const chartContent = (
     <div
       className={`${embedded ? '' : 'binance-card'} overflow-hidden ${embedded ? '' : 'animate-fade-in'} ${isFullscreen
-          ? 'fixed inset-0 z-50 rounded-none flex flex-col'
+          ? `fixed inset-0 ${MODAL_LAYERS.primary} rounded-none flex flex-col`
           : ''
         }`}
       style={isFullscreen ? { background: '#F1ECE2' } : undefined}
@@ -392,6 +393,8 @@ function TradingViewChartComponent({
       )}
     </div>
   )
+
+  return isFullscreen ? <ModalPortal>{chartContent}</ModalPortal> : chartContent
 }
 
 // Use memo to avoid unnecessary re-renders

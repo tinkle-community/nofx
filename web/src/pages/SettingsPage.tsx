@@ -637,47 +637,41 @@ export function SettingsPage() {
 
       {/* AI Model Modal */}
       {showModelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <ModelConfigModal
-            allModels={supportedModels}
-            configuredModels={configuredModels}
-            editingModelId={editingModel}
-            onSave={handleSaveModel}
-            onDelete={handleDeleteModel}
-            onClose={() => {
-              setShowModelModal(false)
-              setEditingModel(null)
-            }}
-            language={language}
-          />
-        </div>
+        <ModelConfigModal
+          allModels={supportedModels}
+          configuredModels={configuredModels}
+          editingModelId={editingModel}
+          onSave={handleSaveModel}
+          onDelete={handleDeleteModel}
+          onClose={() => {
+            setShowModelModal(false)
+            setEditingModel(null)
+          }}
+          language={language}
+        />
       )}
 
       {/* Exchange Modal */}
       {showExchangeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <ExchangeConfigModal
-            allExchanges={exchanges}
-            editingExchangeId={editingExchange}
-            onSave={handleSaveExchange}
-            onDelete={handleDeleteExchange}
-            onClose={() => {
-              setShowExchangeModal(false)
-              setEditingExchange(null)
-            }}
-            language={language}
-          />
-        </div>
+        <ExchangeConfigModal
+          allExchanges={exchanges}
+          editingExchangeId={editingExchange}
+          onSave={handleSaveExchange}
+          onDelete={handleDeleteExchange}
+          onClose={() => {
+            setShowExchangeModal(false)
+            setEditingExchange(null)
+          }}
+          language={language}
+        />
       )}
 
       {/* Telegram Modal */}
       {showTelegramModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <TelegramConfigModal
-            onClose={() => setShowTelegramModal(false)}
-            language={language}
-          />
-        </div>
+        <TelegramConfigModal
+          onClose={() => setShowTelegramModal(false)}
+          language={language}
+        />
       )}
     </div>
   )

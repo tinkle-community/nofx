@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { t, type Language } from '../../i18n/translations'
 import { toast } from 'sonner'
 import { WebCryptoEnvironmentCheck } from '../common/WebCryptoEnvironmentCheck'
+import { MODAL_LAYERS, ModalPortal } from '../ui/modal-portal'
 
 const DEFAULT_LENGTH = 64
 
@@ -178,7 +178,9 @@ export function TwoStageKeyModal({
     if (!isOpen) return null
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      <div
+        className={`fixed inset-0 ${MODAL_LAYERS.critical} flex items-center justify-center bg-black/80`}
+      >
         <div className="bg-nofx-bg-lighter p-8 rounded-xl max-w-lg w-full mx-4 border border-[rgba(26,24,19,0.14)]">
           <div className="text-center mb-6">
             <h2 className="text-xl font-bold text-nofx-text mb-2">
@@ -343,5 +345,5 @@ export function TwoStageKeyModal({
 
   if (!isOpen) return null
 
-  return createPortal(modalContent, document.body)
+  return <ModalPortal>{modalContent}</ModalPortal>
 }
